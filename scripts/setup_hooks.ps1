@@ -14,8 +14,11 @@ bash scripts/_pyrun.sh scripts/submit_log.py || true
 exit 0
 '@
 
-Set-Content -Path $HookFile -Value $HookBody -Encoding UTF8 -NoNewline
-Write-Host "[ai-log] Git pre-push hook installed."
+# Write UTF-8 without BOM and LF line endings so Git for Windows can spawn it
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$lfContent = ($HookBody.Trim() -replace "`r`n", "`n") + "`n"
+[System.IO.File]::WriteAllText($HookFile, $lfContent, $utf8NoBom)
+Write-Host "[ai-log] Git pre-push hook installed (UTF-8 without BOM, LF)."
 
 if (-not (Test-Path .ai-log)) { New-Item -ItemType Directory -Path .ai-log | Out-Null }
 if (-not (Test-Path .ai-log/.gitkeep)) { New-Item -ItemType File -Path .ai-log/.gitkeep | Out-Null }
