@@ -1,0 +1,402 @@
+/* =========================================================
+   AutoLabel 3D - Modals, Dialogs, Flow Overview, and Toasts
+   ========================================================= */
+
+/* Generic Modal Backdrop */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(8px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity 0.2s ease-out;
+  padding: 20px;
+}
+
+.modal-backdrop.show {
+  display: flex;
+  opacity: 1;
+}
+
+.modal-box {
+  background: #ffffff;
+  border-radius: var(--radius-xl);
+  padding: 32px;
+  width: 100%;
+  max-width: 500px;
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  transform: scale(0.95);
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  text-align: center;
+}
+
+.modal-backdrop.show .modal-box {
+  transform: scale(1);
+}
+
+/* =========================================================
+   Step 5: Modal Xác nhận hoàn thành
+   ========================================================= */
+.modal-icon-circle-lg {
+  width: 72px;
+  height: 72px;
+  background: #ecfdf5;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+  color: #10b981;
+  font-size: 36px;
+  border: 4px solid #d1fae5;
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.25);
+}
+
+.modal-heading {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--color-text-main);
+  margin-bottom: 8px;
+}
+
+.modal-subtext {
+  font-size: 14px;
+  color: var(--color-text-muted);
+  margin-bottom: 24px;
+}
+
+.modal-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.modal-actions-row .btn-primary,
+.modal-actions-row .btn-secondary {
+  flex: 1;
+  justify-content: center;
+  padding: 12px 20px;
+  font-size: 14px;
+}
+
+/* =========================================================
+   Step 6: Modal / Card Lưu kết quả (Success)
+   ========================================================= */
+.save-success-card {
+  background: #ffffff;
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.save-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+  font-size: 14px;
+}
+
+.save-meta-row:last-child {
+  border-bottom: none;
+}
+
+.save-meta-label {
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.save-meta-value {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--color-text-main);
+}
+
+.badge-approved {
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+  padding: 3px 12px;
+  border-radius: var(--radius-full);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+/* =========================================================
+   Step 7: Màn hình / Modal Xuất dữ liệu (Export)
+   ========================================================= */
+.export-screen-wrapper {
+  max-width: 680px;
+  margin: 40px auto;
+  padding: 0 20px;
+  width: 100%;
+}
+
+.export-card {
+  background: #ffffff;
+  border-radius: var(--radius-xl);
+  padding: 36px;
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-lg);
+}
+
+.export-header {
+  margin-bottom: 24px;
+}
+
+.export-title {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--color-text-main);
+  margin-bottom: 6px;
+}
+
+.export-subtitle {
+  font-size: 14px;
+  color: var(--color-text-muted);
+}
+
+.export-form-group {
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.export-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-main);
+}
+
+.export-select {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 600;
+  background: #f8fafc;
+  color: var(--color-text-main);
+  cursor: pointer;
+}
+
+.export-select:focus {
+  border-color: var(--color-primary);
+  background: #fff;
+}
+
+.export-success-box {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  text-align: center;
+  margin-top: 24px;
+  display: none;
+}
+
+.export-success-box.show {
+  display: block;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.export-success-icon {
+  width: 52px;
+  height: 52px;
+  background: #22c55e;
+  color: white;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  margin: 0 auto 12px;
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.35);
+}
+
+.export-success-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #15803d;
+  margin-bottom: 4px;
+}
+
+.export-success-desc {
+  font-size: 13px;
+  color: #166534;
+  margin-bottom: 16px;
+}
+
+.btn-download-zip {
+  background: #16a34a;
+  color: white;
+  padding: 12px 24px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 12px rgba(22, 163, 74, 0.35);
+  transition: all var(--transition-fast);
+}
+
+.btn-download-zip:hover {
+  background: #15803d;
+  transform: translateY(-1px);
+}
+
+/* =========================================================
+   Flow Overview Mode (Interactive Infographic Diagram)
+   ========================================================= */
+.flow-overview-screen {
+  background: #f0f4f8;
+  padding: 30px;
+  min-height: calc(100vh - 64px);
+  overflow-y: auto;
+}
+
+.flow-overview-container {
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.flow-banner-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.flow-main-title {
+  font-size: 28px;
+  font-weight: 900;
+  color: #1e3a8a;
+  letter-spacing: -0.03em;
+  margin-bottom: 6px;
+}
+
+.flow-sub-title {
+  font-size: 15px;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+/* Row 1: Steps 1, 2, 3 */
+.flow-row-top {
+  display: grid;
+  grid-template-columns: 280px 32px 1fr 32px 1fr;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.flow-card-box {
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  box-shadow: var(--shadow-md);
+  position: relative;
+  transition: all var(--transition-fast);
+  cursor: pointer;
+}
+
+.flow-card-box:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-xl);
+  border-color: var(--color-primary);
+}
+
+.flow-step-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.flow-step-badge {
+  width: 24px;
+  height: 24px;
+  background: var(--color-primary);
+  color: white;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.flow-step-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--color-text-main);
+}
+
+.flow-arrow-connector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2563eb;
+  font-size: 24px;
+  font-weight: bold;
+}
+
+/* Row 2: Step 4 Big Workstation */
+.flow-row-center {
+  margin-bottom: 24px;
+}
+
+/* Row 3: Steps 5, 6, 7 */
+.flow-row-bottom {
+  display: grid;
+  grid-template-columns: 1fr 32px 1fr 32px 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Toast Notification */
+.app-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: #0f172a;
+  color: #ffffff;
+  padding: 12px 20px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+  z-index: 2000;
+  transform: translateY(100px);
+  opacity: 0;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  border: 1px solid #334155;
+}
+
+.app-toast.show {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.toast-icon {
+  color: #38bdf8;
+  font-size: 18px;
+}
