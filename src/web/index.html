@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AutoLabel 2D — Review</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">2D</span>
+      <div>
+        <div class="brand-title">AutoLabel 2D</div>
+        <div class="brand-sub">nuScenes CAM_FRONT · QA Agent · Review by exception</div>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="review" role="tab">Review</button>
+      <button class="tab" data-tab="log" role="tab">Correction log</button>
+      <button class="tab" data-tab="metrics" role="tab">Metrics &amp; Export</button>
+    </nav>
+    <label class="reviewer">Người duyệt
+      <input id="reviewer" type="text" maxlength="40">
+    </label>
+  </header>
+
+  <!-- ===== Review ===== -->
+  <main id="tab-review" class="tab-panel review-layout">
+    <aside class="queue">
+      <div class="panel-head">
+        <h2>Hàng đợi frame</h2>
+        <select id="queue-sort" title="Sắp xếp">
+          <option value="risk">Khó nhất trước</option>
+          <option value="order">Theo thứ tự</option>
+        </select>
+      </div>
+      <div class="queue-filter" id="queue-filter">
+        <button data-status="" class="chip active">Tất cả</button>
+        <button data-status="auto" class="chip">Chưa mở</button>
+        <button data-status="editing" class="chip">Đang sửa</button>
+        <button data-status="approved" class="chip">Đã duyệt</button>
+      </div>
+      <ul id="queue-list" class="queue-list"></ul>
+    </aside>
+
+    <section class="workspace">
+      <div class="toolbar">
+        <div class="frame-title">
+          <strong id="frame-id">—</strong>
+          <span id="frame-status" class="status-pill"></span>
+          <span class="timer" title="Thời gian duyệt frame này (M1)">⏱ <span id="timer">0:00</span></span>
+          <span class="muted detector" id="frame-detectors" title="Model đã sinh box cho frame này"></span>
+        </div>
+        <div class="toolbar-actions">
+          <label class="toggle"><input type="checkbox" id="show-lidar"> LiDAR <kbd>L</kbd></label>
+          <label class="toggle"><input type="checkbox" id="show-gt"> GT <kbd>G</kbd></label>
+          <label class="toggle"><input type="checkbox" id="show-low" checked> Box rủi ro thấp</label>
+          <button id="btn-add" class="btn btn-ghost" title="Vẽ box mới (B)">＋ Add box <kbd>B</kbd></button>
+        </div>
+      </div>
+      <div class="canvas-wrap" id="canvas-wrap">
+        <canvas id="canvas"></canvas>
+        <div id="edit-bar" class="edit-bar hidden">
+          <span id="edit-hint">Kéo góc/cạnh để sửa box</span>
+          <select id="add-class" class="hidden"></select>
+          <button id="edit-save" class="btn btn-primary">Lưu box</button>
+          <button id="edit-cancel" class="btn btn-ghost">Huỷ</button>
+        </div>
+        <div id="empty-state" class="empty-state">
+          <p>Chưa có frame nào trong workspace.</p>
+          <code>python -m src.cli run --limit 20</code>
+        </div>
+      </div>
+      <div class="filmstrip-head">
+        <span>Temporal consistency</span>
+        <span class="muted" id="film-caption">Chọn một object để xem track qua các sweep</span>
+      </div>
+      <div class="filmstrip" id="filmstrip"></div>
+    </section>
+
+    <aside class="review-panel">
+      <div class="risk-summary" id="risk-summary"></div>
+      <div class="review-scroll" id="review-scroll">
+        <section class="group group-high">
+          <h3><span class="dot high"></span>High risk <small>xem chi tiết</small> <span class="count" id="count-high">0</span></h3>
+          <div id="list-high"></div>
+        </section>
+        <section class="group group-medium">
+          <h3><span class="dot medium"></span>Medium risk <span class="count" id="count-medium">0</span></h3>
+          <div id="list-medium"></div>
+        </section>
+        <section class="group group-low">
+          <h3>
+            <button id="toggle-low" class="linklike" aria-expanded="false"><span class="dot low"></span>Low risk <small>duyệt theo lô</small></button>
+            <span class="count" id="count-low">0</span>
+          </h3>
+          <button id="btn-approve-low" class="btn btn-good wide">✓ Approve all low-risk <kbd>A</kbd></button>
+          <div id="list-low" class="collapsed"></div>
+        </section>
+        <section class="group group-done">
+          <h3>Đã xử lý <span class="count" id="count-done">0</span></h3>
+          <div id="list-done" class="done-list"></div>
+        </section>
+      </div>
+      <div class="review-foot">
+        <div class="progress"><div id="progress-bar"></div></div>
+        <div class="foot-row">
+          <span id="progress-text" class="muted"></span>
+          <button id="btn-approve-frame" class="btn btn-primary">Approve frame <kbd>Enter</kbd></button>
+        </div>
+        <div class="shortcuts">
+          <kbd>↑</kbd><kbd>↓</kbd> chọn object · <kbd>K</kbd> keep · <kbd>D</kbd> delete · <kbd>C</kbd> đổi lớp · <kbd>E</kbd> sửa box · <kbd>N</kbd>/<kbd>P</kbd> frame kế
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- ===== Correction log ===== -->
+  <main id="tab-log" class="tab-panel hidden">
+    <div class="page">
+      <div class="page-head">
+        <h2>Correction log</h2>
+        <label>Frame <input id="log-frame" type="text" placeholder="vd. scene-0061_005"></label>
+        <button id="log-refresh" class="btn btn-ghost">Tải lại</button>
+      </div>
+      <div class="log-layout">
+        <div class="table-wrap">
+          <table class="data-table" id="log-table">
+            <thead><tr><th>Thời điểm</th><th>Frame</th><th>Object</th><th>Hành động</th><th>Dự đoán</th><th>Kết quả</th><th class="num">Score</th><th class="num">Risk</th><th>Issues</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <pre class="json-view" id="log-json">Chọn một dòng để xem JSON</pre>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===== Metrics & Export ===== -->
+  <main id="tab-metrics" class="tab-panel hidden">
+    <div class="page">
+      <div class="page-head">
+        <h2>Metrics</h2>
+        <button id="metrics-refresh" class="btn btn-ghost">Tải lại</button>
+      </div>
+      <div class="tiles" id="tiles"></div>
+      <div class="two-col">
+        <section class="card">
+          <h3>Tỉ lệ phải sửa theo nhóm risk</h3>
+          <p class="muted">Nếu triage đúng, nhóm high phải có tỉ lệ sửa cao hơn hẳn nhóm low.</p>
+          <table class="data-table" id="level-table"></table>
+        </section>
+        <section class="card">
+          <h3>Issue code nào đáng tin</h3>
+          <p class="muted">Tỉ lệ object gắn issue này thật sự bị người sửa (precision của từng check).</p>
+          <table class="data-table" id="issue-table"></table>
+        </section>
+      </div>
+
+      <div class="page-head"><h2>Auto-labeled dataset</h2></div>
+      <section class="card export-card">
+        <p>Chỉ frame đã <strong>Approve</strong> được xuất. Gồm <code>coco.json</code>, <code>labels.jsonl</code> (box, lớp, risk, issue, hành động của người), <code>corrections.jsonl</code>, <code>manifest.json</code>.</p>
+        <button id="btn-export" class="btn btn-primary">Xuất dataset</button>
+        <div id="export-result"></div>
+        <h4>Các lần xuất</h4>
+        <ul id="export-list" class="export-list"></ul>
+      </section>
+    </div>
+  </main>
+
+  <div id="toast" class="toast hidden" role="status"></div>
+  <script src="app.js"></script>
+</body>
+</html>

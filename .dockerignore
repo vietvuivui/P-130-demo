@@ -14,3 +14,9 @@ eval/
 .dockerignore
 Dockerfile
 docker-compose.yml
+
+v1.0-mini*
+*.tgz
+*.pt
+data/
+.venv/

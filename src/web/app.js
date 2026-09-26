@@ -1,0 +1,899 @@
+/* AutoLabel 2D — UI review by exception (không cần build, gọi thẳng FastAPI) */
+'use strict';
+
+const API = '/api/v1';
+const LEVELS = ['high', 'medium', 'low'];
+const LEVEL_NAME = { low: 'Low', medium: 'Medium', high: 'High' };
+const RISK_COLOR = { low: '#0ca30c', medium: '#fab219', high: '#d03b3b' };
+const HUMAN_COLOR = '#3987e5';
+
+const S = {
+  cfg: null,
+  queue: [],
+  sort: 'risk',
+  statusFilter: '',
+  frame: null,
+  img: null,
+  sweepImgs: {},
+  lidar: null,
+  gt: null,
+  selected: null,
+  viewOffset: 0,
+  showLidar: false,
+  showGt: false,
+  showLow: true,
+  lowOpen: false,
+  mode: 'view', // view | edit | add
+  editBox: null,
+  drag: null,
+  timers: {},
+  timerStart: null,
+};
+
+const $ = (id) => document.getElementById(id);
+const canvas = $('canvas');
+const ctx = canvas.getContext('2d');
+
+// ---------- tiện ích ----------
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+const pct = (v) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`);
+const fx = (v, d = 2) => (v == null ? '—' : Number(v).toFixed(d));
+
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const d = data.detail;
+    throw new Error(d?.message || (typeof d === 'string' ? d : JSON.stringify(d)) || res.statusText);
+  }
+  return data;
+}
+
+let toastTimer;
+function toast(msg, error = false) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast' + (error ? ' error' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add('hidden'), error ? 5000 : 2200);
+}
+
+function storageGet(k, fallback) {
+  try { return localStorage.getItem(k) ?? fallback; } catch { return fallback; }
+}
+function storageSet(k, v) {
+  try { localStorage.setItem(k, v); } catch { /* bỏ qua: private mode */ }
+}
+
+const reviewer = () => $('reviewer').value.trim() || S.cfg?.reviewer || 'annotator';
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const im = new Image();
+    im.onload = () => resolve(im);
+    im.onerror = reject;
+    im.src = src;
+  });
+}
+
+function levelOf(o) { return o.qa?.level || 'low'; }
+function finalBox(o) { return o.review.final_bbox || o.bbox; }
+function finalLabel(o) { return o.review.final_label || o.label; }
+
+/* Thứ tự duyệt: object chờ (high -> medium -> low, risk giảm dần) rồi tới object đã xử lý */
+function orderedObjects() {
+  if (!S.frame) return [];
+  const pending = S.frame.objects.filter((o) => o.review.status === 'pending');
+  const rank = { high: 0, medium: 1, low: 2 };
+  pending.sort((a, b) => rank[levelOf(a)] - rank[levelOf(b)] || (b.qa?.risk || 0) - (a.qa?.risk || 0));
+  return pending.concat(S.frame.objects.filter((o) => o.review.status !== 'pending'));
+}
+const getObj = (id) => S.frame?.objects.find((o) => o.object_id === id);
+
+// ---------- hàng đợi ----------
+
+async function loadQueue() {
+  const q = new URLSearchParams({ sort: S.sort });
+  if (S.statusFilter) q.set('status', S.statusFilter);
+  S.queue = await api('/frames?' + q);
+  renderQueue();
+  $('empty-state').classList.toggle('hidden', S.queue.length > 0 || !!S.frame);
+}
+
+function riskLevel(r) {
+  const lv = S.cfg.levels;
+  return r >= lv.high ? 'high' : r >= lv.medium ? 'medium' : 'low';
+}
+
+function renderQueue() {
+  const list = $('queue-list');
+  list.innerHTML = S.queue.map((f) => {
+    const lv = riskLevel(f.frame_risk);
+    const statusText = { auto: 'Chưa mở', editing: 'Đang sửa', approved: 'Đã duyệt' }[f.status];
+    return `<li class="queue-item ${S.frame?.frame_id === f.frame_id ? 'active' : ''}" data-id="${esc(f.frame_id)}">
+      <div class="qi-top"><span class="qi-id">${esc(f.frame_id)}</span><span class="status-pill ${f.status}">${statusText}</span></div>
+      <div class="risk-meter" title="Frame risk ${fx(f.frame_risk)} (${LEVEL_NAME[lv]})"><span style="width:${Math.max(4, f.frame_risk * 100)}%;background:${RISK_COLOR[lv]}"></span></div>
+      <div class="qi-meta">
+        <span class="lv" title="High"><span class="dot high"></span>${f.counts.high}</span>
+        <span class="lv" title="Medium"><span class="dot medium"></span>${f.counts.medium}</span>
+        <span class="lv" title="Low"><span class="dot low"></span>${f.counts.low}</span>
+        <span style="margin-left:auto">${f.pending ? f.pending + ' chờ' : '✓'}</span>
+      </div></li>`;
+  }).join('');
+}
+
+// ---------- frame ----------
+
+function stopTimer() {
+  if (S.frame && S.timerStart) {
+    S.timers[S.frame.frame_id] = (S.timers[S.frame.frame_id] || 0) + (Date.now() - S.timerStart) / 1000;
+  }
+  S.timerStart = null;
+}
+function elapsed() {
+  if (!S.frame) return 0;
+  return (S.timers[S.frame.frame_id] || 0) + (S.timerStart ? (Date.now() - S.timerStart) / 1000 : 0);
+}
+
+async function openFrame(id) {
+  stopTimer();
+  const frame = await api(`/frames/${encodeURIComponent(id)}`);
+  S.frame = frame;
+  S.img = null;
+  S.lidar = S.gt = null;
+  S.sweepImgs = {};
+  S.viewOffset = 0;
+  S.mode = 'view';
+  S.editBox = null;
+  S.selected = orderedObjects()[0]?.object_id || null;
+  if (frame.status !== 'approved') S.timerStart = Date.now();
+  $('empty-state').classList.add('hidden');
+  renderAll();
+  const img = await loadImage(`${API}/frames/${encodeURIComponent(id)}/image`);
+  if (S.frame?.frame_id !== id) return; // người dùng đã chuyển sang frame khác
+  S.img = img;
+  fitCanvas();
+  if (S.showLidar) await ensureLidar();
+  if (S.showGt) await ensureGt();
+  renderAll();
+  loadSweeps(frame);
+}
+
+async function loadSweeps(frame) {
+  await Promise.all(frame.sweeps.map(async (s) => {
+    try {
+      const im = await loadImage(`${API}/frames/${encodeURIComponent(frame.frame_id)}/image?offset=${s.offset}`);
+      if (S.frame?.frame_id === frame.frame_id) S.sweepImgs[s.offset] = im;
+    } catch { /* thiếu sweep: để trống */ }
+  }));
+  renderFilmstrip();
+}
+
+async function ensureLidar() {
+  if (!S.lidar && S.frame) S.lidar = await api(`/frames/${encodeURIComponent(S.frame.frame_id)}/lidar`);
+}
+async function ensureGt() {
+  if (!S.gt && S.frame) S.gt = await api(`/frames/${encodeURIComponent(S.frame.frame_id)}/gt`);
+}
+
+function renderAll() {
+  renderHeader();
+  draw();
+  renderPanel();
+  renderFilmstrip();
+  renderQueue();
+}
+
+function renderHeader() {
+  const f = S.frame;
+  $('frame-id').textContent = f ? f.frame_id : '—';
+  const pill = $('frame-status');
+  pill.className = 'status-pill ' + (f?.status || '');
+  pill.textContent = f ? { auto: 'Chưa mở', editing: 'Đang sửa', approved: 'Đã duyệt' }[f.status] : '';
+  $('frame-detectors').textContent = f ? `Detector: ${f.detectors.join(' + ')}` : '';
+}
+
+// ---------- canvas ----------
+
+function fitCanvas() {
+  const W = S.img?.naturalWidth || 1600;
+  const H = S.img?.naturalHeight || 900;
+  canvas.width = W;
+  canvas.height = H;
+  const wrap = $('canvas-wrap');
+  const scale = Math.min(wrap.clientWidth / W, wrap.clientHeight / H);
+  canvas.style.width = `${Math.floor(W * scale)}px`;
+  canvas.style.height = `${Math.floor(H * scale)}px`;
+}
+const px = () => canvas.width / (canvas.getBoundingClientRect().width || canvas.width);
+
+function toImg(e) {
+  const r = canvas.getBoundingClientRect();
+  return [(e.clientX - r.left) * canvas.width / r.width, (e.clientY - r.top) * canvas.height / r.height];
+}
+
+function depthColor(d) {
+  // gần = đỏ, xa = xanh (0 -> 60 m)
+  const t = Math.min(1, d / 60);
+  return `hsl(${Math.round(t * 230)}, 90%, 55%)`;
+}
+
+function drawBox(b, color, { lw = 2, dash = null, label = null, alpha = 1, textColor = '#fff' } = {}) {
+  const k = px();
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lw * k;
+  if (dash) ctx.setLineDash(dash.map((v) => v * k));
+  ctx.strokeRect(b[0], b[1], b[2] - b[0], b[3] - b[1]);
+  ctx.setLineDash([]);
+  if (label) {
+    ctx.font = `${600} ${12 * k}px 'Plus Jakarta Sans', sans-serif`;
+    const w = ctx.measureText(label).width + 8 * k;
+    const h = 17 * k;
+    const y = b[1] - h >= 0 ? b[1] - h : b[1];
+    ctx.fillStyle = color;
+    ctx.fillRect(b[0] - (lw * k) / 2, y, w, h);
+    ctx.fillStyle = textColor;
+    ctx.fillText(label, b[0] + 4 * k - (lw * k) / 2, y + 12.5 * k);
+  }
+  ctx.restore();
+}
+
+function draw() {
+  const f = S.frame;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!f) return;
+  const img = S.viewOffset === 0 ? S.img : S.sweepImgs[S.viewOffset];
+  if (img) ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  const k = px();
+
+  if (S.showLidar && S.lidar && S.viewOffset === 0) {
+    const r = 2.2 * k;
+    for (let i = 0; i < S.lidar.u.length; i++) {
+      ctx.fillStyle = depthColor(S.lidar.d[i]);
+      ctx.fillRect(S.lidar.u[i] - r / 2, S.lidar.v[i] - r / 2, r, r);
+    }
+  }
+  if (S.showGt && S.gt && S.viewOffset === 0) {
+    for (const g of S.gt) {
+      drawBox(g.bbox, g.ignore ? 'rgba(255,255,255,.35)' : '#ffffff', { lw: 1.2, dash: [4, 3], label: g.ignore ? null : `GT ${g.label}`, textColor: '#0b1020' });
+    }
+  }
+
+  if (S.viewOffset !== 0) {
+    // Xem một sweep: vẽ detection của sweep đó mờ + box track của object đang chọn
+    const sweep = f.sweeps.find((s) => s.offset === S.viewOffset);
+    for (const d of sweep?.detections || []) drawBox(d.bbox, '#94a3b8', { lw: 1, alpha: 0.7 });
+    const o = getObj(S.selected);
+    const tb = o?.track?.[String(S.viewOffset)];
+    if (tb) drawBox(tb, '#3987e5', { lw: 3, label: `#${o.object_id} ${o.label} @t${S.viewOffset > 0 ? '+' : ''}${S.viewOffset}` });
+    return;
+  }
+
+  for (const o of f.objects) {
+    if (o.review.status === 'deleted') continue;
+    const lv = levelOf(o);
+    const pending = o.review.status === 'pending';
+    if (pending && lv === 'low' && !S.showLow && o.object_id !== S.selected) continue;
+    const sel = o.object_id === S.selected;
+    if (sel && S.mode === 'edit') continue;
+    const color = o.source === 'human' ? HUMAN_COLOR : RISK_COLOR[lv];
+    // Nhãn đầy đủ chỉ cho box đang chọn / high / người vẽ; medium chỉ hiện #id để ảnh không bị che kín
+    const full = `${pending ? '' : '✓ '}#${o.object_id} ${finalLabel(o)}${o.source === 'human' ? '' : ' ' + fx(o.score)}`;
+    let tag = null;
+    if (sel || o.source === 'human' || (pending && lv === 'high')) tag = full;
+    else if (pending && lv === 'medium') tag = `#${o.object_id}`;
+    drawBox(finalBox(o), color, {
+      lw: sel ? 3.5 : pending ? 2 : 1.4,
+      dash: o.source === 'track' ? [8, 5] : null,
+      label: tag,
+      alpha: sel || S.selected == null ? 1 : 0.85,
+    });
+  }
+
+  if (S.editBox) {
+    drawBox(S.editBox, '#7c5cd6', { lw: 3, dash: S.mode === 'add' ? [6, 4] : null });
+    if (S.mode === 'edit') {
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = '#7c5cd6';
+      ctx.lineWidth = 2 * k;
+      for (const [hx, hy] of handles(S.editBox)) {
+        ctx.fillRect(hx - 5 * k, hy - 5 * k, 10 * k, 10 * k);
+        ctx.strokeRect(hx - 5 * k, hy - 5 * k, 10 * k, 10 * k);
+      }
+    }
+  }
+}
+
+function handles(b) {
+  const [x1, y1, x2, y2] = b;
+  const mx = (x1 + x2) / 2;
+  const my = (y1 + y2) / 2;
+  return [[x1, y1], [mx, y1], [x2, y1], [x2, my], [x2, y2], [mx, y2], [x1, y2], [x1, my]];
+}
+// Mỗi handle ứng với cạnh nào bị kéo: [x1, y1, x2, y2]
+const HANDLE_EDGES = [[1, 1, 0, 0], [0, 1, 0, 0], [0, 1, 1, 0], [0, 0, 1, 0], [0, 0, 1, 1], [0, 0, 0, 1], [1, 0, 0, 1], [1, 0, 0, 0]];
+
+function hitObject(x, y) {
+  // Box nhỏ nhất chứa điểm click được chọn (để chọn được object nằm trong object khác)
+  let best = null;
+  let bestArea = Infinity;
+  for (const o of S.frame.objects) {
+    if (o.review.status === 'deleted') continue;
+    if (o.review.status === 'pending' && levelOf(o) === 'low' && !S.showLow) continue;
+    const b = finalBox(o);
+    if (x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3]) {
+      const a = (b[2] - b[0]) * (b[3] - b[1]);
+      if (a < bestArea) { best = o; bestArea = a; }
+    }
+  }
+  return best;
+}
+
+canvas.addEventListener('mousedown', (e) => {
+  if (!S.frame || S.viewOffset !== 0) return;
+  const [x, y] = toImg(e);
+  if (S.mode === 'add') {
+    S.drag = { kind: 'draw', x0: x, y0: y };
+    S.editBox = [x, y, x, y];
+    return;
+  }
+  if (S.mode === 'edit' && S.editBox) {
+    const k = px();
+    const hi = handles(S.editBox).findIndex(([hx, hy]) => Math.abs(hx - x) <= 8 * k && Math.abs(hy - y) <= 8 * k);
+    if (hi >= 0) { S.drag = { kind: 'handle', edges: HANDLE_EDGES[hi] }; return; }
+    const b = S.editBox;
+    if (x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3]) { S.drag = { kind: 'move', x0: x, y0: y, box: b.slice() }; return; }
+    return;
+  }
+  const o = hitObject(x, y);
+  if (o) select(o.object_id);
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!S.drag) return;
+  let [x, y] = toImg(e);
+  x = Math.max(0, Math.min(canvas.width, x));
+  y = Math.max(0, Math.min(canvas.height, y));
+  const d = S.drag;
+  if (d.kind === 'draw') {
+    S.editBox = [Math.min(d.x0, x), Math.min(d.y0, y), Math.max(d.x0, x), Math.max(d.y0, y)];
+  } else if (d.kind === 'handle') {
+    const b = S.editBox;
+    if (d.edges[0]) b[0] = Math.min(x, b[2] - 4);
+    if (d.edges[1]) b[1] = Math.min(y, b[3] - 4);
+    if (d.edges[2]) b[2] = Math.max(x, b[0] + 4);
+    if (d.edges[3]) b[3] = Math.max(y, b[1] + 4);
+  } else if (d.kind === 'move') {
+    const dx = x - d.x0;
+    const dy = y - d.y0;
+    S.editBox = [d.box[0] + dx, d.box[1] + dy, d.box[2] + dx, d.box[3] + dy];
+  }
+  draw();
+});
+
+window.addEventListener('mouseup', () => {
+  if (!S.drag) return;
+  const d = S.drag;
+  S.drag = null;
+  if (d.kind === 'draw') {
+    const b = S.editBox;
+    if (b[2] - b[0] < 4 || b[3] - b[1] < 4) { S.editBox = null; draw(); return; }
+    showEditBar('add');
+  }
+});
+
+function startEdit() {
+  const o = getObj(S.selected);
+  if (!o || S.frame.status === 'approved') return;
+  S.mode = 'edit';
+  S.editBox = finalBox(o).slice();
+  showEditBar('edit');
+  draw();
+}
+
+function startAdd() {
+  if (!S.frame || S.frame.status === 'approved') return;
+  S.viewOffset = 0;
+  S.mode = 'add';
+  S.editBox = null;
+  canvas.classList.add('drawing');
+  $('btn-add').classList.add('active');
+  showEditBar('draw');
+  draw();
+}
+
+function cancelEdit() {
+  S.mode = 'view';
+  S.editBox = null;
+  S.drag = null;
+  canvas.classList.remove('drawing');
+  $('btn-add').classList.remove('active');
+  $('edit-bar').classList.add('hidden');
+  draw();
+}
+
+function showEditBar(kind) {
+  $('edit-bar').classList.remove('hidden');
+  $('add-class').classList.toggle('hidden', kind !== 'add');
+  $('edit-save').classList.toggle('hidden', kind === 'draw');
+  $('edit-hint').textContent = {
+    draw: 'Kéo chuột trên ảnh để vẽ box mới',
+    add: 'Chọn lớp cho box mới',
+    edit: 'Kéo góc/cạnh hoặc kéo cả box để sửa',
+  }[kind];
+  if (kind === 'add') $('add-class').focus();
+}
+
+async function saveEdit() {
+  const box = S.editBox.map((v) => Math.round(v * 10) / 10);
+  if (S.mode === 'add') {
+    await act({ action: 'ADD_BOX', bbox: box, label: $('add-class').value });
+  } else if (S.mode === 'edit') {
+    await act({ action: 'EDIT_BOX', object_id: S.selected, bbox: box });
+  }
+  cancelEdit();
+}
+
+// ---------- hành động review ----------
+
+async function act(body) {
+  try {
+    const prevOrder = orderedObjects().map((o) => o.object_id);
+    const frame = await api(`/frames/${encodeURIComponent(S.frame.frame_id)}/actions`, {
+      method: 'POST',
+      body: { ...body, reviewer: reviewer() },
+    });
+    S.frame = frame;
+    if (body.action === 'ADD_BOX') {
+      S.selected = frame.objects[frame.objects.length - 1].object_id;
+    } else if (['KEEP', 'DELETE', 'CHANGE_CLASS'].includes(body.action)) {
+      advanceFrom(body.object_id, prevOrder);
+    }
+    renderAll();
+    loadQueue();
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
+/* Sau khi xử lý xong một object, nhảy sang object chờ kế tiếp */
+function advanceFrom(id, prevOrder) {
+  const pending = new Set(S.frame.objects.filter((o) => o.review.status === 'pending').map((o) => o.object_id));
+  const i = prevOrder.indexOf(id);
+  const next = prevOrder.slice(i + 1).find((x) => pending.has(x)) || prevOrder.find((x) => pending.has(x));
+  S.selected = next || id;
+}
+
+async function approveLow() {
+  if (!S.frame) return;
+  try {
+    S.frame = await api(`/frames/${encodeURIComponent(S.frame.frame_id)}/approve-low-risk`, { method: 'POST', body: { reviewer: reviewer() } });
+    S.selected = orderedObjects().find((o) => o.review.status === 'pending')?.object_id || S.selected;
+    renderAll();
+    loadQueue();
+    toast('Đã duyệt nhóm rủi ro thấp');
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
+async function approveFrame() {
+  if (!S.frame) return;
+  try {
+    const t = Math.round(elapsed());
+    S.frame = await api(`/frames/${encodeURIComponent(S.frame.frame_id)}/approve`, {
+      method: 'POST',
+      body: { reviewer: reviewer(), review_time_s: t },
+    });
+    stopTimer();
+    toast(`Đã approve ${S.frame.frame_id} (${fmtTime(t)})`);
+    await loadQueue();
+    const next = S.queue.find((f) => f.status !== 'approved' && f.frame_id !== S.frame.frame_id);
+    if (next) openFrame(next.frame_id); else renderAll();
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
+async function reopenFrame() {
+  S.frame = await api(`/frames/${encodeURIComponent(S.frame.frame_id)}/reopen`, { method: 'POST' });
+  S.timerStart = Date.now();
+  renderAll();
+  loadQueue();
+}
+
+function select(id) {
+  if (S.mode !== 'view') cancelEdit();
+  S.selected = id;
+  const o = getObj(id);
+  if (o && levelOf(o) === 'low' && o.review.status === 'pending') S.lowOpen = true;
+  renderPanel();
+  draw();
+  renderFilmstrip();
+  document.querySelector(`[data-oid="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest' });
+}
+
+// ---------- panel phải ----------
+
+function classOptions(selected) {
+  return Object.keys(S.cfg.classes).map((c) => `<option value="${c}" ${c === selected ? 'selected' : ''}>${c}</option>`).join('');
+}
+
+function objectCard(o) {
+  const lv = levelOf(o);
+  const issues = o.qa?.issues || [];
+  const lid = o.qa?.lidar || {};
+  const tmp = o.qa?.temporal || {};
+  const locked = S.frame.status === 'approved';
+  const done = o.review.status !== 'pending';
+  const srcNote = o.source === 'track' ? ' · box nội suy' : o.source === 'human' ? ' · người vẽ' : '';
+  const facts = [];
+  if (o.source !== 'human') facts.push(`score ${fx(o.score)}`);
+  if (lid.available) facts.push(`${lid.n_points ?? 0} điểm LiDAR${lid.depth_m != null ? ` · ${fx(lid.depth_m, 1)} m` : ''}${lid.est_height_m != null ? ` · cao ~${fx(lid.est_height_m, 1)} m` : ''}`);
+  if (tmp.available) facts.push(`sweep ${tmp.support}/${tmp.available}`);
+  const status = done
+    ? `<span class="done-tag ${o.review.status}">${o.review.status === 'deleted' ? '✗ Đã xoá' : `✓ ${o.review.action}${o.review.final_label !== o.label ? ' → ' + esc(o.review.final_label) : ''}`}</span>`
+    : '';
+  return `<div class="obj-card ${lv} ${o.object_id === S.selected ? 'selected' : ''}" data-oid="${esc(o.object_id)}">
+    <div class="oc-body">
+      <canvas class="oc-crop" width="192" height="144" data-crop="${esc(o.object_id)}"></canvas>
+      <div class="oc-info">
+        <div class="oc-title"><span>${esc(finalLabel(o))} <span class="oid">#${esc(o.object_id)}${srcNote}</span></span>
+          ${o.qa ? `<span class="risk-badge ${lv}">${LEVEL_NAME[lv]} ${fx(o.qa.risk)}</span>` : ''}</div>
+        <div class="oc-stats">${facts.join(' · ')}</div>
+        ${status}
+        ${issues.length ? `<ul class="issues">${issues.map((i) => `<li title="${esc(S.cfg.issue_help[i.code] || '')}"><span class="issue-code">${esc(i.code)}</span> <span class="issue-msg">${esc(i.message)}</span></li>`).join('')}</ul>` : ''}
+      </div>
+    </div>
+    ${locked ? '' : `<div class="oc-actions">
+      <button class="btn btn-sm btn-keep" data-act="KEEP">✓ Keep</button>
+      <button class="btn btn-sm btn-del" data-act="DELETE">🗑 Delete</button>
+      <select data-class>${classOptions(finalLabel(o))}</select>
+      <button class="btn btn-sm btn-class" data-act="CHANGE_CLASS">Đổi lớp</button>
+      <button class="btn btn-sm btn-edit" data-act="EDIT">✎ Sửa box</button>
+    </div>`}
+  </div>`;
+}
+
+function compactRow(o) {
+  const done = o.review.status !== 'pending';
+  const tag = done
+    ? `<span class="done-tag ${o.review.status}">${o.review.status === 'deleted' ? '✗ xoá' : '✓ ' + o.review.action.toLowerCase().replace('_', ' ')}</span>`
+    : `<span class="muted">risk ${fx(o.qa?.risk)}</span>`;
+  return `<div class="low-row ${o.object_id === S.selected ? 'selected' : ''}" data-oid="${esc(o.object_id)}">
+    <span><span class="dot ${levelOf(o)}"></span> #${esc(o.object_id)} ${esc(finalLabel(o))} <span class="muted">${o.source === 'human' ? 'người vẽ' : fx(o.score)}</span></span>${tag}</div>`;
+}
+
+function renderPanel() {
+  const f = S.frame;
+  const objs = f ? orderedObjects() : [];
+  const pending = objs.filter((o) => o.review.status === 'pending');
+  const done = objs.filter((o) => o.review.status !== 'pending');
+  const byLevel = { high: [], medium: [], low: [] };
+  pending.forEach((o) => byLevel[levelOf(o)].push(o));
+
+  const all = f ? f.objects.filter((o) => o.qa) : [];
+  const lv = S.cfg?.levels || { medium: 0.3, high: 0.6 };
+  const ranges = { low: `0.00–${fx(lv.medium)}`, medium: `${fx(lv.medium)}–${fx(lv.high)}`, high: `${fx(lv.high)}–1.00` };
+  $('risk-summary').innerHTML = ['low', 'medium', 'high'].map((l) => `<div class="rs ${l}">
+      <div class="rs-label"><span class="dot ${l}"></span>${LEVEL_NAME[l]} risk</div>
+      <div class="rs-value">${all.filter((o) => levelOf(o) === l).length}</div>
+      <div class="rs-range">${ranges[l]}</div></div>`).join('');
+
+  const sel = S.selected;
+  $('list-high').innerHTML = byLevel.high.map(objectCard).join('') || '<p class="muted">Không có object rủi ro cao chờ duyệt</p>';
+  $('list-medium').innerHTML = byLevel.medium.map(objectCard).join('') || '<p class="muted">—</p>';
+  $('list-low').innerHTML = byLevel.low.map((o) => (o.object_id === sel ? objectCard(o) : compactRow(o))).join('');
+  $('list-low').classList.toggle('collapsed', !S.lowOpen);
+  $('toggle-low').setAttribute('aria-expanded', String(S.lowOpen));
+  $('list-done').innerHTML = done.map((o) => (o.object_id === sel ? objectCard(o) : compactRow(o))).join('');
+  $('count-high').textContent = byLevel.high.length;
+  $('count-medium').textContent = byLevel.medium.length;
+  $('count-low').textContent = byLevel.low.length;
+  $('count-done').textContent = done.length;
+
+  const locked = f?.status === 'approved';
+  const btnLow = $('btn-approve-low');
+  btnLow.disabled = !f || locked || byLevel.low.length === 0;
+  btnLow.innerHTML = `✓ Approve all low-risk (${byLevel.low.length}) <kbd>A</kbd>`;
+
+  const total = objs.length;
+  $('progress-bar').style.width = total ? `${(done.length / total) * 100}%` : '0';
+  $('progress-text').textContent = f ? `${done.length}/${total} object đã xử lý` : '';
+  const btn = $('btn-approve-frame');
+  if (locked) {
+    btn.disabled = false;
+    btn.innerHTML = 'Mở lại để sửa';
+    btn.onclick = reopenFrame;
+  } else {
+    btn.disabled = !f || pending.length > 0;
+    btn.innerHTML = 'Approve frame <kbd>Enter</kbd>';
+    btn.onclick = approveFrame;
+  }
+  $('btn-add').disabled = !f || locked;
+  drawCrops();
+}
+
+function drawCrops() {
+  if (!S.img) return;
+  document.querySelectorAll('canvas[data-crop]').forEach((c) => {
+    const o = getObj(c.dataset.crop);
+    if (!o) return;
+    const [x1, y1, x2, y2] = finalBox(o);
+    const pad = 0.15 * Math.max(x2 - x1, y2 - y1) + 6;
+    const sx = Math.max(0, x1 - pad);
+    const sy = Math.max(0, y1 - pad);
+    const sw = Math.min(S.img.naturalWidth, x2 + pad) - sx;
+    const sh = Math.min(S.img.naturalHeight, y2 + pad) - sy;
+    const cc = c.getContext('2d');
+    cc.fillStyle = '#0b1020';
+    cc.fillRect(0, 0, c.width, c.height);
+    const s = Math.min(c.width / sw, c.height / sh);
+    const ox = (c.width - sw * s) / 2;
+    const oy = (c.height - sh * s) / 2;
+    cc.drawImage(S.img, sx, sy, sw, sh, ox, oy, sw * s, sh * s);
+    cc.strokeStyle = o.source === 'human' ? HUMAN_COLOR : RISK_COLOR[levelOf(o)];
+    cc.lineWidth = 3;
+    if (o.source === 'track') cc.setLineDash([6, 4]);
+    cc.strokeRect(ox + (x1 - sx) * s, oy + (y1 - sy) * s, (x2 - x1) * s, (y2 - y1) * s);
+  });
+}
+
+document.querySelector('.review-panel').addEventListener('click', (e) => {
+  const card = e.target.closest('[data-oid]');
+  if (!card) return;
+  const id = card.dataset.oid;
+  const btn = e.target.closest('[data-act]');
+  if (e.target.closest('select')) return;
+  if (!btn) { select(id); return; }
+  const a = btn.dataset.act;
+  if (a === 'EDIT') { S.selected = id; startEdit(); renderPanel(); return; }
+  if (a === 'CHANGE_CLASS') {
+    act({ action: 'CHANGE_CLASS', object_id: id, label: card.querySelector('[data-class]').value });
+    return;
+  }
+  act({ action: a, object_id: id });
+});
+
+// ---------- filmstrip (temporal) ----------
+
+function renderFilmstrip() {
+  const f = S.frame;
+  const strip = $('filmstrip');
+  if (!f || !S.cfg) { strip.innerHTML = ''; return; }
+  const offsets = [...new Set([...S.cfg.sweep_offsets, 0])].sort((a, b) => a - b);
+  const o = getObj(S.selected);
+  $('film-caption').textContent = o ? `#${o.object_id} ${finalLabel(o)} qua t-2 … t+2 (click để xem sweep)` : 'Chọn một object để xem track qua các sweep';
+  strip.innerHTML = offsets.map((off) => {
+    const name = off === 0 ? 't (keyframe)' : `t${off > 0 ? '+' : ''}${off}`;
+    const has = off === 0 || f.sweeps.some((s) => s.offset === off);
+    let st = '<span class="muted">—</span>';
+    if (o && has) {
+      if (off === 0) st = o.source === 'track' ? '<span class="miss">missing</span>' : '<span class="det">detected</span>';
+      else st = o.track?.[String(off)] ? '<span class="det">detected</span>' : '<span class="miss">missing</span>';
+    } else if (!has) st = '<span class="muted">không có</span>';
+    return `<div class="film ${off === 0 ? 'key' : ''} ${S.viewOffset === off ? 'viewing' : ''}" data-off="${off}">
+      <canvas width="320" height="180" data-film="${off}"></canvas><div class="ft"><span>${name}</span>${st}</div></div>`;
+  }).join('');
+  strip.querySelectorAll('canvas[data-film]').forEach((c) => {
+    const off = Number(c.dataset.film);
+    const img = off === 0 ? S.img : S.sweepImgs[off];
+    const cc = c.getContext('2d');
+    cc.fillStyle = '#0b1020';
+    cc.fillRect(0, 0, c.width, c.height);
+    if (!img) return;
+    cc.drawImage(img, 0, 0, c.width, c.height);
+    if (!o) return;
+    const b = off === 0 ? finalBox(o) : o.track?.[String(off)];
+    if (!b) return;
+    const sx = c.width / img.naturalWidth;
+    const sy = c.height / img.naturalHeight;
+    cc.strokeStyle = off === 0 && o.source === 'track' ? '#d03b3b' : '#0ca30c';
+    cc.lineWidth = 3;
+    if (off === 0 && o.source === 'track') cc.setLineDash([6, 4]);
+    cc.strokeRect(b[0] * sx, b[1] * sy, (b[2] - b[0]) * sx, (b[3] - b[1]) * sy);
+  });
+}
+
+$('filmstrip').addEventListener('click', (e) => {
+  const film = e.target.closest('[data-off]');
+  if (!film) return;
+  const off = Number(film.dataset.off);
+  if (off !== 0 && !S.sweepImgs[off]) return;
+  if (S.mode !== 'view') cancelEdit();
+  S.viewOffset = S.viewOffset === off ? 0 : off;
+  draw();
+  renderFilmstrip();
+});
+
+// ---------- correction log ----------
+
+async function loadLog() {
+  const fid = $('log-frame').value.trim();
+  const rows = await api('/corrections' + (fid ? `?frame_id=${encodeURIComponent(fid)}` : ''));
+  const tbody = $('log-table').querySelector('tbody');
+  tbody.innerHTML = rows.map((r, i) => `<tr data-i="${i}">
+    <td>${esc((r.timestamp || '').replace('T', ' ').replace('+00:00', ''))}</td>
+    <td>${esc(r.frame_id)}</td><td>#${esc(r.object_id)}</td><td><strong>${esc(r.human_action)}</strong></td>
+    <td>${esc(r.prediction.class)}</td><td>${r.human_action === 'DELETE' ? '<span class="done-tag deleted">xoá</span>' : esc(r.final_class)}</td>
+    <td class="num">${fx(r.prediction.score)}</td><td class="num">${fx(r.qa.risk)}</td>
+    <td>${esc(r.qa.issues.join(', '))}</td></tr>`).join('') || '<tr><td colspan="9" class="muted">Chưa có chỉnh sửa nào</td></tr>';
+  tbody.onclick = (e) => {
+    const tr = e.target.closest('tr[data-i]');
+    if (!tr) return;
+    tbody.querySelectorAll('tr').forEach((x) => x.classList.remove('selected'));
+    tr.classList.add('selected');
+    $('log-json').textContent = JSON.stringify(rows[Number(tr.dataset.i)], null, 2);
+  };
+}
+
+// ---------- metrics & export ----------
+
+function meterCell(v) {
+  return `<span class="meter"><span style="width:${v == null ? 0 : Math.round(v * 100)}%"></span></span>${pct(v)}`;
+}
+
+async function loadMetrics() {
+  const m = await api('/metrics');
+  const tiles = [
+    ['Frame đã duyệt', `${m.frames.approved}/${m.frames.total}`, `${m.frames.editing} đang sửa`],
+    ['M4 · tỉ lệ nhãn phải sửa', pct(m.m4_correction_rate), `${m.model_objects_fixed}/${m.model_objects_reviewed} object máy sinh`],
+    ['Flag recall', pct(m.flag_recall), 'object bị sửa đã được agent gắn cờ'],
+    ['Flag precision', pct(m.flag_precision), 'object gắn cờ thật sự bị sửa'],
+    ['M1 · thời gian TB/frame', m.m1_avg_review_time_s == null ? '—' : fmtTime(m.m1_avg_review_time_s), 'đo từ lúc mở tới lúc approve'],
+    ['Box tracking được giữ', `${m.track_proposals.accepted}/${m.track_proposals.proposed}`, `${m.track_proposals.rejected} bị xoá`],
+    ['Box người vẽ thêm', String(m.human_added_boxes), 'object model và tracking đều sót'],
+  ];
+  $('tiles').innerHTML = tiles.map(([l, v, n]) => `<div class="tile"><div class="tile-label">${l}</div><div class="tile-value">${v}</div><div class="tile-note">${n}</div></div>`).join('');
+
+  $('level-table').innerHTML = '<thead><tr><th>Nhóm</th><th class="num">Đã duyệt</th><th class="num">Bị sửa</th><th>Tỉ lệ sửa</th></tr></thead><tbody>' +
+    LEVELS.map((l) => {
+      const v = m.fix_rate_by_level[l];
+      return `<tr><td><span class="dot ${l}"></span> ${LEVEL_NAME[l]}</td><td class="num">${v.reviewed}</td><td class="num">${v.fixed}</td><td>${meterCell(v.rate)}</td></tr>`;
+    }).join('') + '</tbody>';
+
+  const issues = Object.entries(m.fix_rate_by_issue);
+  $('issue-table').innerHTML = '<thead><tr><th>Issue</th><th class="num">Gắn cờ</th><th class="num">Bị sửa</th><th>Precision</th></tr></thead><tbody>' +
+    (issues.map(([c, v]) => `<tr><td><code>${esc(c)}</code></td><td class="num">${v.flagged}</td><td class="num">${v.fixed}</td><td>${meterCell(v.rate)}</td></tr>`).join('') ||
+      '<tr><td colspan="4" class="muted">Chưa có object gắn issue nào được duyệt</td></tr>') + '</tbody>';
+  loadExports();
+}
+
+async function loadExports() {
+  const ids = await api('/exports');
+  $('export-list').innerHTML = ids.map((id) => `<li><strong>${esc(id)}</strong> — ${['coco.json', 'labels.jsonl', 'corrections.jsonl', 'manifest.json']
+    .map((f) => `<a href="${API}/exports/${encodeURIComponent(id)}/${f}">${f}</a>`).join('')}</li>`).join('') || '<li class="muted">Chưa xuất lần nào</li>';
+}
+
+async function doExport() {
+  try {
+    const r = await api('/export', { method: 'POST' });
+    $('export-result').innerHTML = `✓ Đã xuất <strong>${r.n_frames}</strong> frame, <strong>${r.n_objects}</strong> object → <code>${esc(r.export_id)}</code>`;
+    loadExports();
+  } catch (err) {
+    $('export-result').innerHTML = `<span class="done-tag deleted">${esc(err.message)}</span>`;
+  }
+}
+
+// ---------- điều hướng & phím tắt ----------
+
+function fmtTime(s) {
+  s = Math.round(s);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+setInterval(() => { $('timer').textContent = fmtTime(elapsed()); }, 500);
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
+  ['review', 'log', 'metrics'].forEach((t) => $('tab-' + t).classList.toggle('hidden', t !== tab));
+  if (tab === 'log') loadLog().catch((e) => toast(e.message, true));
+  if (tab === 'metrics') loadMetrics().catch((e) => toast(e.message, true));
+  if (tab === 'review') { fitCanvas(); draw(); }
+}
+document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+
+function stepFrame(delta) {
+  if (!S.queue.length) return;
+  const i = S.queue.findIndex((f) => f.frame_id === S.frame?.frame_id);
+  const next = S.queue[(i + delta + S.queue.length) % S.queue.length];
+  if (next) openFrame(next.frame_id);
+}
+
+function stepObject(delta) {
+  const objs = orderedObjects().filter((o) => o.review.status !== 'deleted' || o.object_id === S.selected);
+  if (!objs.length) return;
+  const i = objs.findIndex((o) => o.object_id === S.selected);
+  select(objs[(i + delta + objs.length) % objs.length].object_id);
+}
+
+document.addEventListener('keydown', (e) => {
+  if ($('tab-review').classList.contains('hidden')) return;
+  const inField = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName);
+  if (e.key === 'Escape') { cancelEdit(); document.activeElement?.blur(); return; }
+  if (inField) {
+    if (e.key === 'Enter' && document.activeElement.id === 'add-class') saveEdit();
+    return;
+  }
+  if (!S.frame) return;
+  const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+
+  // Điều hướng: dùng được cả khi frame đã approve
+  const nav = {
+    ArrowDown: () => stepObject(1),
+    ArrowUp: () => stepObject(-1),
+    n: () => stepFrame(1),
+    p: () => stepFrame(-1),
+    l: () => $('show-lidar').click(),
+    g: () => $('show-gt').click(),
+  };
+  if (nav[key]) { nav[key](); e.preventDefault(); return; }
+  if (S.frame.status === 'approved') return;
+
+  const sel = S.selected;
+  const edit = {
+    k: () => sel && act({ action: 'KEEP', object_id: sel }),
+    d: () => sel && act({ action: 'DELETE', object_id: sel }),
+    Delete: () => sel && act({ action: 'DELETE', object_id: sel }),
+    c: () => sel && document.querySelector(`[data-oid="${CSS.escape(sel)}"] [data-class]`)?.focus(),
+    e: startEdit,
+    b: startAdd,
+    a: approveLow,
+    Enter: () => (S.mode !== 'view' && S.editBox ? saveEdit() : approveFrame()),
+  };
+  if (edit[key]) { edit[key](); e.preventDefault(); }
+});
+
+// Đổi lớp bằng bàn phím: C -> chọn trong dropdown -> Enter
+document.querySelector('.review-panel').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || !e.target.matches('[data-class]')) return;
+  const card = e.target.closest('[data-oid]');
+  act({ action: 'CHANGE_CLASS', object_id: card.dataset.oid, label: e.target.value });
+});
+
+$('queue-list').addEventListener('click', (e) => {
+  const li = e.target.closest('[data-id]');
+  if (li) openFrame(li.dataset.id).catch((err) => toast(err.message, true));
+});
+$('queue-sort').addEventListener('change', (e) => { S.sort = e.target.value; loadQueue(); });
+$('queue-filter').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-status]');
+  if (!b) return;
+  S.statusFilter = b.dataset.status;
+  document.querySelectorAll('#queue-filter .chip').forEach((c) => c.classList.toggle('active', c === b));
+  loadQueue();
+});
+$('show-lidar').addEventListener('change', async (e) => { S.showLidar = e.target.checked; if (S.showLidar) await ensureLidar(); draw(); });
+$('show-gt').addEventListener('change', async (e) => { S.showGt = e.target.checked; if (S.showGt) await ensureGt(); draw(); });
+$('show-low').addEventListener('change', (e) => { S.showLow = e.target.checked; draw(); });
+$('toggle-low').addEventListener('click', () => { S.lowOpen = !S.lowOpen; renderPanel(); });
+$('btn-approve-low').addEventListener('click', approveLow);
+$('btn-add').addEventListener('click', () => (S.mode === 'add' ? cancelEdit() : startAdd()));
+$('edit-save').addEventListener('click', saveEdit);
+$('edit-cancel').addEventListener('click', cancelEdit);
+$('log-refresh').addEventListener('click', loadLog);
+$('log-frame').addEventListener('change', loadLog);
+$('metrics-refresh').addEventListener('click', loadMetrics);
+$('btn-export').addEventListener('click', doExport);
+$('reviewer').addEventListener('change', (e) => storageSet('reviewer', e.target.value.trim()));
+new ResizeObserver(() => { fitCanvas(); draw(); }).observe($('canvas-wrap'));
+
+(async function init() {
+  try {
+    S.cfg = await api('/config');
+    $('reviewer').value = storageGet('reviewer', S.cfg.reviewer);
+    $('add-class').innerHTML = classOptions('car');
+    await loadQueue();
+    if (S.queue.length) await openFrame(S.queue[0].frame_id);
+  } catch (err) {
+    toast('Không tải được dữ liệu: ' + err.message, true);
+  }
+})();

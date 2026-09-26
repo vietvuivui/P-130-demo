@@ -58,3 +58,8 @@ out/
 # AI logs — tracked structure, ignored content
 .ai-log/*.jsonl
 .ai-log/archive/
+
+# nuScenes + model weights (lớn, không commit)
+v1.0-mini*/
+*.tgz
+*.pt

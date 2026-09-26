@@ -1,110 +1,56 @@
-# Architecture Document
+# Architecture — AutoLabel 2D
 
 ## System Overview
 
-[Tóm tắt 2-3 câu về kiến trúc hệ thống]
+Auto-label 2D box trên ảnh CAM_FRONT của nuScenes bằng model open-vocab (không train), rồi một
+QA Agent kiểm chứng chéo mỗi box bằng ba nguồn độc lập — confidence của model, point cloud LiDAR,
+và các sweep camera 12Hz lân cận — để chấm risk. Người vẫn duyệt 100% nhãn, nhưng nhãn risk thấp
+duyệt theo lô, thời gian dồn vào số ít nhãn risk cao (review by exception). Mọi thao tác được log
+và chỉ frame đã approve mới được xuất.
 
-## Architecture Diagram
-
-```mermaid
-graph TB
-    subgraph Frontend
-        UI[React/Next.js UI]
-    end
-
-    subgraph Backend[FastAPI Backend]
-        API[API Routes]
-        Agent[LangGraph Agent]
-        LLM[LLM Service]
-        Tools[Agent Tools]
-    end
-
-    subgraph Data[Data Layer]
-        DB[(Database)]
-        Vector[Vector Store]
-    end
-
-    UI -->|HTTP/REST| API
-    API --> Agent
-    Agent --> LLM
-    Agent --> Tools
-    Agent --> Vector
-    Tools --> DB
-    API --> DB
-```
-
-## Components
-
-### 1. Frontend (React/Next.js)
-- **Purpose:** [mô tả]
-- **Key Features:** [danh sách]
-- **State Management:** [approach]
-
-### 2. Backend (FastAPI)
-- **Purpose:** [mô tả]
-- **API Design:** RESTful
-- **Authentication:** [JWT/None]
-
-### 3. AI Agent (LangGraph)
-- **Agent Type:** [ReAct / Plan-and-Execute / Custom]
-- **State:** [mô tả state schema]
-- **Nodes:** [danh sách nodes]
-- **Tools:** [danh sách tools]
-- **Flow:**
-
-```mermaid
-graph LR
-    START --> A[Node A]
-    A --> B{Decision}
-    B -->|Yes| C[Node C]
-    B -->|No| D[Node D]
-    C --> E[END]
-    D --> E
-```
-
-### 4. Database
-- **Type:** [PostgreSQL / SQLite]
-- **Tables:** [danh sách]
-- **Migrations:** Alembic
-
-### 5. Vector Store
-- **Type:** [ChromaDB / FAISS / Pinecone]
-- **Embeddings:** [model]
-- **Purpose:** [RAG / similarity search]
+Sơ đồ: [docs/architecture_diagram.md](docs/architecture_diagram.md).
 
 ## Data Flow
 
-1. User gửi request từ Frontend
-2. API route nhận và validate input
-3. Agent xử lý qua LangGraph pipeline
-4. LLM generate response
-5. Tools thực thi actions (nếu cần)
-6. Response trả về Frontend
+1. `python -m src.cli run` lấy keyframe (+ sweep t-2..t+2, LiDAR, calibration) từ `v1.0-mini`.
+2. Detector chạy trên keyframe và sweep; kết quả thô cache ở `data/workspace/cache/detections/`.
+3. QA Agent (LangGraph) chạy 3 check song song → sinh issue → tính risk.
+4. Frame JSON ghi vào `data/workspace/frames/`, kèm LiDAR đã chiếu (`lidar/`) và GT 2D (`gt/`).
+5. `uvicorn src.main:app` phục vụ API + UI. Người duyệt; mỗi thao tác ghi `corrections.jsonl`.
+6. `POST /api/v1/export` ghi dataset vào `data/workspace/exports/<id>/`.
 
-## Deployment Architecture
+## QA Agent
 
-```mermaid
-graph LR
-    subgraph Docker
-        FE[Frontend Container]
-        BE[Backend Container]
-        DB_C[Database Container]
-    end
-    FE --> BE --> DB_C
-```
+| Check | Issue code | Cách tính |
+|---|---|---|
+| 3.1 Confidence | `LOW_CONFIDENCE` | score < 0.35 |
+| | `CLASS_CONFLICT` | cùng vị trí (IoU ≥ 0.55) có lớp khác với score ≥ 0.6 × lớp chính |
+| 3.2 LiDAR | `NO_LIDAR_SUPPORT` | < 3 điểm LiDAR trong box cao ≥ 60px |
+| | `SIZE_DEPTH_MISMATCH` | cao ước lượng `h_px · depth / f_y` ngoài khoảng hợp lý của lớp (× dung sai) |
+| 3.3 Temporal | `FLICKER` | box keyframe xuất hiện lại ở < 2 sweep lân cận |
+| | `RECOVERED_BY_TRACK` | object có ở sweep trước + sau, sót ở keyframe → đề xuất box nội suy |
+| Hình học | `BOX_TOO_LARGE` | box > 35% diện tích ảnh |
+| | `ASPECT_RATIO_ABNORMAL` | tỉ lệ rộng/cao ngoài khoảng của lớp (bỏ qua box chạm mép) |
 
-## Security
-
-- API keys stored in `.env` (never commit)
-- Input validation via Pydantic
-- Rate limiting on API endpoints
-- CORS configured for frontend domain
+`risk = w1(1 − score) + w2·lidar + w3·temporal + w4·geometric`, mỗi thành phần ∈ [0, 1],
+trọng số chuẩn hoá về tổng 1. Object có bất kỳ issue nào bị nâng tối thiểu lên 0.30 để không
+lọt vào nhóm duyệt theo lô. Nhóm: low < 0.30 ≤ medium < 0.60 ≤ high. Mọi ngưỡng ở
+`configs/autolabel.yaml`.
 
 ## Design Decisions
 
 | Decision | Choice | Reason |
-|----------|--------|--------|
-| Framework | FastAPI | Async, auto-docs, type-safe |
-| Agent | LangGraph | Flexible state management |
-| Database | [choice] | [reason] |
-| Frontend | Next.js | [reason] |
+|---|---|---|
+| Loader dữ liệu | Tự viết, chỉ numpy | nuscenes-devkit kéo nhiều dependency, pipeline chỉ cần vài bảng |
+| Detector mặc định | YOLO-World | Nhanh đủ để chạy cả sweep (5 ảnh/frame) trên GPU 6GB |
+| Grounding DINO | bản open-weight tiny | Bản 1.5 Edge chỉ có qua API |
+| QA Agent | LangGraph, deterministic | Cần chạy trong batch và test; không có câu hỏi mở nào cần LLM |
+| Lưu trữ | File JSON + JSONL | 404 frame, 1 người duyệt; không cần DB cho demo, dễ diff/export |
+| UI | HTML/JS thuần do FastAPI phục vụ | Không cần build step, 1 lệnh là chạy |
+| GT 2D | Hộp bao 8 đỉnh box 3D chiếu xuống | nuScenes không có box 2D gốc; báo cáo AP@0.5 là chính |
+
+## Chưa làm
+
+- Ẩn danh mặt/biển số (FR-03): EgoBlur cần tải weights có license, chưa tích hợp.
+- Mask SAM2, VLM verifier, isotonic calibration (tuần 4 trong PLAN).
+- Đăng nhập/phân vai (FR-21): hiện chỉ ghi tên người duyệt vào log.

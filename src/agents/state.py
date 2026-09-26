@@ -2,17 +2,40 @@ from __future__ import annotations
 
 from typing import TypedDict
 
+import numpy as np
 
-class AgentState(TypedDict, total=False):
-    """State schema cho LangGraph agent.
+from src.models.qa_config import AutoLabelConfig
+from src.models.schemas import Detection, LabelObject
 
-    Mỗi node đọc và ghi vào state này.
-    total=False cho phép tất cả fields là optional.
+
+class SweepDetections(TypedDict):
+    timestamp: int
+    detections: list[Detection]
+
+
+class QAState(TypedDict, total=False):
+    """State của QA Agent cho một frame.
+
+    Ba node kiểm tra (confidence / lidar / temporal) chạy song song, mỗi node
+    ghi vào key riêng, nên không cần reducer. Node issue_generation gộp lại.
     """
 
-    query: str
-    context: str
-    analysis: str
-    response: str
-    error: str
-    metadata: dict
+    # Đầu vào
+    config: AutoLabelConfig
+    image_size: tuple[int, int]  # (width, height)
+    intrinsic: list[list[float]]
+    key_timestamp: int
+    objects: list[LabelObject]  # detection keyframe, đã có object_id
+    sweeps: dict[int, SweepDetections]  # offset -> detection ở sweep đó
+    lidar_uv: np.ndarray | None
+    lidar_depth: np.ndarray | None
+
+    # 3.1 / 3.2 / 3.3: object_id -> {"issues": [...], "term": float, ...}
+    confidence: dict[str, dict]
+    lidar: dict[str, dict]
+    temporal: dict[str, dict]
+    recovered: list[LabelObject]  # box đề xuất từ tracking (RECOVERED_BY_TRACK)
+
+    # 3.4 / 3.5
+    reviewed: list[LabelObject]  # object kèm issue + risk
+    frame_risk: float
