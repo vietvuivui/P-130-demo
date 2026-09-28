@@ -6,17 +6,18 @@
 # Designed to be sourced or called as: bash scripts/_pyrun.sh <script> [args...]
 #
 # Exits 0 silently if no Python is found — hooks must never block the AI tool.
+# Each candidate is test-run: on Windows, python3/python on PATH may be the
+# Microsoft Store alias stub, which exists but only prints "Python was not found".
 set -u
 
-if command -v python3 >/dev/null 2>&1; then
-  PY=python3
-elif command -v python >/dev/null 2>&1; then
-  PY=python
-elif command -v py >/dev/null 2>&1; then
-  PY="py -3"
-else
+PY=""
+for cand in python3 python "py -3"; do
+  # shellcheck disable=SC2086
+  if $cand -c "" >/dev/null 2>&1; then PY="$cand"; break; fi
+done
+
+if [ -z "$PY" ]; then
   # PATH lookup failed — probe standard Windows install locations.
-  PY=""
   shopt -s nullglob 2>/dev/null || true
   for cand in \
     /c/Users/*/AppData/Local/Programs/Python/Python*/python.exe \
