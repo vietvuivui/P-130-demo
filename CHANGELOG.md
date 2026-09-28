@@ -30,6 +30,106 @@ Quy tắc:
 
 ---
 
+## 2026-09-28 (6) · Kiên · nhánh `feat/label-propagation`
+
+**Làm gì:** Chạy được trên dữ liệu chưa gán nhãn: bảng nuScenes không có `sample_annotation.json` vẫn auto-label
+bình thường (GT rỗng); `evaluate` báo rõ "không có GT" thay vì lỗi. Đã thử: 40 keyframe nuScenes bỏ bảng nhãn, và một
+mp4 10 s không nhãn tải lên qua UI (YOLOE, 24 keyframe, 176 object, 35 bị gắn cờ).
+
+**File chính:** `src/services/nuscenes_data.py`, `src/cli.py`, `tests/test_services/test_sequence_data.py`.
+
+**Ảnh hưởng tới người khác:** Không.
+
+**Cách kiểm tra:** `pytest` → 84 passed.
+
+**Còn dở / việc tiếp:** Trên mp4 thử, lan truyền chỉ mang được ít nhãn (xe nhỏ ở xa, track dừng sớm); cần thử thêm
+với video thật của nhóm.
+
+## 2026-09-28 (5) · Kiên · nhánh `feat/label-propagation`
+
+**Làm gì:** Đo công duyệt thật của quy trình "người duyệt frame khó, máy lan truyền phần còn lại" bằng người duyệt mô
+phỏng theo GT. Phát hiện lan truyền cũ không đỡ công (ghi ra box thuần dự đoán, ~83% sai). Sửa: không ghi box lan
+truyền khi detector không thấy ở keyframe đích (`propagation.emit_coasting: false`). Đặt `detection.min_score: 0.30`
+làm mặc định. Cộng hai thay đổi: 23.4 → 15.1 phút cho 40 keyframe (−35%).
+
+**File chính:** `src/services/propagation.py`, `src/models/qa_config.py`, `configs/autolabel.yaml`,
+`scripts/simulate_review.py`, `eval/review_simulation.ipynb`, `eval/results/review_sim/`,
+`tests/test_services/test_propagation.py`.
+
+**Ảnh hưởng tới người khác:** Config: `min_score` 0.10 → 0.30, thêm `propagation.emit_coasting` (mặc định false).
+Workspace cũ cần `python -m src.cli run --overwrite` để áp ngưỡng mới (dùng cache, không detect lại; xoá kết quả duyệt
+trong workspace đó).
+
+**Cách kiểm tra:** `pytest` → 83 passed; mở `eval/review_simulation.ipynb`.
+
+**Còn dở / việc tiếp:** Box người vẽ thêm mà detector không thấy chưa được mang sang frame sau (cần tracker theo ảnh).
+
+## 2026-09-28 (4) · Kiên · nhánh `feat/label-propagation`
+
+**Làm gì:** Thêm ngưỡng giữ box sau fusion (`detection.min_score`, `min_score_per_class`) và chỉ số precision / recall
+/ F1 trong `evaluate`. Notebook `eval/precision_tuning.ipynb` đo trên 2 scene nuScenes thật: nâng ngưỡng 0.1 → 0.3
+tăng precision 0.34 → 0.51, F1 0.455 → 0.556, số box bị gắn cờ 260 → 88, không cần train lại.
+
+**File chính:** `src/models/qa_config.py`, `src/services/pipeline.py`, `src/services/evaluation.py` (`evaluate_pr`),
+`src/cli.py`, `configs/autolabel.yaml`, `eval/precision_tuning.ipynb`, `eval/results/thresholds/threshold_experiment.json`.
+
+**Ảnh hưởng tới người khác:** Config có thêm `detection.min_score` (mặc định 0.10, giữ nguyên hành vi cũ) và
+`min_score_per_class`. `autolabel2d_eval.json` có thêm khối `pr`. Đổi ngưỡng không làm mất cache detection.
+
+**Cách kiểm tra:** `pytest` → 82 passed; `python -m src.cli evaluate` in thêm dòng precision / recall / F1.
+
+**Còn dở / việc tiếp:** Nhóm quyết có đặt `min_score: 0.3` làm mặc định không (đề xuất trong notebook).
+
+## 2026-09-28 (3) · Kiên · nhánh `feat/label-propagation`
+
+**Làm gì:** Bỏ phần chạy trên Kaggle (nhóm chạy trên máy cá nhân): xoá `demo/kaggle_nuscenes_run.ipynb`, bỏ hướng dẫn
+Kaggle trong README / docs. `scripts/pack_nuscenes_subset.py` giữ lại để chọn scene ngẫu nhiên và gửi bộ dữ liệu rút
+gọn cho thành viên.
+
+**File chính:** `demo/kaggle_nuscenes_run.ipynb` (xoá), `README.md`, `docs/demo-script.md`, `scripts/pack_nuscenes_subset.py`.
+
+**Ảnh hưởng tới người khác:** Không (không có code nào gọi notebook Kaggle).
+
+**Cách kiểm tra:** `pytest` → 82 passed.
+
+**Còn dở / việc tiếp:** Không.
+
+## 2026-09-28 (2) · Kiên · nhánh `feat/label-propagation`
+
+**Làm gì:** Đổi detector mặc định từ YOLO-World-L sang YOLOE-26-L theo kết quả `eval/compare_detectors.ipynb`.
+YOLO-World vẫn dùng được (`--detectors yolo_world`).
+
+**File chính:** `configs/autolabel.yaml`, `src/models/qa_config.py`, `demo/kaggle_nuscenes_run.ipynb`, README,
+ARCHITECTURE, docs.
+
+**Ảnh hưởng tới người khác:** `detection.detectors` mặc định là `[yoloe]`. Workspace đã auto-label bằng YOLO-World thì
+lan truyền không tìm thấy cache detection (khoá cache theo detector): chạy lại `run` + `detect-sweeps`, hoặc đặt
+`detectors: [yolo_world]` trong config khi mở workspace cũ.
+
+**Cách kiểm tra:** `pytest` → 82 passed.
+
+**Còn dở / việc tiếp:** Chạy YOLOE trên GPU cho nhiều scene hơn.
+
+## 2026-09-28 · Kiên · nhánh `feat/label-propagation`
+
+**Làm gì:** Thêm hai detector `yoloe` (YOLOE-26, open-vocab, text encoder MobileCLIP2) và `yolo26` (YOLO26, tập lớp
+đóng COCO) bên cạnh `yolo_world`, cùng notebook so sánh `eval/compare_detectors.ipynb` (matplotlib) trên 2 scene
+nuScenes trainval ngẫu nhiên. Kết quả: YOLOE-26-L mAP@0.5 0.45 (YOLO26 0.40, YOLO-World từ vựng COCO 0.31), là model
+duy nhất nhận barrier, lan truyền 50/52 đúng với độ phủ cao nhất. Chưa đổi detector mặc định.
+
+**File chính:** `src/services/detectors/yoloe.py`, `src/services/detectors/yolo26.py`, `src/models/qa_config.py`,
+`configs/autolabel.yaml`, `src/cli.py` (`--detectors` cho `propagate`, `eval-propagation`), `scripts/bench_detectors.py`,
+`eval/compare_detectors.ipynb`, `eval/results/compare/`, `requirements-ml.txt` (ultralytics>=8.4).
+
+**Ảnh hưởng tới người khác:** Config thêm `detection.yoloe`, `detection.yolo26`. Muốn dùng YOLOE: `detectors: [yoloe]`
+trong config, hoặc `python -m src.cli run --detectors yoloe`. Lần đầu tự tải `yoloe-26l-seg.pt` và `mobileclip2_b.ts`.
+
+**Cách kiểm tra:** `pytest` → 82 passed. Mở `eval/compare_detectors.ipynb`, Run All (chỉ đọc JSON trong
+`eval/results/compare/`, không cần GPU).
+
+**Còn dở / việc tiếp:** Chạy lại YOLO-World với đủ prompt trên GPU (ô "Chạy lại" trong notebook); thử ensemble
+`[yoloe, yolo26]`.
+
 ## 2026-09-27 (3) · Kiên · nhánh `feat/label-propagation`
 
 **Làm gì:** Zoom ảnh trên khung chỉnh sửa (lăn chuột quanh con trỏ, `+`/`−`/`0`, nút `− 100% +`, kéo để di chuyển

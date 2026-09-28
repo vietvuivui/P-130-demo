@@ -1,0 +1,444 @@
+{
+ "min_score": 0.3,
+ "mode": "prop",
+ "scenes": {
+  "scene-0031": {
+   "stats": {
+    "flagged": 71,
+    "KEEP": 21,
+    "DELETE": 48,
+    "CHANGE_CLASS": 2,
+    "ADD_BOX": 38,
+    "frames_propagated": 0
+   },
+   "per_frame": [
+    {
+     "frame": "scene-0031_000",
+     "propagated_from": null,
+     "flagged": 2,
+     "DELETE": 0,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 3,
+     "propagated_to": 9,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0031_001",
+     "propagated_from": "scene-0031_000",
+     "flagged": 2,
+     "DELETE": 2,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 4,
+     "propagated_to": 8,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0031_002",
+     "propagated_from": "scene-0031_001",
+     "flagged": 2,
+     "DELETE": 1,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 2,
+     "propagated_to": 7,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0031_003",
+     "propagated_from": "scene-0031_002",
+     "flagged": 4,
+     "DELETE": 4,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 2,
+     "propagated_to": 6,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0031_004",
+     "propagated_from": "scene-0031_003",
+     "flagged": 4,
+     "DELETE": 3,
+     "CHANGE_CLASS": 1,
+     "ADD_BOX": 2,
+     "propagated_to": 5,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0031_005",
+     "propagated_from": "scene-0031_004",
+     "flagged": 4,
+     "DELETE": 3,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 2,
+     "propagated_to": 4,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0031_006",
+     "propagated_from": "scene-0031_005",
+     "flagged": 5,
+     "DELETE": 4,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 2,
+     "propagated_to": 3,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0031_007",
+     "propagated_from": "scene-0031_006",
+     "flagged": 2,
+     "DELETE": 2,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1,
+     "propagated_to": 5,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0031_008",
+     "propagated_from": "scene-0031_007",
+     "flagged": 6,
+     "DELETE": 5,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1,
+     "propagated_to": 4,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0031_009",
+     "propagated_from": "scene-0031_008",
+     "flagged": 6,
+     "DELETE": 4,
+     "CHANGE_CLASS": 1,
+     "ADD_BOX": 3,
+     "propagated_to": 3,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0031_010",
+     "propagated_from": "scene-0031_009",
+     "flagged": 7,
+     "DELETE": 6,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 6,
+     "propagated_to": 2,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0031_011",
+     "propagated_from": "scene-0031_010",
+     "flagged": 7,
+     "DELETE": 4,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 2,
+     "propagated_to": 1,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0031_012",
+     "propagated_from": "scene-0031_011",
+     "flagged": 4,
+     "DELETE": 3,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 3,
+     "propagated_to": 2,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0031_013",
+     "propagated_from": "scene-0031_012",
+     "flagged": 5,
+     "DELETE": 3,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1,
+     "propagated_to": 1,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0031_014",
+     "propagated_from": "scene-0031_013",
+     "flagged": 3,
+     "DELETE": 1,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 0,
+     "propagated_to": 1,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0031_015",
+     "propagated_from": "scene-0031_014",
+     "flagged": 5,
+     "DELETE": 2,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1,
+     "propagated_to": 1,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0031_016",
+     "propagated_from": "scene-0031_015",
+     "flagged": 0,
+     "DELETE": 0,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1,
+     "propagated_to": 3,
+     "stop_reason": "Hết scene"
+    },
+    {
+     "frame": "scene-0031_017",
+     "propagated_from": "scene-0031_016",
+     "flagged": 1,
+     "DELETE": 0,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 0,
+     "propagated_to": 2,
+     "stop_reason": "Hết scene"
+    },
+    {
+     "frame": "scene-0031_018",
+     "propagated_from": "scene-0031_017",
+     "flagged": 1,
+     "DELETE": 1,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1,
+     "propagated_to": 1,
+     "stop_reason": "Hết scene"
+    },
+    {
+     "frame": "scene-0031_019",
+     "propagated_from": "scene-0031_018",
+     "flagged": 1,
+     "DELETE": 0,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1,
+     "propagated_to": 0,
+     "stop_reason": "Hết scene"
+    }
+   ],
+   "quality": {
+    "tp": 102,
+    "fp": 33,
+    "fn": 1,
+    "precision": 0.756,
+    "recall": 0.99
+   }
+  },
+  "scene-0065": {
+   "stats": {
+    "flagged": 24,
+    "KEEP": 8,
+    "DELETE": 16,
+    "CHANGE_CLASS": 0,
+    "ADD_BOX": 24,
+    "frames_propagated": 0
+   },
+   "per_frame": [
+    {
+     "frame": "scene-0065_000",
+     "propagated_from": null,
+     "flagged": 3,
+     "DELETE": 3,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 0,
+     "propagated_to": 4,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0065_001",
+     "propagated_from": "scene-0065_000",
+     "flagged": 3,
+     "DELETE": 2,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 0,
+     "propagated_to": 3,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0065_002",
+     "propagated_from": "scene-0065_001",
+     "flagged": 2,
+     "DELETE": 1,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1,
+     "propagated_to": 12,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0065_003",
+     "propagated_from": "scene-0065_002",
+     "flagged": 0,
+     "DELETE": 0,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 0,
+     "propagated_to": 15,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0065_004",
+     "propagated_from": "scene-0065_003",
+     "flagged": 0,
+     "DELETE": 0,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1,
+     "propagated_to": 14,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0065_005",
+     "propagated_from": "scene-0065_004",
+     "flagged": 2,
+     "DELETE": 1,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 0,
+     "propagated_to": 13,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0065_006",
+     "propagated_from": "scene-0065_005",
+     "flagged": 0,
+     "DELETE": 0,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 0,
+     "propagated_to": 12,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0065_007",
+     "propagated_from": "scene-0065_006",
+     "flagged": 1,
+     "DELETE": 1,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 0,
+     "propagated_to": 11,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0065_008",
+     "propagated_from": "scene-0065_007",
+     "flagged": 1,
+     "DELETE": 1,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 0,
+     "propagated_to": 10,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0065_009",
+     "propagated_from": "scene-0065_008",
+     "flagged": 0,
+     "DELETE": 0,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 2,
+     "propagated_to": 9,
+     "stop_reason": "Mọi object đã dừng lan truyền (mất dấu, ra khỏi khung hoặc độ tin cậy thấp)"
+    },
+    {
+     "frame": "scene-0065_010",
+     "propagated_from": "scene-0065_009",
+     "flagged": 0,
+     "DELETE": 0,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 2,
+     "propagated_to": 9,
+     "stop_reason": "Hết scene"
+    },
+    {
+     "frame": "scene-0065_011",
+     "propagated_from": "scene-0065_010",
+     "flagged": 1,
+     "DELETE": 1,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1,
+     "propagated_to": 8,
+     "stop_reason": "Hết scene"
+    },
+    {
+     "frame": "scene-0065_012",
+     "propagated_from": "scene-0065_011",
+     "flagged": 0,
+     "DELETE": 0,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 2,
+     "propagated_to": 7,
+     "stop_reason": "Hết scene"
+    },
+    {
+     "frame": "scene-0065_013",
+     "propagated_from": "scene-0065_012",
+     "flagged": 0,
+     "DELETE": 0,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 3,
+     "propagated_to": 6,
+     "stop_reason": "Hết scene"
+    },
+    {
+     "frame": "scene-0065_014",
+     "propagated_from": "scene-0065_013",
+     "flagged": 0,
+     "DELETE": 0,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 2,
+     "propagated_to": 5,
+     "stop_reason": "Hết scene"
+    },
+    {
+     "frame": "scene-0065_015",
+     "propagated_from": "scene-0065_014",
+     "flagged": 0,
+     "DELETE": 0,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 3,
+     "propagated_to": 4,
+     "stop_reason": "Hết scene"
+    },
+    {
+     "frame": "scene-0065_016",
+     "propagated_from": "scene-0065_015",
+     "flagged": 2,
+     "DELETE": 1,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1,
+     "propagated_to": 3,
+     "stop_reason": "Hết scene"
+    },
+    {
+     "frame": "scene-0065_017",
+     "propagated_from": "scene-0065_016",
+     "flagged": 3,
+     "DELETE": 2,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 2,
+     "propagated_to": 2,
+     "stop_reason": "Hết scene"
+    },
+    {
+     "frame": "scene-0065_018",
+     "propagated_from": "scene-0065_017",
+     "flagged": 3,
+     "DELETE": 1,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1,
+     "propagated_to": 1,
+     "stop_reason": "Hết scene"
+    },
+    {
+     "frame": "scene-0065_019",
+     "propagated_from": "scene-0065_018",
+     "flagged": 3,
+     "DELETE": 2,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 3,
+     "propagated_to": 0,
+     "stop_reason": "Hết scene"
+    }
+   ],
+   "quality": {
+    "tp": 102,
+    "fp": 27,
+    "fn": 6,
+    "precision": 0.791,
+    "recall": 0.944
+   }
+  }
+ }
+}

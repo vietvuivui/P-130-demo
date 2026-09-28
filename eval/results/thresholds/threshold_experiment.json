@@ -1,0 +1,2056 @@
+{
+ "yoloe@0.1": {
+  "family": "yoloe",
+  "detectors": [
+   "yoloe"
+  ],
+  "min_score": 0.1,
+  "pr": {
+   "match_iou": 0.5,
+   "tp": 148,
+   "fp": 292,
+   "n_gt": 211,
+   "fn": 63,
+   "precision": 0.3364,
+   "recall": 0.7014,
+   "f1": 0.4547,
+   "per_class": {
+    "barrier": {
+     "tp": 15,
+     "fp": 26,
+     "n_gt": 26,
+     "fn": 11,
+     "precision": 0.3659,
+     "recall": 0.5769,
+     "f1": 0.4478
+    },
+    "bicycle": {
+     "tp": 0,
+     "fp": 2,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "bus": {
+     "tp": 13,
+     "fp": 35,
+     "n_gt": 15,
+     "fn": 2,
+     "precision": 0.2708,
+     "recall": 0.8667,
+     "f1": 0.4127
+    },
+    "car": {
+     "tp": 79,
+     "fp": 100,
+     "n_gt": 93,
+     "fn": 14,
+     "precision": 0.4413,
+     "recall": 0.8495,
+     "f1": 0.5809
+    },
+    "motorcycle": {
+     "tp": 0,
+     "fp": 7,
+     "n_gt": 1,
+     "fn": 1,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "pedestrian": {
+     "tp": 31,
+     "fp": 76,
+     "n_gt": 52,
+     "fn": 21,
+     "precision": 0.2897,
+     "recall": 0.5962,
+     "f1": 0.3899
+    },
+    "traffic_cone": {
+     "tp": 0,
+     "fp": 9,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "trailer": {
+     "tp": 0,
+     "fp": 10,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "truck": {
+     "tp": 10,
+     "fp": 27,
+     "n_gt": 24,
+     "fn": 14,
+     "precision": 0.2703,
+     "recall": 0.4167,
+     "f1": 0.3279
+    }
+   }
+  },
+  "map50": {
+   "iou": 0.5,
+   "map": 0.4516,
+   "n_classes": 6,
+   "per_class": {
+    "barrier": {
+     "ap": 0.4473,
+     "n_gt": 26
+    },
+    "bus": {
+     "ap": 0.6957,
+     "n_gt": 15
+    },
+    "car": {
+     "ap": 0.6772,
+     "n_gt": 93
+    },
+    "motorcycle": {
+     "ap": 0.0,
+     "n_gt": 1
+    },
+    "pedestrian": {
+     "ap": 0.5011,
+     "n_gt": 52
+    },
+    "truck": {
+     "ap": 0.3884,
+     "n_gt": 24
+    }
+   }
+  },
+  "qa": {
+   "match_iou": 0.5,
+   "objects_evaluated": 440,
+   "objects_need_fix": 292,
+   "flag_recall": 0.7637,
+   "flag_precision": 0.8577,
+   "low_risk_share": 0.4091,
+   "low_risk_error_rate": 0.3833,
+   "by_level": {
+    "low": {
+     "n": 180,
+     "needs_fix": 69,
+     "error_rate": 0.3833
+    },
+    "medium": {
+     "n": 254,
+     "needs_fix": 218,
+     "error_rate": 0.8583
+    },
+    "high": {
+     "n": 6,
+     "needs_fix": 5,
+     "error_rate": 0.8333
+    }
+   },
+   "by_issue": {
+    "ASPECT_RATIO_ABNORMAL": {
+     "n": 18,
+     "needs_fix": 12,
+     "precision": 0.6667
+    },
+    "BOX_TOO_LARGE": {
+     "n": 1,
+     "needs_fix": 0,
+     "precision": 0.0
+    },
+    "CLASS_CONFLICT": {
+     "n": 1,
+     "needs_fix": 1,
+     "precision": 1.0
+    },
+    "FLICKER": {
+     "n": 121,
+     "needs_fix": 110,
+     "precision": 0.9091
+    },
+    "LOW_CONFIDENCE": {
+     "n": 200,
+     "needs_fix": 177,
+     "precision": 0.885
+    },
+    "NO_LIDAR_SUPPORT": {
+     "n": 5,
+     "needs_fix": 4,
+     "precision": 0.8
+    }
+   },
+   "fn_total": 45,
+   "fn_recovered_by_track": 0,
+   "track_proposals": 0,
+   "track_proposal_precision": null
+  },
+  "propagation": {
+   "match_iou": 0.5,
+   "scenes": 2,
+   "tracks_started": 10,
+   "per_hop": [
+    {
+     "hop": 1,
+     "tracks_output": 10,
+     "correct": 10,
+     "id_switch": 0,
+     "wrong": 0,
+     "lost": 0,
+     "correct_rate": 1.0,
+     "mean_iou": 0.739,
+     "coverage": 1.0
+    },
+    {
+     "hop": 2,
+     "tracks_output": 9,
+     "correct": 9,
+     "id_switch": 0,
+     "wrong": 0,
+     "lost": 1,
+     "correct_rate": 1.0,
+     "mean_iou": 0.7524,
+     "coverage": 0.9
+    },
+    {
+     "hop": 3,
+     "tracks_output": 9,
+     "correct": 9,
+     "id_switch": 0,
+     "wrong": 0,
+     "lost": 1,
+     "correct_rate": 1.0,
+     "mean_iou": 0.7166,
+     "coverage": 0.9
+    },
+    {
+     "hop": 4,
+     "tracks_output": 8,
+     "correct": 7,
+     "id_switch": 0,
+     "wrong": 1,
+     "lost": 1,
+     "correct_rate": 0.875,
+     "mean_iou": 0.6434,
+     "coverage": 0.8889
+    },
+    {
+     "hop": 5,
+     "tracks_output": 6,
+     "correct": 6,
+     "id_switch": 0,
+     "wrong": 0,
+     "lost": 1,
+     "correct_rate": 1.0,
+     "mean_iou": 0.7025,
+     "coverage": 0.8571
+    },
+    {
+     "hop": 6,
+     "tracks_output": 4,
+     "correct": 3,
+     "id_switch": 0,
+     "wrong": 1,
+     "lost": 2,
+     "correct_rate": 0.75,
+     "mean_iou": 0.6422,
+     "coverage": 0.6667
+    },
+    {
+     "hop": 7,
+     "tracks_output": 3,
+     "correct": 3,
+     "id_switch": 0,
+     "wrong": 0,
+     "lost": 1,
+     "correct_rate": 1.0,
+     "mean_iou": 0.7662,
+     "coverage": 0.75
+    },
+    {
+     "hop": 8,
+     "tracks_output": 2,
+     "correct": 2,
+     "id_switch": 0,
+     "wrong": 0,
+     "lost": 1,
+     "correct_rate": 1.0,
+     "mean_iou": 0.7185,
+     "coverage": 0.6667
+    },
+    {
+     "hop": 9,
+     "tracks_output": 1,
+     "correct": 1,
+     "id_switch": 0,
+     "wrong": 0,
+     "lost": 1,
+     "correct_rate": 1.0,
+     "mean_iou": 0.6923,
+     "coverage": 0.5
+    },
+    {
+     "hop": 10,
+     "tracks_output": 0,
+     "correct": 0,
+     "id_switch": 0,
+     "wrong": 0,
+     "lost": 0,
+     "correct_rate": null,
+     "mean_iou": null,
+     "coverage": null
+    }
+   ],
+   "calibration": {
+    "n_correct": 50,
+    "n_wrong": 2,
+    "mean_c_prop_correct": 0.9003,
+    "mean_c_prop_wrong": 0.3795,
+    "low_conf_flag_recall": 1.0,
+    "low_conf_flag_precision": 0.5,
+    "flag_below": 0.6
+   },
+   "config": {
+    "match_iou": 0.3,
+    "suppress_iou": 0.5,
+    "smoothing": 0.7,
+    "velocity_smoothing": 0.5,
+    "max_coast_images": 6,
+    "min_visible": 0.3,
+    "min_box_px": 6.0,
+    "weights": {
+     "agreement": 0.5,
+     "continuity": 0.3,
+     "lidar": 0.2
+    },
+    "hop_decay": 0.99,
+    "flag_below": 0.6,
+    "stop_below": 0.15,
+    "max_keyframes": 20,
+    "class_differs_score": 0.5
+   }
+  }
+ },
+ "yoloe@0.2": {
+  "family": "yoloe",
+  "detectors": [
+   "yoloe"
+  ],
+  "min_score": 0.2,
+  "pr": {
+   "match_iou": 0.5,
+   "tp": 141,
+   "fp": 185,
+   "n_gt": 211,
+   "fn": 70,
+   "precision": 0.4325,
+   "recall": 0.6682,
+   "f1": 0.5251,
+   "per_class": {
+    "barrier": {
+     "tp": 12,
+     "fp": 11,
+     "n_gt": 26,
+     "fn": 14,
+     "precision": 0.5217,
+     "recall": 0.4615,
+     "f1": 0.4898
+    },
+    "bicycle": {
+     "tp": 0,
+     "fp": 1,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "bus": {
+     "tp": 13,
+     "fp": 25,
+     "n_gt": 15,
+     "fn": 2,
+     "precision": 0.3421,
+     "recall": 0.8667,
+     "f1": 0.4906
+    },
+    "car": {
+     "tp": 76,
+     "fp": 60,
+     "n_gt": 93,
+     "fn": 17,
+     "precision": 0.5588,
+     "recall": 0.8172,
+     "f1": 0.6638
+    },
+    "motorcycle": {
+     "tp": 0,
+     "fp": 5,
+     "n_gt": 1,
+     "fn": 1,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "pedestrian": {
+     "tp": 31,
+     "fp": 55,
+     "n_gt": 52,
+     "fn": 21,
+     "precision": 0.3605,
+     "recall": 0.5962,
+     "f1": 0.4493
+    },
+    "traffic_cone": {
+     "tp": 0,
+     "fp": 8,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "trailer": {
+     "tp": 0,
+     "fp": 4,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "truck": {
+     "tp": 9,
+     "fp": 16,
+     "n_gt": 24,
+     "fn": 15,
+     "precision": 0.36,
+     "recall": 0.375,
+     "f1": 0.3673
+    }
+   }
+  },
+  "map50": {
+   "iou": 0.5,
+   "map": 0.4385,
+   "n_classes": 6,
+   "per_class": {
+    "barrier": {
+     "ap": 0.3994,
+     "n_gt": 26
+    },
+    "bus": {
+     "ap": 0.6957,
+     "n_gt": 15
+    },
+    "car": {
+     "ap": 0.66,
+     "n_gt": 93
+    },
+    "motorcycle": {
+     "ap": 0.0,
+     "n_gt": 1
+    },
+    "pedestrian": {
+     "ap": 0.5011,
+     "n_gt": 52
+    },
+    "truck": {
+     "ap": 0.375,
+     "n_gt": 24
+    }
+   }
+  },
+  "qa": {
+   "match_iou": 0.5,
+   "objects_evaluated": 326,
+   "objects_need_fix": 185,
+   "flag_recall": 0.6432,
+   "flag_precision": 0.7829,
+   "low_risk_share": 0.5337,
+   "low_risk_error_rate": 0.3793,
+   "by_level": {
+    "low": {
+     "n": 174,
+     "needs_fix": 66,
+     "error_rate": 0.3793
+    },
+    "medium": {
+     "n": 146,
+     "needs_fix": 114,
+     "error_rate": 0.7808
+    },
+    "high": {
+     "n": 6,
+     "needs_fix": 5,
+     "error_rate": 0.8333
+    }
+   },
+   "by_issue": {
+    "ASPECT_RATIO_ABNORMAL": {
+     "n": 15,
+     "needs_fix": 9,
+     "precision": 0.6
+    },
+    "BOX_TOO_LARGE": {
+     "n": 1,
+     "needs_fix": 0,
+     "precision": 0.0
+    },
+    "FLICKER": {
+     "n": 90,
+     "needs_fix": 76,
+     "precision": 0.8444
+    },
+    "LOW_CONFIDENCE": {
+     "n": 86,
+     "needs_fix": 70,
+     "precision": 0.814
+    },
+    "NO_LIDAR_SUPPORT": {
+     "n": 4,
+     "needs_fix": 3,
+     "precision": 0.75
+    }
+   },
+   "fn_total": 51,
+   "fn_recovered_by_track": 0,
+   "track_proposals": 1,
+   "track_proposal_precision": 0.0
+  }
+ },
+ "yoloe@0.3": {
+  "family": "yoloe",
+  "detectors": [
+   "yoloe"
+  ],
+  "min_score": 0.3,
+  "pr": {
+   "match_iou": 0.5,
+   "tp": 130,
+   "fp": 127,
+   "n_gt": 211,
+   "fn": 81,
+   "precision": 0.5058,
+   "recall": 0.6161,
+   "f1": 0.5556,
+   "per_class": {
+    "barrier": {
+     "tp": 10,
+     "fp": 4,
+     "n_gt": 26,
+     "fn": 16,
+     "precision": 0.7143,
+     "recall": 0.3846,
+     "f1": 0.5
+    },
+    "bicycle": {
+     "tp": 0,
+     "fp": 1,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "bus": {
+     "tp": 13,
+     "fp": 22,
+     "n_gt": 15,
+     "fn": 2,
+     "precision": 0.3714,
+     "recall": 0.8667,
+     "f1": 0.52
+    },
+    "car": {
+     "tp": 68,
+     "fp": 40,
+     "n_gt": 93,
+     "fn": 25,
+     "precision": 0.6296,
+     "recall": 0.7312,
+     "f1": 0.6766
+    },
+    "motorcycle": {
+     "tp": 0,
+     "fp": 3,
+     "n_gt": 1,
+     "fn": 1,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "pedestrian": {
+     "tp": 30,
+     "fp": 46,
+     "n_gt": 52,
+     "fn": 22,
+     "precision": 0.3947,
+     "recall": 0.5769,
+     "f1": 0.4688
+    },
+    "traffic_cone": {
+     "tp": 0,
+     "fp": 7,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "trailer": {
+     "tp": 0,
+     "fp": 2,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "truck": {
+     "tp": 9,
+     "fp": 2,
+     "n_gt": 24,
+     "fn": 15,
+     "precision": 0.8182,
+     "recall": 0.375,
+     "f1": 0.5143
+    }
+   }
+  },
+  "map50": {
+   "iou": 0.5,
+   "map": 0.4185,
+   "n_classes": 6,
+   "per_class": {
+    "barrier": {
+     "ap": 0.3376,
+     "n_gt": 26
+    },
+    "bus": {
+     "ap": 0.6957,
+     "n_gt": 15
+    },
+    "car": {
+     "ap": 0.6094,
+     "n_gt": 93
+    },
+    "motorcycle": {
+     "ap": 0.0,
+     "n_gt": 1
+    },
+    "pedestrian": {
+     "ap": 0.4936,
+     "n_gt": 52
+    },
+    "truck": {
+     "ap": 0.375,
+     "n_gt": 24
+    }
+   }
+  },
+  "qa": {
+   "match_iou": 0.5,
+   "objects_evaluated": 257,
+   "objects_need_fix": 127,
+   "flag_recall": 0.4961,
+   "flag_precision": 0.7159,
+   "low_risk_share": 0.6576,
+   "low_risk_error_rate": 0.3787,
+   "by_level": {
+    "low": {
+     "n": 169,
+     "needs_fix": 64,
+     "error_rate": 0.3787
+    },
+    "medium": {
+     "n": 87,
+     "needs_fix": 62,
+     "error_rate": 0.7126
+    },
+    "high": {
+     "n": 1,
+     "needs_fix": 1,
+     "error_rate": 1.0
+    }
+   },
+   "by_issue": {
+    "ASPECT_RATIO_ABNORMAL": {
+     "n": 12,
+     "needs_fix": 6,
+     "precision": 0.5
+    },
+    "BOX_TOO_LARGE": {
+     "n": 1,
+     "needs_fix": 0,
+     "precision": 0.0
+    },
+    "FLICKER": {
+     "n": 66,
+     "needs_fix": 51,
+     "precision": 0.7727
+    },
+    "LOW_CONFIDENCE": {
+     "n": 17,
+     "needs_fix": 12,
+     "precision": 0.7059
+    },
+    "NO_LIDAR_SUPPORT": {
+     "n": 1,
+     "needs_fix": 1,
+     "precision": 1.0
+    }
+   },
+   "fn_total": 62,
+   "fn_recovered_by_track": 1,
+   "track_proposals": 4,
+   "track_proposal_precision": 0.25
+  }
+ },
+ "yoloe@0.4": {
+  "family": "yoloe",
+  "detectors": [
+   "yoloe"
+  ],
+  "min_score": 0.4,
+  "pr": {
+   "match_iou": 0.5,
+   "tp": 122,
+   "fp": 101,
+   "n_gt": 211,
+   "fn": 89,
+   "precision": 0.5471,
+   "recall": 0.5782,
+   "f1": 0.5622,
+   "per_class": {
+    "barrier": {
+     "tp": 6,
+     "fp": 2,
+     "n_gt": 26,
+     "fn": 20,
+     "precision": 0.75,
+     "recall": 0.2308,
+     "f1": 0.3529
+    },
+    "bicycle": {
+     "tp": 0,
+     "fp": 1,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "bus": {
+     "tp": 13,
+     "fp": 19,
+     "n_gt": 15,
+     "fn": 2,
+     "precision": 0.4062,
+     "recall": 0.8667,
+     "f1": 0.5532
+    },
+    "car": {
+     "tp": 64,
+     "fp": 31,
+     "n_gt": 93,
+     "fn": 29,
+     "precision": 0.6737,
+     "recall": 0.6882,
+     "f1": 0.6809
+    },
+    "motorcycle": {
+     "tp": 0,
+     "fp": 2,
+     "n_gt": 1,
+     "fn": 1,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "pedestrian": {
+     "tp": 30,
+     "fp": 37,
+     "n_gt": 52,
+     "fn": 22,
+     "precision": 0.4478,
+     "recall": 0.5769,
+     "f1": 0.5042
+    },
+    "traffic_cone": {
+     "tp": 0,
+     "fp": 6,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "trailer": {
+     "tp": 0,
+     "fp": 1,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "truck": {
+     "tp": 9,
+     "fp": 2,
+     "n_gt": 24,
+     "fn": 15,
+     "precision": 0.8182,
+     "recall": 0.375,
+     "f1": 0.5143
+    }
+   }
+  },
+  "map50": {
+   "iou": 0.5,
+   "map": 0.3952,
+   "n_classes": 6,
+   "per_class": {
+    "barrier": {
+     "ap": 0.2253,
+     "n_gt": 26
+    },
+    "bus": {
+     "ap": 0.6957,
+     "n_gt": 15
+    },
+    "car": {
+     "ap": 0.5816,
+     "n_gt": 93
+    },
+    "motorcycle": {
+     "ap": 0.0,
+     "n_gt": 1
+    },
+    "pedestrian": {
+     "ap": 0.4936,
+     "n_gt": 52
+    },
+    "truck": {
+     "ap": 0.375,
+     "n_gt": 24
+    }
+   }
+  },
+  "qa": {
+   "match_iou": 0.5,
+   "objects_evaluated": 223,
+   "objects_need_fix": 101,
+   "flag_recall": 0.4554,
+   "flag_precision": 0.6667,
+   "low_risk_share": 0.6906,
+   "low_risk_error_rate": 0.3571,
+   "by_level": {
+    "low": {
+     "n": 154,
+     "needs_fix": 55,
+     "error_rate": 0.3571
+    },
+    "medium": {
+     "n": 69,
+     "needs_fix": 46,
+     "error_rate": 0.6667
+    },
+    "high": {
+     "n": 0,
+     "needs_fix": 0,
+     "error_rate": null
+    }
+   },
+   "by_issue": {
+    "ASPECT_RATIO_ABNORMAL": {
+     "n": 10,
+     "needs_fix": 4,
+     "precision": 0.4
+    },
+    "BOX_TOO_LARGE": {
+     "n": 1,
+     "needs_fix": 0,
+     "precision": 0.0
+    },
+    "FLICKER": {
+     "n": 60,
+     "needs_fix": 43,
+     "precision": 0.7167
+    },
+    "NO_LIDAR_SUPPORT": {
+     "n": 1,
+     "needs_fix": 1,
+     "precision": 1.0
+    }
+   },
+   "fn_total": 71,
+   "fn_recovered_by_track": 2,
+   "track_proposals": 4,
+   "track_proposal_precision": 0.5
+  }
+ },
+ "yoloe@theo lớp": {
+  "family": "yoloe",
+  "detectors": [
+   "yoloe"
+  ],
+  "min_score": "per-class",
+  "thresholds_by_test_scene": {
+   "scene-0031": {
+    "bus": 0.5,
+    "car": 0.35,
+    "pedestrian": 0.6,
+    "traffic_cone": 0.6,
+    "truck": 0.3
+   },
+   "scene-0065": {
+    "barrier": 0.25,
+    "bicycle": 0.6,
+    "bus": 0.6,
+    "car": 0.15,
+    "motorcycle": 0.1,
+    "pedestrian": 0.6,
+    "traffic_cone": 0.6,
+    "trailer": 0.6,
+    "truck": 0.5
+   }
+  },
+  "pr": {
+   "match_iou": 0.5,
+   "tp": 140,
+   "fp": 164,
+   "n_gt": 211,
+   "fn": 71,
+   "precision": 0.4605,
+   "recall": 0.6635,
+   "f1": 0.5437,
+   "per_class": {
+    "barrier": {
+     "tp": 15,
+     "fp": 26,
+     "n_gt": 26,
+     "fn": 11,
+     "precision": 0.3659,
+     "recall": 0.5769,
+     "f1": 0.4478
+    },
+    "bicycle": {
+     "tp": 0,
+     "fp": 2,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "bus": {
+     "tp": 12,
+     "fp": 18,
+     "n_gt": 15,
+     "fn": 3,
+     "precision": 0.4,
+     "recall": 0.8,
+     "f1": 0.5333
+    },
+    "car": {
+     "tp": 78,
+     "fp": 72,
+     "n_gt": 93,
+     "fn": 15,
+     "precision": 0.52,
+     "recall": 0.8387,
+     "f1": 0.642
+    },
+    "motorcycle": {
+     "tp": 0,
+     "fp": 7,
+     "n_gt": 1,
+     "fn": 1,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "pedestrian": {
+     "tp": 27,
+     "fp": 22,
+     "n_gt": 52,
+     "fn": 25,
+     "precision": 0.551,
+     "recall": 0.5192,
+     "f1": 0.5347
+    },
+    "traffic_cone": {
+     "tp": 0,
+     "fp": 5,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "trailer": {
+     "tp": 0,
+     "fp": 10,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "truck": {
+     "tp": 8,
+     "fp": 2,
+     "n_gt": 24,
+     "fn": 16,
+     "precision": 0.8,
+     "recall": 0.3333,
+     "f1": 0.4706
+    }
+   }
+  },
+  "map50": {
+   "iou": 0.5,
+   "map": 0.4309,
+   "n_classes": 6,
+   "per_class": {
+    "barrier": {
+     "ap": 0.4473,
+     "n_gt": 26
+    },
+    "bus": {
+     "ap": 0.6677,
+     "n_gt": 15
+    },
+    "car": {
+     "ap": 0.6717,
+     "n_gt": 93
+    },
+    "motorcycle": {
+     "ap": 0.0,
+     "n_gt": 1
+    },
+    "pedestrian": {
+     "ap": 0.4657,
+     "n_gt": 52
+    },
+    "truck": {
+     "ap": 0.3333,
+     "n_gt": 24
+    }
+   }
+  },
+  "qa": {
+   "match_iou": 0.5,
+   "objects_evaluated": 304,
+   "objects_need_fix": 164,
+   "flag_recall": 0.628,
+   "flag_precision": 0.7518,
+   "low_risk_share": 0.5493,
+   "low_risk_error_rate": 0.3653,
+   "by_level": {
+    "low": {
+     "n": 167,
+     "needs_fix": 61,
+     "error_rate": 0.3653
+    },
+    "medium": {
+     "n": 135,
+     "needs_fix": 102,
+     "error_rate": 0.7556
+    },
+    "high": {
+     "n": 2,
+     "needs_fix": 1,
+     "error_rate": 0.5
+    }
+   },
+   "by_issue": {
+    "ASPECT_RATIO_ABNORMAL": {
+     "n": 12,
+     "needs_fix": 6,
+     "precision": 0.5
+    },
+    "BOX_TOO_LARGE": {
+     "n": 1,
+     "needs_fix": 0,
+     "precision": 0.0
+    },
+    "FLICKER": {
+     "n": 60,
+     "needs_fix": 50,
+     "precision": 0.8333
+    },
+    "LOW_CONFIDENCE": {
+     "n": 94,
+     "needs_fix": 74,
+     "precision": 0.7872
+    },
+    "NO_LIDAR_SUPPORT": {
+     "n": 3,
+     "needs_fix": 2,
+     "precision": 0.6667
+    }
+   },
+   "fn_total": 54,
+   "fn_recovered_by_track": 2,
+   "track_proposals": 3,
+   "track_proposal_precision": 0.6667
+  },
+  "thresholds_all_scenes": {
+   "barrier": 0.25,
+   "bicycle": 0.6,
+   "bus": 0.55,
+   "car": 0.25,
+   "motorcycle": 0.1,
+   "pedestrian": 0.6,
+   "traffic_cone": 0.6,
+   "trailer": 0.6,
+   "truck": 0.4
+  }
+ },
+ "ens@0.1": {
+  "family": "ens",
+  "detectors": [
+   "yoloe",
+   "yolo26"
+  ],
+  "min_score": 0.1,
+  "pr": {
+   "match_iou": 0.5,
+   "tp": 153,
+   "fp": 339,
+   "n_gt": 211,
+   "fn": 58,
+   "precision": 0.311,
+   "recall": 0.7251,
+   "f1": 0.4353,
+   "per_class": {
+    "barrier": {
+     "tp": 12,
+     "fp": 11,
+     "n_gt": 26,
+     "fn": 14,
+     "precision": 0.5217,
+     "recall": 0.4615,
+     "f1": 0.4898
+    },
+    "bicycle": {
+     "tp": 0,
+     "fp": 1,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "bus": {
+     "tp": 13,
+     "fp": 21,
+     "n_gt": 15,
+     "fn": 2,
+     "precision": 0.3824,
+     "recall": 0.8667,
+     "f1": 0.5306
+    },
+    "car": {
+     "tp": 81,
+     "fp": 212,
+     "n_gt": 93,
+     "fn": 12,
+     "precision": 0.2765,
+     "recall": 0.871,
+     "f1": 0.4197
+    },
+    "motorcycle": {
+     "tp": 0,
+     "fp": 5,
+     "n_gt": 1,
+     "fn": 1,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "pedestrian": {
+     "tp": 34,
+     "fp": 62,
+     "n_gt": 52,
+     "fn": 18,
+     "precision": 0.3542,
+     "recall": 0.6538,
+     "f1": 0.4595
+    },
+    "traffic_cone": {
+     "tp": 0,
+     "fp": 8,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "trailer": {
+     "tp": 0,
+     "fp": 3,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "truck": {
+     "tp": 13,
+     "fp": 16,
+     "n_gt": 24,
+     "fn": 11,
+     "precision": 0.4483,
+     "recall": 0.5417,
+     "f1": 0.4906
+    }
+   }
+  },
+  "map50": {
+   "iou": 0.5,
+   "map": 0.4777,
+   "n_classes": 6,
+   "per_class": {
+    "barrier": {
+     "ap": 0.3994,
+     "n_gt": 26
+    },
+    "bus": {
+     "ap": 0.7428,
+     "n_gt": 15
+    },
+    "car": {
+     "ap": 0.6557,
+     "n_gt": 93
+    },
+    "motorcycle": {
+     "ap": 0.0,
+     "n_gt": 1
+    },
+    "pedestrian": {
+     "ap": 0.532,
+     "n_gt": 52
+    },
+    "truck": {
+     "ap": 0.5361,
+     "n_gt": 24
+    }
+   }
+  },
+  "qa": {
+   "match_iou": 0.5,
+   "objects_evaluated": 492,
+   "objects_need_fix": 339,
+   "flag_recall": 0.764,
+   "flag_precision": 0.8721,
+   "low_risk_share": 0.3963,
+   "low_risk_error_rate": 0.4103,
+   "by_level": {
+    "low": {
+     "n": 195,
+     "needs_fix": 80,
+     "error_rate": 0.4103
+    },
+    "medium": {
+     "n": 288,
+     "needs_fix": 251,
+     "error_rate": 0.8715
+    },
+    "high": {
+     "n": 9,
+     "needs_fix": 8,
+     "error_rate": 0.8889
+    }
+   },
+   "by_issue": {
+    "ASPECT_RATIO_ABNORMAL": {
+     "n": 18,
+     "needs_fix": 10,
+     "precision": 0.5556
+    },
+    "BOX_TOO_LARGE": {
+     "n": 1,
+     "needs_fix": 0,
+     "precision": 0.0
+    },
+    "CLASS_CONFLICT": {
+     "n": 8,
+     "needs_fix": 1,
+     "precision": 0.125
+    },
+    "FLICKER": {
+     "n": 115,
+     "needs_fix": 104,
+     "precision": 0.9043
+    },
+    "LOW_CONFIDENCE": {
+     "n": 228,
+     "needs_fix": 211,
+     "precision": 0.9254
+    },
+    "NO_LIDAR_SUPPORT": {
+     "n": 4,
+     "needs_fix": 4,
+     "precision": 1.0
+    },
+    "SIZE_DEPTH_MISMATCH": {
+     "n": 1,
+     "needs_fix": 1,
+     "precision": 1.0
+    }
+   },
+   "fn_total": 42,
+   "fn_recovered_by_track": 0,
+   "track_proposals": 1,
+   "track_proposal_precision": 0.0
+  },
+  "propagation": {
+   "match_iou": 0.5,
+   "scenes": 2,
+   "tracks_started": 10,
+   "per_hop": [
+    {
+     "hop": 1,
+     "tracks_output": 10,
+     "correct": 10,
+     "id_switch": 0,
+     "wrong": 0,
+     "lost": 0,
+     "correct_rate": 1.0,
+     "mean_iou": 0.7571,
+     "coverage": 1.0
+    },
+    {
+     "hop": 2,
+     "tracks_output": 9,
+     "correct": 9,
+     "id_switch": 0,
+     "wrong": 0,
+     "lost": 1,
+     "correct_rate": 1.0,
+     "mean_iou": 0.7662,
+     "coverage": 0.9
+    },
+    {
+     "hop": 3,
+     "tracks_output": 9,
+     "correct": 9,
+     "id_switch": 0,
+     "wrong": 0,
+     "lost": 1,
+     "correct_rate": 1.0,
+     "mean_iou": 0.7191,
+     "coverage": 0.9
+    },
+    {
+     "hop": 4,
+     "tracks_output": 8,
+     "correct": 7,
+     "id_switch": 0,
+     "wrong": 1,
+     "lost": 1,
+     "correct_rate": 0.875,
+     "mean_iou": 0.6458,
+     "coverage": 0.8889
+    },
+    {
+     "hop": 5,
+     "tracks_output": 6,
+     "correct": 6,
+     "id_switch": 0,
+     "wrong": 0,
+     "lost": 1,
+     "correct_rate": 1.0,
+     "mean_iou": 0.7093,
+     "coverage": 0.8571
+    },
+    {
+     "hop": 6,
+     "tracks_output": 4,
+     "correct": 3,
+     "id_switch": 0,
+     "wrong": 1,
+     "lost": 2,
+     "correct_rate": 0.75,
+     "mean_iou": 0.6506,
+     "coverage": 0.6667
+    },
+    {
+     "hop": 7,
+     "tracks_output": 3,
+     "correct": 3,
+     "id_switch": 0,
+     "wrong": 0,
+     "lost": 1,
+     "correct_rate": 1.0,
+     "mean_iou": 0.7673,
+     "coverage": 0.75
+    },
+    {
+     "hop": 8,
+     "tracks_output": 2,
+     "correct": 2,
+     "id_switch": 0,
+     "wrong": 0,
+     "lost": 1,
+     "correct_rate": 1.0,
+     "mean_iou": 0.7168,
+     "coverage": 0.6667
+    },
+    {
+     "hop": 9,
+     "tracks_output": 1,
+     "correct": 1,
+     "id_switch": 0,
+     "wrong": 0,
+     "lost": 1,
+     "correct_rate": 1.0,
+     "mean_iou": 0.6898,
+     "coverage": 0.5
+    },
+    {
+     "hop": 10,
+     "tracks_output": 0,
+     "correct": 0,
+     "id_switch": 0,
+     "wrong": 0,
+     "lost": 0,
+     "correct_rate": null,
+     "mean_iou": null,
+     "coverage": null
+    }
+   ],
+   "calibration": {
+    "n_correct": 50,
+    "n_wrong": 2,
+    "mean_c_prop_correct": 0.9004,
+    "mean_c_prop_wrong": 0.49,
+    "low_conf_flag_recall": 1.0,
+    "low_conf_flag_precision": 0.5,
+    "flag_below": 0.6
+   },
+   "config": {
+    "match_iou": 0.3,
+    "suppress_iou": 0.5,
+    "smoothing": 0.7,
+    "velocity_smoothing": 0.5,
+    "max_coast_images": 6,
+    "min_visible": 0.3,
+    "min_box_px": 6.0,
+    "weights": {
+     "agreement": 0.5,
+     "continuity": 0.3,
+     "lidar": 0.2
+    },
+    "hop_decay": 0.99,
+    "flag_below": 0.6,
+    "stop_below": 0.15,
+    "max_keyframes": 20,
+    "class_differs_score": 0.5
+   }
+  }
+ },
+ "ens@0.2": {
+  "family": "ens",
+  "detectors": [
+   "yoloe",
+   "yolo26"
+  ],
+  "min_score": 0.2,
+  "pr": {
+   "match_iou": 0.5,
+   "tp": 145,
+   "fp": 213,
+   "n_gt": 211,
+   "fn": 66,
+   "precision": 0.405,
+   "recall": 0.6872,
+   "f1": 0.5097,
+   "per_class": {
+    "barrier": {
+     "tp": 6,
+     "fp": 2,
+     "n_gt": 26,
+     "fn": 20,
+     "precision": 0.75,
+     "recall": 0.2308,
+     "f1": 0.3529
+    },
+    "bicycle": {
+     "tp": 0,
+     "fp": 1,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "bus": {
+     "tp": 13,
+     "fp": 18,
+     "n_gt": 15,
+     "fn": 2,
+     "precision": 0.4194,
+     "recall": 0.8667,
+     "f1": 0.5652
+    },
+    "car": {
+     "tp": 80,
+     "fp": 130,
+     "n_gt": 93,
+     "fn": 13,
+     "precision": 0.381,
+     "recall": 0.8602,
+     "f1": 0.5281
+    },
+    "motorcycle": {
+     "tp": 0,
+     "fp": 2,
+     "n_gt": 1,
+     "fn": 1,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "pedestrian": {
+     "tp": 33,
+     "fp": 49,
+     "n_gt": 52,
+     "fn": 19,
+     "precision": 0.4024,
+     "recall": 0.6346,
+     "f1": 0.4925
+    },
+    "traffic_cone": {
+     "tp": 0,
+     "fp": 6,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "trailer": {
+     "tp": 0,
+     "fp": 1,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "truck": {
+     "tp": 13,
+     "fp": 4,
+     "n_gt": 24,
+     "fn": 11,
+     "precision": 0.7647,
+     "recall": 0.5417,
+     "f1": 0.6341
+    }
+   }
+  },
+  "map50": {
+   "iou": 0.5,
+   "map": 0.4469,
+   "n_classes": 6,
+   "per_class": {
+    "barrier": {
+     "ap": 0.2253,
+     "n_gt": 26
+    },
+    "bus": {
+     "ap": 0.7428,
+     "n_gt": 15
+    },
+    "car": {
+     "ap": 0.6521,
+     "n_gt": 93
+    },
+    "motorcycle": {
+     "ap": 0.0,
+     "n_gt": 1
+    },
+    "pedestrian": {
+     "ap": 0.5249,
+     "n_gt": 52
+    },
+    "truck": {
+     "ap": 0.5361,
+     "n_gt": 24
+    }
+   }
+  },
+  "qa": {
+   "match_iou": 0.5,
+   "objects_evaluated": 358,
+   "objects_need_fix": 213,
+   "flag_recall": 0.6244,
+   "flag_precision": 0.811,
+   "low_risk_share": 0.5419,
+   "low_risk_error_rate": 0.4124,
+   "by_level": {
+    "low": {
+     "n": 194,
+     "needs_fix": 80,
+     "error_rate": 0.4124
+    },
+    "medium": {
+     "n": 162,
+     "needs_fix": 131,
+     "error_rate": 0.8086
+    },
+    "high": {
+     "n": 2,
+     "needs_fix": 2,
+     "error_rate": 1.0
+    }
+   },
+   "by_issue": {
+    "ASPECT_RATIO_ABNORMAL": {
+     "n": 13,
+     "needs_fix": 6,
+     "precision": 0.4615
+    },
+    "BOX_TOO_LARGE": {
+     "n": 1,
+     "needs_fix": 0,
+     "precision": 0.0
+    },
+    "CLASS_CONFLICT": {
+     "n": 8,
+     "needs_fix": 1,
+     "precision": 0.125
+    },
+    "FLICKER": {
+     "n": 84,
+     "needs_fix": 73,
+     "precision": 0.869
+    },
+    "LOW_CONFIDENCE": {
+     "n": 94,
+     "needs_fix": 85,
+     "precision": 0.9043
+    },
+    "NO_LIDAR_SUPPORT": {
+     "n": 1,
+     "needs_fix": 1,
+     "precision": 1.0
+    }
+   },
+   "fn_total": 51,
+   "fn_recovered_by_track": 0,
+   "track_proposals": 1,
+   "track_proposal_precision": 0.0
+  }
+ },
+ "ens@0.3": {
+  "family": "ens",
+  "detectors": [
+   "yoloe",
+   "yolo26"
+  ],
+  "min_score": 0.3,
+  "pr": {
+   "match_iou": 0.5,
+   "tp": 138,
+   "fp": 139,
+   "n_gt": 211,
+   "fn": 73,
+   "precision": 0.4982,
+   "recall": 0.654,
+   "f1": 0.5656,
+   "per_class": {
+    "barrier": {
+     "tp": 2,
+     "fp": 0,
+     "n_gt": 26,
+     "fn": 24,
+     "precision": 1.0,
+     "recall": 0.0769,
+     "f1": 0.1429
+    },
+    "bus": {
+     "tp": 13,
+     "fp": 16,
+     "n_gt": 15,
+     "fn": 2,
+     "precision": 0.4483,
+     "recall": 0.8667,
+     "f1": 0.5909
+    },
+    "car": {
+     "tp": 79,
+     "fp": 80,
+     "n_gt": 93,
+     "fn": 14,
+     "precision": 0.4969,
+     "recall": 0.8495,
+     "f1": 0.627
+    },
+    "motorcycle": {
+     "tp": 0,
+     "fp": 1,
+     "n_gt": 1,
+     "fn": 1,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "pedestrian": {
+     "tp": 32,
+     "fp": 35,
+     "n_gt": 52,
+     "fn": 20,
+     "precision": 0.4776,
+     "recall": 0.6154,
+     "f1": 0.5378
+    },
+    "traffic_cone": {
+     "tp": 0,
+     "fp": 5,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "truck": {
+     "tp": 12,
+     "fp": 2,
+     "n_gt": 24,
+     "fn": 12,
+     "precision": 0.8571,
+     "recall": 0.5,
+     "f1": 0.6316
+    }
+   }
+  },
+  "map50": {
+   "iou": 0.5,
+   "map": 0.4141,
+   "n_classes": 6,
+   "per_class": {
+    "barrier": {
+     "ap": 0.0769,
+     "n_gt": 26
+    },
+    "bus": {
+     "ap": 0.7428,
+     "n_gt": 15
+    },
+    "car": {
+     "ap": 0.648,
+     "n_gt": 93
+    },
+    "motorcycle": {
+     "ap": 0.0,
+     "n_gt": 1
+    },
+    "pedestrian": {
+     "ap": 0.5166,
+     "n_gt": 52
+    },
+    "truck": {
+     "ap": 0.5,
+     "n_gt": 24
+    }
+   }
+  },
+  "qa": {
+   "match_iou": 0.5,
+   "objects_evaluated": 277,
+   "objects_need_fix": 139,
+   "flag_recall": 0.446,
+   "flag_precision": 0.7045,
+   "low_risk_share": 0.6823,
+   "low_risk_error_rate": 0.4074,
+   "by_level": {
+    "low": {
+     "n": 189,
+     "needs_fix": 77,
+     "error_rate": 0.4074
+    },
+    "medium": {
+     "n": 88,
+     "needs_fix": 62,
+     "error_rate": 0.7045
+    },
+    "high": {
+     "n": 0,
+     "needs_fix": 0,
+     "error_rate": null
+    }
+   },
+   "by_issue": {
+    "ASPECT_RATIO_ABNORMAL": {
+     "n": 11,
+     "needs_fix": 4,
+     "precision": 0.3636
+    },
+    "BOX_TOO_LARGE": {
+     "n": 1,
+     "needs_fix": 0,
+     "precision": 0.0
+    },
+    "CLASS_CONFLICT": {
+     "n": 7,
+     "needs_fix": 1,
+     "precision": 0.1429
+    },
+    "FLICKER": {
+     "n": 65,
+     "needs_fix": 54,
+     "precision": 0.8308
+    },
+    "LOW_CONFIDENCE": {
+     "n": 13,
+     "needs_fix": 11,
+     "precision": 0.8462
+    },
+    "NO_LIDAR_SUPPORT": {
+     "n": 1,
+     "needs_fix": 1,
+     "precision": 1.0
+    }
+   },
+   "fn_total": 59,
+   "fn_recovered_by_track": 1,
+   "track_proposals": 5,
+   "track_proposal_precision": 0.2
+  }
+ },
+ "ens@theo lớp": {
+  "family": "ens",
+  "detectors": [
+   "yoloe",
+   "yolo26"
+  ],
+  "min_score": "per-class",
+  "thresholds_by_test_scene": {
+   "scene-0031": {
+    "bus": 0.6,
+    "car": 0.5,
+    "pedestrian": 0.6,
+    "truck": 0.1
+   },
+   "scene-0065": {
+    "barrier": 0.15,
+    "bicycle": 0.6,
+    "bus": 0.6,
+    "car": 0.25,
+    "motorcycle": 0.1,
+    "pedestrian": 0.6,
+    "traffic_cone": 0.6,
+    "trailer": 0.6,
+    "truck": 0.35
+   }
+  },
+  "pr": {
+   "match_iou": 0.5,
+   "tp": 142,
+   "fp": 170,
+   "n_gt": 211,
+   "fn": 69,
+   "precision": 0.4551,
+   "recall": 0.673,
+   "f1": 0.543,
+   "per_class": {
+    "barrier": {
+     "tp": 12,
+     "fp": 11,
+     "n_gt": 26,
+     "fn": 14,
+     "precision": 0.5217,
+     "recall": 0.4615,
+     "f1": 0.4898
+    },
+    "bicycle": {
+     "tp": 0,
+     "fp": 1,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "bus": {
+     "tp": 13,
+     "fp": 14,
+     "n_gt": 15,
+     "fn": 2,
+     "precision": 0.4815,
+     "recall": 0.8667,
+     "f1": 0.619
+    },
+    "car": {
+     "tp": 79,
+     "fp": 99,
+     "n_gt": 93,
+     "fn": 14,
+     "precision": 0.4438,
+     "recall": 0.8495,
+     "f1": 0.583
+    },
+    "motorcycle": {
+     "tp": 0,
+     "fp": 5,
+     "n_gt": 1,
+     "fn": 1,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "pedestrian": {
+     "tp": 26,
+     "fp": 14,
+     "n_gt": 52,
+     "fn": 26,
+     "precision": 0.65,
+     "recall": 0.5,
+     "f1": 0.5652
+    },
+    "traffic_cone": {
+     "tp": 0,
+     "fp": 8,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "trailer": {
+     "tp": 0,
+     "fp": 3,
+     "n_gt": 0,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": null,
+     "f1": null
+    },
+    "truck": {
+     "tp": 12,
+     "fp": 15,
+     "n_gt": 24,
+     "fn": 12,
+     "precision": 0.4444,
+     "recall": 0.5,
+     "f1": 0.4706
+    }
+   }
+  },
+  "map50": {
+   "iou": 0.5,
+   "map": 0.4572,
+   "n_classes": 6,
+   "per_class": {
+    "barrier": {
+     "ap": 0.3994,
+     "n_gt": 26
+    },
+    "bus": {
+     "ap": 0.7428,
+     "n_gt": 15
+    },
+    "car": {
+     "ap": 0.648,
+     "n_gt": 93
+    },
+    "motorcycle": {
+     "ap": 0.0,
+     "n_gt": 1
+    },
+    "pedestrian": {
+     "ap": 0.4528,
+     "n_gt": 52
+    },
+    "truck": {
+     "ap": 0.5,
+     "n_gt": 24
+    }
+   }
+  },
+  "qa": {
+   "match_iou": 0.5,
+   "objects_evaluated": 312,
+   "objects_need_fix": 170,
+   "flag_recall": 0.5471,
+   "flag_precision": 0.7209,
+   "low_risk_share": 0.5865,
+   "low_risk_error_rate": 0.4208,
+   "by_level": {
+    "low": {
+     "n": 183,
+     "needs_fix": 77,
+     "error_rate": 0.4208
+    },
+    "medium": {
+     "n": 128,
+     "needs_fix": 92,
+     "error_rate": 0.7188
+    },
+    "high": {
+     "n": 1,
+     "needs_fix": 1,
+     "error_rate": 1.0
+    }
+   },
+   "by_issue": {
+    "ASPECT_RATIO_ABNORMAL": {
+     "n": 7,
+     "needs_fix": 2,
+     "precision": 0.2857
+    },
+    "BOX_TOO_LARGE": {
+     "n": 1,
+     "needs_fix": 0,
+     "precision": 0.0
+    },
+    "CLASS_CONFLICT": {
+     "n": 6,
+     "needs_fix": 0,
+     "precision": 0.0
+    },
+    "FLICKER": {
+     "n": 62,
+     "needs_fix": 48,
+     "precision": 0.7742
+    },
+    "LOW_CONFIDENCE": {
+     "n": 75,
+     "needs_fix": 63,
+     "precision": 0.84
+    },
+    "NO_LIDAR_SUPPORT": {
+     "n": 2,
+     "needs_fix": 2,
+     "precision": 1.0
+    }
+   },
+   "fn_total": 55,
+   "fn_recovered_by_track": 1,
+   "track_proposals": 4,
+   "track_proposal_precision": 0.25
+  },
+  "thresholds_all_scenes": {
+   "barrier": 0.15,
+   "bicycle": 0.6,
+   "bus": 0.6,
+   "car": 0.38,
+   "motorcycle": 0.1,
+   "pedestrian": 0.6,
+   "traffic_cone": 0.6,
+   "trailer": 0.6,
+   "truck": 0.22
+  }
+ }
+}

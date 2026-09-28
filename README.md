@@ -11,7 +11,7 @@
 | Bước | Làm gì | Code |
 |---|---|---|
 | 1. Input | CAM_FRONT keyframe, sweep t-2..t+2 (12Hz), LIDAR_TOP, calibration + ego pose từ nuScenes v1.0-mini | `src/services/nuscenes_data.py` |
-| 2. 2D Detection | YOLO-World (mặc định), Grounding DINO, Florence-2 — open-vocab, không train; nhiều model thì fuse | `src/services/detectors/` |
+| 2. 2D Detection | YOLOE-26 (mặc định), YOLO-World, Grounding DINO, Florence-2 — open-vocab, không train; YOLO26 (tập lớp COCO) làm model phụ; nhiều model thì fuse ([so sánh](eval/compare_detectors.ipynb)) | `src/services/detectors/` |
 | 3. QA Agent | LangGraph: 3.1 confidence · 3.2 LiDAR support · 3.3 temporal (song song) → 3.4 issue → 3.5 risk | `src/agents/` |
 | 4. Review by exception | Low risk duyệt theo lô, high risk xem chi tiết: Keep / Delete / Change class / Sửa box / Add box | `src/web/`, `src/services/review.py` |
 | 5. Correction log | Mỗi thao tác ghi 1 dòng JSONL: dự đoán, risk, issue, hành động, kết quả cuối | `data/workspace/corrections.jsonl` |
@@ -48,12 +48,12 @@ nuScenes v1.0-mini giải nén vào `./v1.0-mini-001` (hoặc đặt `NUSCENES_D
 python -m venv .venv && .venv\Scripts\activate          # Linux/macOS: source .venv/bin/activate
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
 pip install -r requirements-ml.txt
-pip install git+https://github.com/ultralytics/CLIP.git  # text encoder cho YOLO-World
+pip install git+https://github.com/ultralytics/CLIP.git  # tokenizer cho YOLOE / YOLO-World (lần đầu tự tải yoloe-26l-seg.pt + mobileclip2_b.ts)
 
 # 1-3. Auto-label + QA Agent (tải weights lần đầu; detection được cache, chạy lại rất nhanh)
 python -m src.cli run --limit 40                 # 40 keyframe đầu
 python -m src.cli run                            # cả 404 keyframe
-python -m src.cli run --detectors yolo_world grounding_dino --overwrite   # ensemble
+python -m src.cli run --detectors yoloe yolo26 --overwrite   # ensemble (YOLO-World: --detectors yolo_world)
 
 # Đánh giá so với GT (mAP + flag recall/precision) -> eval/results/autolabel2d_eval.md
 python -m src.cli evaluate
@@ -70,9 +70,15 @@ python -m src.cli eval-propagation                         # -> eval/results/pro
 
 Chỉ chạy UI / test (không cần GPU): `pip install -r requirements.txt`, rồi `pytest` hoặc `uvicorn`.
 
-Máy chưa tải được nuScenes: chạy notebook [demo/kaggle_nuscenes_run.ipynb](demo/kaggle_nuscenes_run.ipynb) trên
-Kaggle (dataset có sẵn ở đó, GPU miễn phí). Notebook auto-label 2 scene rồi đóng gói ảnh CAM_FRONT + bảng nuScenes
-đã lọc + workspace thành một file zip ~100 MB; tải về, giải nén vào thư mục repo, `uvicorn src.main:app`.
+Test nhanh trên vài scene ngẫu nhiên của bản trainval (chỉ chọn scene có ảnh trên máy), rồi auto-label đúng các scene đó:
+
+```bash
+python scripts/pack_nuscenes_subset.py --dataroot ../v1.0-trainval --version v1.0-trainval \
+    --random 2 --seed 20260927 --window 20 --with-lidar --workspace none --out ../nusc_random.zip
+```
+
+Giải nén zip vào thư mục repo, trỏ `.env` vào `autolabel_subset/` (README.txt trong zip), chạy `run` như trên. Bản rút
+gọn (~60 MB) cũng dùng để gửi cho thành viên chưa tải đủ 48 GB dataset.
 
 ## UI
 
@@ -143,7 +149,7 @@ src/
   agents/                  QA Agent (LangGraph): state, graph, nodes/{confidence,lidar,temporal,issues,risk}
   services/
     nuscenes_data.py       loader nuScenes, chiếu LiDAR -> ảnh, GT 2D
-    detectors/             YOLO-World, Grounding DINO, Florence-2, fusion, cache; demo.py (theo màu, cho demo/test)
+    detectors/             YOLOE-26, YOLO26, YOLO-World, Grounding DINO, Florence-2, fusion, cache; demo.py (cho demo/test)
     pipeline.py            bước 1 -> 3 (label_keyframe dùng chung cho nuScenes và video tải lên)
     video.py               chế độ Video: cắt mp4, auto-label nền, danh sách/timeline video
     propagation.py         lan truyền: tracker 12Hz, c_prop, ghi vào keyframe đích
@@ -154,8 +160,12 @@ src/
   web/                     UI review (HTML/JS/CSS)
   cli.py                   python -m src.cli run | evaluate | detect-sweeps | propagate | eval-propagation
   demo.py                  python -m src.demo: demo không cần GPU/nuScenes
-scripts/pack_nuscenes_subset.py   đóng gói vài scene nuScenes + workspace thành zip (dùng trên Kaggle)
-demo/kaggle_nuscenes_run.ipynb    chạy auto-label trên Kaggle rồi tải kết quả về máy
+scripts/pack_nuscenes_subset.py   chọn ngẫu nhiên / đóng gói vài scene nuScenes (+ workspace) thành zip nhỏ
+scripts/bench_detectors.py        đo tốc độ detector
+scripts/simulate_review.py        người duyệt mô phỏng theo GT (đo công duyệt có / không lan truyền)
+eval/compare_detectors.ipynb      so sánh detector (matplotlib)
+eval/precision_tuning.ipynb       tăng precision không cần train (ngưỡng min_score, ensemble)
+eval/review_simulation.ipynb      công duyệt 40 keyframe: có / không lan truyền
 tests/                     pytest, dữ liệu tổng hợp (không cần GPU/dataset)
 ```
 

@@ -65,3 +65,6 @@ out/
 v1.0-mini*/
 *.tgz
 *.pt
+
+# Text encoder YOLOE do ultralytics tự tải về thư mục chạy
+mobileclip*.ts

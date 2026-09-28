@@ -38,7 +38,7 @@ log = logging.getLogger(__name__)
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 UPLOAD_CAMERA = "video"
-# Mỗi lúc chỉ xử lý một video: detector (YOLO-World...) không an toàn khi hai luồng cùng gọi, và một GPU cũng
+# Mỗi lúc chỉ xử lý một video: detector (YOLOE, YOLO-World...) không an toàn khi hai luồng cùng gọi, và một GPU cũng
 # không nhanh hơn khi chạy song song
 _PROCESS_LOCK = threading.Lock()
 

@@ -1,9 +1,10 @@
-"""Đóng gói vài scene nuScenes + workspace đã auto-label thành một file zip nhỏ để mở UI trên máy khác.
+"""Chọn / đóng gói vài scene nuScenes (+ workspace đã auto-label) thành một file zip nhỏ.
 
-Dùng ở nơi có sẵn dataset và GPU (Kaggle, Colab, máy 3090), sau khi đã chạy `python -m src.cli run --scenes ...`:
+Dùng để test nhanh trên một lượng nhỏ dữ liệu, hoặc gửi cho thành viên chưa tải đủ dataset. Đóng gói kèm kết quả
+auto-label (sau khi đã chạy `python -m src.cli run --scenes ...`):
 
-    python scripts/pack_nuscenes_subset.py --dataroot /kaggle/input/nuscenes --version v1.0-mini \\
-        --scenes scene-0061 scene-0103 --out /kaggle/working/autolabel_subset.zip
+    python scripts/pack_nuscenes_subset.py --dataroot ../v1.0-trainval --version v1.0-trainval \\
+        --scenes scene-0031 scene-0065 --out ../autolabel_subset.zip
 
 Lấy mẫu ngẫu nhiên một lượng nhỏ để test (chỉ chọn trong các scene có ảnh trên máy, hợp với bản trainval mới tải
 vài phần blob), mỗi scene cắt một đoạn ngẫu nhiên 10 keyframe:

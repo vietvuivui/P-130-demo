@@ -2,7 +2,7 @@
 
 python -m src.cli run --limit 20                       # auto-label + QA Agent cho 20 keyframe đầu
 python -m src.cli run --scenes scene-0061 scene-0103   # theo scene
-python -m src.cli run --detectors yolo_world grounding_dino --overwrite
+python -m src.cli run --detectors yoloe yolo26 --overwrite
 python -m src.cli evaluate                             # mAP + flag recall/precision -> eval/results/
 
 Lan truyền nhãn trên video:
@@ -40,17 +40,21 @@ def cmd_run(args) -> None:
 
 
 def cmd_evaluate(args) -> None:
-    from src.services.evaluation import evaluate_map, evaluate_qa, render_report
+    from src.services.evaluation import evaluate_map, evaluate_pr, evaluate_qa, render_report
     from src.services.store import WorkspaceStore
 
     settings = get_settings()
     config = load_autolabel_config(settings.autolabel_config)
     store = WorkspaceStore(settings.workspace_dir)
-    # Chỉ frame nuScenes có GT (video mp4 tải lên không có GT nên không tính)
+    # Chỉ frame có GT: video mp4 tải lên và dữ liệu nuScenes chưa gán nhãn (không có sample_annotation) không tính
     gt = {f.frame_id: g for f in store.list_frames() if (g := store.load_aux("gt", f.frame_id)) is not None}
     frames = [f for f in store.list_frames() if f.frame_id in gt]
-    if not frames:
-        raise SystemExit("Workspace chưa có frame nuScenes nào có GT, chạy `python -m src.cli run` trước")
+    if not any(gt.values()):
+        raise SystemExit(
+            "Không có frame nào có GT để đánh giá (dữ liệu chưa gán nhãn, hoặc chưa `python -m src.cli run`). "
+            "Với dữ liệu mới, đo bằng tab Metrics trong UI (thời gian duyệt, tỉ lệ nhãn phải sửa) sau khi duyệt, "
+            "hoặc export các frame đã duyệt rồi dùng làm GT."
+        )
 
     result = {
         "n_frames": len(frames),
@@ -59,6 +63,7 @@ def cmd_evaluate(args) -> None:
         "detectors": sorted({d for f in frames for d in f.detectors}),
         "map50": evaluate_map(frames, gt, 0.5),
         "map70": evaluate_map(frames, gt, 0.7),
+        "pr": evaluate_pr(frames, gt, 0.5),
         "qa": evaluate_qa(frames, gt, 0.5),
     }
     out = Path(args.out)
@@ -106,6 +111,8 @@ def cmd_propagate(args) -> None:
 
     settings = get_settings()
     config = load_autolabel_config(settings.autolabel_config)
+    if args.detectors:  # đọc cache detection của đúng detector đã chạy cho workspace này
+        config.detection.detectors = args.detectors
     _, _, source = _sequence_source(settings, config)
     resp = propagate_from(WorkspaceStore(settings.workspace_dir), source, config, args.frame_id, args.max_frames)
     print(json.dumps(resp.model_dump(), indent=2, ensure_ascii=False))
@@ -117,6 +124,8 @@ def cmd_eval_propagation(args) -> None:
 
     settings = get_settings()
     config = load_autolabel_config(settings.autolabel_config)
+    if args.detectors:  # đọc cache detection của đúng detector đã chạy cho workspace này
+        config.detection.detectors = args.detectors
     _, _, source = _sequence_source(settings, config)
     store = WorkspaceStore(settings.workspace_dir)
     if not store.frame_ids():
@@ -154,11 +163,13 @@ def main() -> None:
     pr = sub.add_parser("propagate", help="Lan truyền nhãn từ một frame đã approve")
     pr.add_argument("frame_id", help="Ví dụ scene-0061_000")
     pr.add_argument("--max-frames", type=int, help="Số keyframe tối đa đi tới (mặc định theo config)")
+    pr.add_argument("--detectors", nargs="*", help="Detector đã chạy cho workspace (mặc định theo config)")
     pr.set_defaults(func=cmd_propagate)
 
     ep = sub.add_parser("eval-propagation", help="Thí nghiệm keyframe hoàn hảo: lan truyền GT, so với GT")
     ep.add_argument("--scenes", nargs="*", help="Tên scene (mặc định: mọi scene có trong workspace)")
     ep.add_argument("--max-frames", type=int, help="Số keyframe tối đa đi tới")
+    ep.add_argument("--detectors", nargs="*", help="Detector đã chạy cho workspace (mặc định theo config)")
     ep.add_argument("--out", default="eval/results")
     ep.set_defaults(func=cmd_eval_propagation)
 

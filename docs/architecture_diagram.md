@@ -11,7 +11,7 @@ graph LR
         C[Calibration + ego pose]
     end
     subgraph DET[2. 2D Detection open-vocab]
-        YW[YOLO-World]
+        YW[YOLOE-26 / YOLO-World]
         GD[Grounding DINO]
         F2[Florence-2]
         FU[Fusion + cache]
@@ -56,7 +56,7 @@ Agent deterministic, không gọi LLM.
 | Thành phần | File | Vai trò |
 |---|---|---|
 | Loader nuScenes | `src/services/nuscenes_data.py` | Keyframe, sweep 12Hz, chiếu LiDAR→ảnh có bù ego-motion, GT 2D chiếu từ 3D |
-| Detector | `src/services/detectors/` | YOLO-World / Grounding DINO / Florence-2, fuse kiểu WBF, cache theo `sample_data` token |
+| Detector | `src/services/detectors/` | YOLOE-26 (mặc định) / YOLO26 / YOLO-World / Grounding DINO / Florence-2, fuse kiểu WBF, cache theo `sample_data` token |
 | QA Agent | `src/agents/` | 3.1–3.5, sinh issue code + risk |
 | Pipeline | `src/services/pipeline.py`, `src/cli.py` | Chạy batch, ghi frame JSON vào workspace |
 | Review | `src/services/review.py` | Keep / Delete / Change class / Edit box / Add box / Batch approve, M4, flag precision/recall |

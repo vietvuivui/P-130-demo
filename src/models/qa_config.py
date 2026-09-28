@@ -21,6 +21,18 @@ class YoloWorldCfg(BaseModel):
     imgsz: int = 1280
 
 
+class YoloeCfg(BaseModel):
+    # YOLOE-26: open-vocab trên nền YOLO26, text encoder MobileCLIP2 (tự tải từ GitHub của Ultralytics)
+    weights: str = "yoloe-26l-seg.pt"
+    imgsz: int = 1280
+
+
+class Yolo26Cfg(BaseModel):
+    # YOLO26 thường: tập lớp đóng COCO 80, chỉ giữ lớp trùng tên prompt (car, truck, bus, person, bicycle, motorcycle)
+    weights: str = "yolo26l.pt"
+    imgsz: int = 1280
+
+
 class GroundingDinoCfg(BaseModel):
     model_id: str = "IDEA-Research/grounding-dino-tiny"
     box_threshold: float = 0.2
@@ -40,13 +52,21 @@ class DemoDetectorCfg(BaseModel):
 
 
 class DetectionCfg(BaseModel):
-    detectors: list[str] = ["yolo_world"]
+    detectors: list[str] = ["yoloe"]
     score_threshold: float = 0.1
+    # Lọc sau khi gộp box, trước QA Agent (không đổi khoá cache: đổi ngưỡng không phải detect lại)
+    min_score: float = 0.1
+    min_score_per_class: dict[str, float] = Field(default_factory=dict)
     fusion_iou: float = 0.55
     yolo_world: YoloWorldCfg = YoloWorldCfg()
+    yoloe: YoloeCfg = YoloeCfg()
+    yolo26: Yolo26Cfg = Yolo26Cfg()
     grounding_dino: GroundingDinoCfg = GroundingDinoCfg()
     florence2: Florence2Cfg = Florence2Cfg()
     demo: DemoDetectorCfg = DemoDetectorCfg()
+
+    def keep(self, label: str, score: float) -> bool:
+        return score >= self.min_score_per_class.get(label, self.min_score)
 
 
 class ConfidenceCfg(BaseModel):
@@ -118,6 +138,8 @@ class PropagationCfg(BaseModel):
     hop_decay: float = 0.99
     flag_below: float = 0.6
     stop_below: float = 0.15
+    # Track không khớp detection ở chính keyframe đích (đang "trôi" theo vận tốc) có được ghi ra không
+    emit_coasting: bool = False
     max_keyframes: int = 20
     class_differs_score: float = 0.5
 

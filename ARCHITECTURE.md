@@ -96,13 +96,15 @@ lan truyền, so với GT cùng `instance_token` ở các keyframe sau (tỉ l�
 | Decision | Choice | Reason |
 |---|---|---|
 | Loader dữ liệu | Tự viết, chỉ numpy | nuscenes-devkit kéo nhiều dependency, pipeline chỉ cần vài bảng |
-| Detector mặc định | YOLO-World | Nhanh đủ để chạy cả sweep (5 ảnh/frame) trên GPU 6GB |
+| Detector mặc định | YOLOE-26-L (trước đây YOLO-World-L) | Open-vocab, nhận được barrier/cone; trên 2 scene trainval ngẫu nhiên mAP@0.5 0.45 so với 0.31 (YOLO-World từ vựng COCO) và 0.40 (YOLO26), lan truyền 50/52 đúng — `eval/compare_detectors.ipynb` |
 | Grounding DINO | bản open-weight tiny | Bản 1.5 Edge chỉ có qua API |
 | QA Agent | LangGraph, deterministic | Cần chạy trong batch và test; không có câu hỏi mở nào cần LLM |
 | Lưu trữ | File JSON + JSONL | 404 frame, 1 người duyệt; không cần DB cho demo, dễ diff/export |
 | UI | HTML/JS thuần do FastAPI phục vụ | Không cần build step, 1 lệnh là chạy |
 | GT 2D | Hộp bao 8 đỉnh box 3D chiếu xuống | nuScenes không có box 2D gốc; báo cáo AP@0.5 là chính |
 | Lan truyền 2D | Track qua sweep 12Hz bằng detection đã cache | Keyframe 2Hz quá thưa để khớp trực tiếp; không cần model mới (SAM2 video tốn GPU); `track_id` để gắn 3D sau |
+| Box lan truyền không có detection đỡ | Không ghi ra (`emit_coasting: false`), track vẫn chạy | Chỉ ~17% box thuần dự đoán đúng; ghi ra làm người phải xoá nhiều hơn công lan truyền tiết kiệm — `eval/review_simulation.ipynb` |
+| Ngưỡng giữ box | `min_score: 0.30` sau fusion | Precision 0.34 → 0.51, box bị gắn cờ 260 → 88 trên 40 keyframe, không cần train — `eval/precision_tuning.ipynb` |
 | Video tải lên | Cắt thành frame + keyframe giống nuScenes | Dùng lại nguyên pipeline, QA Agent, review và lan truyền; không cần code riêng cho video |
 | Xử lý video tải lên | `BackgroundTasks` trong process FastAPI | Đủ cho 1 người duyệt / demo; nhiều người thì chuyển sang hàng đợi job (RQ/Celery) |
 | Demo không GPU | Video tổng hợp + detector theo màu (`detectors/demo.py`) | Chạy được trên máy bất kỳ, có sẵn các tình huống lỗi để trình diễn QA và lan truyền |

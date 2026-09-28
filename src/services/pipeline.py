@@ -121,7 +121,9 @@ def label_keyframe(
     images = [(image.sd_token, image_file(image.path))] + [
         (sweeps[o].sd_token, image_file(sweeps[o].path)) for o in offsets
     ]
-    detections = ensemble.detect_batch(images)
+    det_cfg = config.detection
+    # Ngưỡng giữ box áp cho cả keyframe lẫn sweep để check temporal/tracking nhất quán với box người thấy
+    detections = [[d for d in dets if det_cfg.keep(d.label, d.score)] for dets in ensemble.detect_batch(images)]
     key_dets = detections[0]
     sweep_dets = dict(zip(offsets, detections[1:], strict=True))
 

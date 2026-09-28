@@ -19,6 +19,14 @@ def build_detector(name: str, config: AutoLabelConfig) -> Detector:
         from src.services.detectors.yolo_world import YoloWorldDetector
 
         return YoloWorldDetector(config)
+    if name == "yoloe":
+        from src.services.detectors.yoloe import YoloeDetector
+
+        return YoloeDetector(config)
+    if name == "yolo26":
+        from src.services.detectors.yolo26 import Yolo26Detector
+
+        return Yolo26Detector(config)
     if name == "grounding_dino":
         from src.services.detectors.grounding_dino import GroundingDinoDetector
 
