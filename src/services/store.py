@@ -6,11 +6,13 @@ import json
 import os
 import re
 import threading
+import time
 from pathlib import Path
 
-from src.models.schemas import FrameRecord
+from src.models.schemas import FrameRecord, VideoRecord
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_\-]+$")
+WORKSPACE_PREFIX = "@workspace/"
 
 
 class WorkspaceStore:
@@ -19,6 +21,7 @@ class WorkspaceStore:
         self.frames_dir = self.root / "frames"
         self.corrections_file = self.root / "corrections.jsonl"
         self.exports_dir = self.root / "exports"
+        self.videos_dir = self.root / "videos"
         self._lock = threading.Lock()
         self._cache: dict[str, tuple[tuple[int, int], FrameRecord]] = {}
 
@@ -32,7 +35,15 @@ class WorkspaceStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(path.suffix + ".tmp")
         tmp.write_text(data if isinstance(data, str) else json.dumps(data, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, path)
+        for attempt in range(10):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError:
+                # Windows: không thay được file khi có request khác đang đọc nó (UI hỏi tiến độ) -> đợi rồi thử lại
+                if attempt == 9:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
 
     # ---- frame ----
 
@@ -82,6 +93,35 @@ class WorkspaceStore:
     def load_aux(self, kind: str, frame_id: str):
         path = self.root / kind / f"{self.check_id(frame_id)}.json"
         return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+
+    # ---- video tải lên ----
+    # videos/<id>.json là record; videos/<id>/ chứa file gốc và frame đã cắt
+
+    def video_dir(self, video_id: str) -> Path:
+        return self.videos_dir / self.check_id(video_id)
+
+    def save_video(self, video: VideoRecord) -> None:
+        with self._lock:
+            self._write_json(self.videos_dir / f"{self.check_id(video.video_id)}.json", video.model_dump_json())
+
+    def load_video(self, video_id: str) -> VideoRecord | None:
+        try:
+            path = self.videos_dir / f"{self.check_id(video_id)}.json"
+        except ValueError:
+            return None
+        return VideoRecord.model_validate_json(path.read_text(encoding="utf-8")) if path.exists() else None
+
+    def list_videos(self) -> list[VideoRecord]:
+        if not self.videos_dir.is_dir():
+            return []
+        return [
+            VideoRecord.model_validate_json(p.read_text(encoding="utf-8"))
+            for p in sorted(self.videos_dir.glob("*.json"))
+        ]
+
+    def resolve(self, path: str) -> Path:
+        """Đường dẫn ảnh của frame video tải lên được lưu dạng '@workspace/...' (tương đối so với workspace)."""
+        return self.root / path.removeprefix(WORKSPACE_PREFIX)
 
     # ---- correction log ----
 

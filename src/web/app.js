@@ -28,6 +28,17 @@ const S = {
   drag: null,
   timers: {},
   timerStart: null,
+  autoProp: true,
+  viewMode: 'image', // image | video
+  videos: [],
+  video: null, // VideoDetail đang mở
+  playTimer: null,
+  videoPoll: null,
+  uploads: new Set(), // video vừa tải lên, đang chờ auto-label xong để báo
+  zoom: 1, // 1 = vừa khung; phóng to tới 8x
+  dragging: false, // đang kéo thẻ frame từ timeline
+  timelineStale: false,
+  scrolledTo: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -84,6 +95,13 @@ function loadImage(src) {
 }
 
 function levelOf(o) { return o.qa?.level || 'low'; }
+const isProp = (o) => o.source === 'propagated';
+const isAutoDeleted = (o) => o.review.action === 'PROPAGATED_DELETE';
+/* Nhãn lan truyền hiện c_prop thay cho score detector */
+function scoreText(o) {
+  if (o.source === 'human') return 'người vẽ';
+  return isProp(o) ? `↦ c ${fx(o.propagation.prop_conf)}` : fx(o.score);
+}
 function finalBox(o) { return o.review.final_bbox || o.bbox; }
 function finalLabel(o) { return o.review.final_label || o.label; }
 
@@ -118,7 +136,7 @@ function renderQueue() {
     const lv = riskLevel(f.frame_risk);
     const statusText = { auto: 'Chưa mở', editing: 'Đang sửa', approved: 'Đã duyệt' }[f.status];
     return `<li class="queue-item ${S.frame?.frame_id === f.frame_id ? 'active' : ''}" data-id="${esc(f.frame_id)}">
-      <div class="qi-top"><span class="qi-id">${esc(f.frame_id)}</span><span class="status-pill ${f.status}">${statusText}</span></div>
+      <div class="qi-top"><span class="qi-id">${esc(f.frame_id)}</span>${f.propagated_from && f.status === 'auto' ? `<span class="prop-tag" title="Nhãn lan truyền từ ${esc(f.propagated_from)}">↦</span>` : ''}<span class="status-pill ${f.status}">${statusText}</span></div>
       <div class="risk-meter" title="Frame risk ${fx(f.frame_risk)} (${LEVEL_NAME[lv]})"><span style="width:${Math.max(4, f.frame_risk * 100)}%;background:${RISK_COLOR[lv]}"></span></div>
       <div class="qi-meta">
         <span class="lv" title="High"><span class="dot high"></span>${f.counts.high}</span>
@@ -142,7 +160,8 @@ function elapsed() {
   return (S.timers[S.frame.frame_id] || 0) + (S.timerStart ? (Date.now() - S.timerStart) / 1000 : 0);
 }
 
-async function openFrame(id) {
+async function openFrame(id, { preview = false } = {}) {
+  if (!preview) stopPlay();
   stopTimer();
   const frame = await api(`/frames/${encodeURIComponent(id)}`);
   S.frame = frame;
@@ -153,9 +172,10 @@ async function openFrame(id) {
   S.mode = 'view';
   S.editBox = null;
   S.selected = orderedObjects()[0]?.object_id || null;
-  if (frame.status !== 'approved') S.timerStart = Date.now();
+  if (frame.status !== 'approved' && !preview) S.timerStart = Date.now();
   $('empty-state').classList.add('hidden');
   renderAll();
+  highlightTimeline();
   const img = await loadImage(`${API}/frames/${encodeURIComponent(id)}/image`);
   if (S.frame?.frame_id !== id) return; // người dùng đã chuyển sang frame khác
   S.img = img;
@@ -197,7 +217,14 @@ function renderHeader() {
   const pill = $('frame-status');
   pill.className = 'status-pill ' + (f?.status || '');
   pill.textContent = f ? { auto: 'Chưa mở', editing: 'Đang sửa', approved: 'Đã duyệt' }[f.status] : '';
-  $('frame-detectors').textContent = f ? `Detector: ${f.detectors.join(' + ')}` : '';
+  let where = '';
+  if (f && S.viewMode === 'video' && S.video) {
+    const i = S.video.frames.findIndex((x) => x.frame_id === f.frame_id);
+    if (i >= 0) where = ` · frame ${i + 1}/${S.video.frames.length} · t=${S.video.frames[i].t.toFixed(1)}s`;
+  }
+  $('frame-detectors').textContent = f
+    ? `Detector: ${f.detectors.join(' + ')}${where}${f.propagated_from ? ` · ↦ lan truyền từ ${frameRef(f.propagated_from)}` : ''}`
+    : '';
 }
 
 // ---------- canvas ----------
@@ -208,10 +235,39 @@ function fitCanvas() {
   canvas.width = W;
   canvas.height = H;
   const wrap = $('canvas-wrap');
-  const scale = Math.min(wrap.clientWidth / W, wrap.clientHeight / H);
+  const scale = Math.min(wrap.clientWidth / W, wrap.clientHeight / H) * S.zoom;
   canvas.style.width = `${Math.floor(W * scale)}px`;
   canvas.style.height = `${Math.floor(H * scale)}px`;
+  $('canvas-scroll').classList.toggle('zoomed', S.zoom > 1);
+  $('btn-zoom-reset').textContent = `${Math.round(S.zoom * 100)}%`;
 }
+
+// ---------- zoom ----------
+
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 8;
+
+// Đổi mức zoom, giữ nguyên điểm ảnh dưới (cx, cy) — toạ độ màn hình; mặc định là tâm khung
+function setZoom(z, cx, cy) {
+  const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100));
+  if (next === S.zoom) return;
+  const box = $('canvas-scroll');
+  const view = box.getBoundingClientRect();
+  if (cx === undefined) { cx = view.left + view.width / 2; cy = view.top + view.height / 2; }
+  const r = canvas.getBoundingClientRect();
+  const fx = (cx - r.left) / r.width;
+  const fy = (cy - r.top) / r.height;
+  S.zoom = next;
+  fitCanvas();
+  draw();
+  const r2 = canvas.getBoundingClientRect();
+  // vị trí canvas trong vùng cuộn (margin auto khi canvas nhỏ hơn khung ở một chiều)
+  const offX = r2.left - view.left + box.scrollLeft;
+  const offY = r2.top - view.top + box.scrollTop;
+  box.scrollLeft = offX + fx * r2.width - (cx - view.left);
+  box.scrollTop = offY + fy * r2.height - (cy - view.top);
+}
+const zoomBy = (factor, cx, cy) => setZoom(S.zoom * factor, cx, cy);
 const px = () => canvas.width / (canvas.getBoundingClientRect().width || canvas.width);
 
 function toImg(e) {
@@ -287,13 +343,13 @@ function draw() {
     if (sel && S.mode === 'edit') continue;
     const color = o.source === 'human' ? HUMAN_COLOR : RISK_COLOR[lv];
     // Nhãn đầy đủ chỉ cho box đang chọn / high / người vẽ; medium chỉ hiện #id để ảnh không bị che kín
-    const full = `${pending ? '' : '✓ '}#${o.object_id} ${finalLabel(o)}${o.source === 'human' ? '' : ' ' + fx(o.score)}`;
+    const full = `${pending ? '' : '✓ '}#${o.object_id} ${finalLabel(o)}${o.source === 'human' ? '' : ' ' + scoreText(o)}`;
     let tag = null;
     if (sel || o.source === 'human' || (pending && lv === 'high')) tag = full;
     else if (pending && lv === 'medium') tag = `#${o.object_id}`;
     drawBox(finalBox(o), color, {
       lw: sel ? 3.5 : pending ? 2 : 1.4,
-      dash: o.source === 'track' ? [8, 5] : null,
+      dash: o.source === 'track' ? [8, 5] : isProp(o) && !o.propagation.matched ? [3, 3] : null,
       label: tag,
       alpha: sel || S.selected == null ? 1 : 0.85,
     });
@@ -356,7 +412,35 @@ canvas.addEventListener('mousedown', (e) => {
   }
   const o = hitObject(x, y);
   if (o) select(o.object_id);
+  else if (S.zoom > 1) {
+    // Kéo vùng trống để di chuyển ảnh khi đang phóng to
+    const box = $('canvas-scroll');
+    S.pan = { x: e.clientX, y: e.clientY, left: box.scrollLeft, top: box.scrollTop };
+    box.classList.add('panning');
+  }
 });
+
+window.addEventListener('mousemove', (e) => {
+  if (!S.pan) return;
+  const box = $('canvas-scroll');
+  box.scrollLeft = S.pan.left - (e.clientX - S.pan.x);
+  box.scrollTop = S.pan.top - (e.clientY - S.pan.y);
+});
+window.addEventListener('mouseup', () => {
+  if (!S.pan) return;
+  S.pan = null;
+  $('canvas-scroll').classList.remove('panning');
+});
+
+// Lăn chuột trên ảnh = phóng to/thu nhỏ quanh con trỏ
+$('canvas-scroll').addEventListener('wheel', (e) => {
+  if (!S.frame) return;
+  e.preventDefault();
+  zoomBy(e.deltaY < 0 ? 1.25 : 0.8, e.clientX, e.clientY);
+}, { passive: false });
+$('btn-zoom-in').addEventListener('click', () => zoomBy(1.5));
+$('btn-zoom-out').addEventListener('click', () => zoomBy(1 / 1.5));
+$('btn-zoom-reset').addEventListener('click', () => setZoom(1));
 
 window.addEventListener('mousemove', (e) => {
   if (!S.drag) return;
@@ -459,7 +543,7 @@ async function act(body) {
       advanceFrom(body.object_id, prevOrder);
     }
     renderAll();
-    loadQueue();
+    refreshLists();
   } catch (err) {
     toast(err.message, true);
   }
@@ -479,7 +563,7 @@ async function approveLow() {
     S.frame = await api(`/frames/${encodeURIComponent(S.frame.frame_id)}/approve-low-risk`, { method: 'POST', body: { reviewer: reviewer() } });
     S.selected = orderedObjects().find((o) => o.review.status === 'pending')?.object_id || S.selected;
     renderAll();
-    loadQueue();
+    refreshLists();
     toast('Đã duyệt nhóm rủi ro thấp');
   } catch (err) {
     toast(err.message, true);
@@ -496,19 +580,49 @@ async function approveFrame() {
     });
     stopTimer();
     toast(`Đã approve ${S.frame.frame_id} (${fmtTime(t)})`);
+    const cur = S.frame;
+    if (S.viewMode === 'video') {
+      // Video: lan truyền sang các frame sau rồi mở frame kế tiếp (nơi vừa nhận nhãn lan truyền)
+      if (S.autoProp) await propagate(cur.frame_id);
+      await refreshVideo();
+      const frames = S.video?.frames || [];
+      const i = frames.findIndex((f) => f.frame_id === cur.frame_id);
+      const next = frames.slice(i + 1).find((f) => f.status !== 'approved') || frames.find((f) => f.status !== 'approved');
+      if (next) openFrame(next.frame_id); else renderAll();
+      return;
+    }
     await loadQueue();
-    const next = S.queue.find((f) => f.status !== 'approved' && f.frame_id !== S.frame.frame_id);
+    const next = S.queue.find((f) => f.status !== 'approved' && f.frame_id !== cur.frame_id);
     if (next) openFrame(next.frame_id); else renderAll();
   } catch (err) {
     toast(err.message, true);
   }
 }
 
+async function propagate(frameId) {
+  try {
+    const r = await api(`/frames/${encodeURIComponent(frameId)}/propagate`, { method: 'POST', body: {} });
+    const n = r.frames_updated.length;
+    const extra = r.objects_suppressed ? `, tự xoá ${r.objects_suppressed} box người đã xoá` : '';
+    toast(n ? `Lan truyền sang ${n} frame (${r.objects_propagated} nhãn${extra}). ${r.stop_reason || ''}` : `Không lan truyền: ${r.stop_reason || 'không có frame phù hợp'}`);
+    return r;
+  } catch (err) {
+    toast('Lan truyền lỗi: ' + err.message, true);
+    return null;
+  }
+}
+
+async function propagateCurrent() {
+  if (S.viewMode !== 'video' || !S.frame || S.frame.status !== 'approved') return;
+  await propagate(S.frame.frame_id);
+  await refreshVideo();
+}
+
 async function reopenFrame() {
   S.frame = await api(`/frames/${encodeURIComponent(S.frame.frame_id)}/reopen`, { method: 'POST' });
   S.timerStart = Date.now();
   renderAll();
-  loadQueue();
+  refreshLists();
 }
 
 function select(id) {
@@ -535,14 +649,20 @@ function objectCard(o) {
   const tmp = o.qa?.temporal || {};
   const locked = S.frame.status === 'approved';
   const done = o.review.status !== 'pending';
-  const srcNote = o.source === 'track' ? ' · box nội suy' : o.source === 'human' ? ' · người vẽ' : '';
+  const pr = o.propagation;
+  const srcNote = o.source === 'track' ? ' · box nội suy' : o.source === 'human' ? ' · người vẽ' : isProp(o) ? ` · ↦ từ ${esc(frameRef(pr.keyframe_id))}` : '';
   const facts = [];
-  if (o.source !== 'human') facts.push(`score ${fx(o.score)}`);
+  if (isProp(o)) {
+    facts.push(`c_prop ${fx(pr.prop_conf)}`);
+    facts.push(pr.matched ? `detector: ${esc(pr.detector_label)} ${fx(pr.detector_score)}` : 'detector không thấy, box dự đoán');
+  } else if (o.source !== 'human') facts.push(`score ${fx(o.score)}`);
   if (lid.available) facts.push(`${lid.n_points ?? 0} điểm LiDAR${lid.depth_m != null ? ` · ${fx(lid.depth_m, 1)} m` : ''}${lid.est_height_m != null ? ` · cao ~${fx(lid.est_height_m, 1)} m` : ''}`);
   if (tmp.available) facts.push(`sweep ${tmp.support}/${tmp.available}`);
-  const status = done
-    ? `<span class="done-tag ${o.review.status}">${o.review.status === 'deleted' ? '✗ Đã xoá' : `✓ ${o.review.action}${o.review.final_label !== o.label ? ' → ' + esc(o.review.final_label) : ''}`}</span>`
-    : '';
+  const status = !done
+    ? ''
+    : isAutoDeleted(o)
+      ? `<span class="done-tag deleted" title="Người đã xoá object này ở ${esc(pr?.keyframe_id)}. Bấm Keep nếu đây là object thật.">✗ Tự xoá theo ${esc(frameRef(pr?.keyframe_id))}</span>`
+      : `<span class="done-tag ${o.review.status}">${o.review.status === 'deleted' ? '✗ Đã xoá' : `✓ ${o.review.action}${o.review.final_label !== o.label ? ' → ' + esc(o.review.final_label) : ''}`}</span>`;
   return `<div class="obj-card ${lv} ${o.object_id === S.selected ? 'selected' : ''}" data-oid="${esc(o.object_id)}">
     <div class="oc-body">
       <canvas class="oc-crop" width="192" height="144" data-crop="${esc(o.object_id)}"></canvas>
@@ -567,10 +687,12 @@ function objectCard(o) {
 function compactRow(o) {
   const done = o.review.status !== 'pending';
   const tag = done
-    ? `<span class="done-tag ${o.review.status}">${o.review.status === 'deleted' ? '✗ xoá' : '✓ ' + o.review.action.toLowerCase().replace('_', ' ')}</span>`
+    ? isAutoDeleted(o)
+      ? '<span class="done-tag deleted">✗ tự xoá</span>'
+      : `<span class="done-tag ${o.review.status}">${o.review.status === 'deleted' ? '✗ xoá' : '✓ ' + o.review.action.toLowerCase().replace('_', ' ')}</span>`
     : `<span class="muted">risk ${fx(o.qa?.risk)}</span>`;
   return `<div class="low-row ${o.object_id === S.selected ? 'selected' : ''}" data-oid="${esc(o.object_id)}">
-    <span><span class="dot ${levelOf(o)}"></span> #${esc(o.object_id)} ${esc(finalLabel(o))} <span class="muted">${o.source === 'human' ? 'người vẽ' : fx(o.score)}</span></span>${tag}</div>`;
+    <span><span class="dot ${levelOf(o)}"></span> #${esc(o.object_id)} ${esc(finalLabel(o))} <span class="muted">${scoreText(o)}</span></span>${tag}</div>`;
 }
 
 function renderPanel() {
@@ -620,6 +742,7 @@ function renderPanel() {
     btn.onclick = approveFrame;
   }
   $('btn-add').disabled = !f || locked;
+  $('btn-propagate').disabled = !locked || S.viewMode !== 'video';
   drawCrops();
 }
 
@@ -643,7 +766,7 @@ function drawCrops() {
     cc.drawImage(S.img, sx, sy, sw, sh, ox, oy, sw * s, sh * s);
     cc.strokeStyle = o.source === 'human' ? HUMAN_COLOR : RISK_COLOR[levelOf(o)];
     cc.lineWidth = 3;
-    if (o.source === 'track') cc.setLineDash([6, 4]);
+    if (o.source === 'track' || (isProp(o) && !o.propagation.matched)) cc.setLineDash([6, 4]);
     cc.strokeRect(ox + (x1 - sx) * s, oy + (y1 - sy) * s, (x2 - x1) * s, (y2 - y1) * s);
   });
 }
@@ -715,6 +838,247 @@ $('filmstrip').addEventListener('click', (e) => {
   renderFilmstrip();
 });
 
+// ---------- chế độ Ảnh / Video ----------
+
+function refreshLists() {
+  return S.viewMode === 'video' ? refreshVideo() : loadQueue();
+}
+
+async function setMode(mode) {
+  stopPlay();
+  S.viewMode = mode;
+  storageSet('viewMode', mode);
+  document.querySelectorAll('.mode').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
+  const video = mode === 'video';
+  $('queue-panel').classList.toggle('hidden', video);
+  $('video-panel').classList.toggle('hidden', !video);
+  $('video-controls').classList.toggle('hidden', !video);
+  $('timeline-panel').classList.toggle('hidden', !video);
+  $('filmstrip-head').classList.toggle('hidden', video);
+  $('filmstrip').classList.toggle('hidden', video);
+  fitCanvas();
+  if (video) {
+    await loadVideos();
+    const want = S.video?.video_id || storageGet('videoId', '');
+    const pick = S.videos.find((v) => v.video_id === want && v.n_frames) || S.videos.find((v) => v.n_frames);
+    if (pick) await openVideo(pick.video_id);
+    else { S.video = null; renderTimeline(); }
+  } else {
+    await loadQueue();
+    if (!S.frame && S.queue.length) await openFrame(S.queue[0].frame_id);
+  }
+  renderAll();
+}
+
+async function loadVideos() {
+  S.videos = await api('/videos');
+  renderVideoList();
+  for (const id of [...S.uploads]) {
+    const v = S.videos.find((x) => x.video_id === id);
+    if (v?.status === 'processing') continue;
+    S.uploads.delete(id);
+    if (v?.status === 'ready') {
+      toast(`${v.name} đã auto-label xong (${v.n_frames} frame) — bấm vào video bên trái để duyệt`);
+      if (S.viewMode === 'video' && !S.video) await openVideo(id);
+    } else if (v) toast(`${v.name} lỗi: ${v.message || ''}`, true);
+  }
+  clearTimeout(S.videoPoll);
+  // Video tải lên đang auto-label: hỏi lại tiến độ
+  if (S.videos.some((v) => v.status === 'processing')) {
+    S.videoPoll = setTimeout(async () => {
+      const before = S.video?.video_id;
+      await loadVideos();
+      if (S.viewMode === 'video' && before && S.videos.find((v) => v.video_id === before)) await refreshVideo();
+    }, 1500);
+  }
+}
+
+function renderVideoList() {
+  $('video-list').innerHTML = S.videos.map((v) => {
+    const pct = v.n_frames ? Math.round((v.approved / v.n_frames) * 100) : 0;
+    const state = v.status === 'processing'
+      ? `Đang xử lý ${Math.round(v.progress * 100)}%`
+      : v.status === 'error' ? 'Lỗi' : `${v.approved}/${v.n_frames} frame đã duyệt`;
+    return `<li class="queue-item video-item ${S.video?.video_id === v.video_id ? 'active' : ''}" data-video="${esc(v.video_id)}">
+      <div class="qi-top"><span class="vi-name" title="${esc(v.video_id)}">${esc(v.name)}</span><span class="vi-src ${v.source}">${v.source === 'upload' ? 'mp4' : 'nuScenes'}</span></div>
+      <div class="risk-meter"><span style="width:${v.status === 'processing' ? Math.round(v.progress * 100) : Math.max(3, pct)}%;background:${v.status === 'processing' ? 'var(--accent)' : 'var(--low)'}"></span></div>
+      <div class="qi-meta"><span>${state}</span><span style="margin-left:auto">${v.duration_s.toFixed(1)} s</span></div>
+      ${v.propagated ? `<div class="qi-meta"><span class="prop-tag">↦ ${v.propagated} frame lan truyền</span></div>` : ''}
+      ${v.status === 'error' ? `<div class="vi-err">${esc(v.message || '')}</div>` : ''}
+    </li>`;
+  }).join('') || '<li class="muted panel-note">Chưa có video. Chạy auto-label một scene nuScenes hoặc tải lên mp4.</li>';
+}
+
+async function openVideo(id) {
+  stopPlay();
+  // Mở lại đúng video đang xem thì giữ frame hiện tại; mở video khác (hoặc lần đầu vào chế độ Video) thì nhảy tới
+  // frame đầu tiên chưa duyệt — chỗ bắt đầu gán nhãn / lan truyền
+  const same = S.video?.video_id === id;
+  S.video = await api(`/videos/${encodeURIComponent(id)}`);
+  S.scrolledTo = null; // vẽ timeline mới: cuộn tới frame đang mở
+  storageSet('videoId', id);
+  renderVideoList();
+  renderTimeline();
+  const frames = S.video.frames;
+  const inVideo = same && frames.some((f) => f.frame_id === S.frame?.frame_id);
+  if (!inVideo && frames.length) {
+    const start = frames.find((f) => f.status !== 'approved') || frames[0];
+    await openFrame(start.frame_id);
+  }
+}
+
+async function refreshVideo() {
+  if (!S.video) return;
+  S.video = await api(`/videos/${encodeURIComponent(S.video.video_id)}`);
+  const i = S.videos.findIndex((v) => v.video_id === S.video.video_id);
+  if (i >= 0) S.videos[i] = S.video;
+  renderVideoList();
+  renderTimeline();
+}
+
+function frameRef(id) {
+  // Trong chế độ Video, gọi frame theo vị trí trên timeline cho dễ đọc; ngoài ra dùng frame_id
+  const i = S.viewMode === 'video' ? (S.video?.frames || []).findIndex((f) => f.frame_id === id) : -1;
+  return i >= 0 ? `frame #${i + 1} (${S.video.frames[i].t.toFixed(1)}s)` : id;
+}
+
+function renderTimeline() {
+  // Đang kéo một thẻ thì không vẽ lại (thẻ bị thay giữa chừng sẽ làm hỏng thao tác kéo); vẽ sau khi thả
+  if (S.dragging) { S.timelineStale = true; return; }
+  const v = S.video;
+  $('timeline-title').textContent = v ? v.name : 'Timeline';
+  $('timeline-meta').textContent = v ? `${v.frames.length} frame · ${v.duration_s.toFixed(1)} s · ${v.approved} đã duyệt · ${v.propagated} lan truyền` : '';
+  if (!v) { $('timeline').innerHTML = '<p class="muted">Chọn một video bên trái.</p>'; return; }
+  $('timeline').innerHTML = v.frames.map((f, i) => {
+    const lv = riskLevel(f.frame_risk);
+    const marks = [];
+    if (f.status === 'approved') marks.push('<span class="tl-mark approved" title="Người đã duyệt (keyframe cho lan truyền)">★</span>');
+    else if (f.status === 'editing') marks.push('<span class="tl-mark editing" title="Đang sửa">✎</span>');
+    if (f.propagated_from && f.status === 'auto') marks.push(`<span class="tl-mark propagated" title="Nhãn lan truyền từ ${esc(f.propagated_from)}">↦</span>`);
+    return `<div class="tl-card ${f.status}" draggable="true" data-id="${esc(f.frame_id)}" data-from="${esc(f.propagated_from || '')}" title="${esc(f.frame_id)} · ${f.pending} object chờ duyệt">
+      <div class="tl-badges">${marks.join('')}</div>
+      <img loading="lazy" src="${API}/frames/${encodeURIComponent(f.frame_id)}/image" alt="">
+      <div class="tl-risk" style="background:${f.status === 'approved' ? 'var(--low)' : RISK_COLOR[lv]}"></div>
+      <div class="tl-cap"><span>#${i + 1}</span><span>${f.t.toFixed(1)}s</span><span>${f.pending ? f.pending + ' chờ' : '✓'}</span></div>
+    </div>`;
+  }).join('');
+  highlightTimeline();
+}
+
+function highlightTimeline() {
+  if (S.viewMode !== 'video') return;
+  const id = S.frame?.frame_id;
+  let current = null;
+  document.querySelectorAll('.tl-card').forEach((c) => {
+    const on = c.dataset.id === id;
+    c.classList.toggle('current', on);
+    // Frame nhận nhãn lan truyền từ frame đang mở được gạch chân
+    c.classList.toggle('from-current', !!id && c.dataset.from === id);
+    if (on) current = c;
+  });
+  // Chỉ cuộn khi đổi frame, để timeline không giật về mỗi lần cập nhật tiến độ
+  if (current && id !== S.scrolledTo) current.scrollIntoView({ block: 'nearest', inline: 'center' });
+  S.scrolledTo = id;
+}
+
+function stepVideo(delta) {
+  const frames = S.video?.frames || [];
+  if (!frames.length) return;
+  const i = frames.findIndex((f) => f.frame_id === S.frame?.frame_id);
+  const j = Math.min(frames.length - 1, Math.max(0, i + delta));
+  if (j !== i) openFrame(frames[j].frame_id);
+}
+
+function stopPlay() {
+  const wasPlaying = !!S.playTimer;
+  if (S.playTimer) clearInterval(S.playTimer);
+  S.playTimer = null;
+  const b = $('btn-play');
+  if (b) b.textContent = '▶ Phát';
+  // Frame mở lúc phát là bản xem nhanh (không bấm giờ); dừng ở frame nào thì bắt đầu tính giờ duyệt frame đó (M1)
+  if (wasPlaying && S.frame && S.frame.status !== 'approved' && !S.timerStart) S.timerStart = Date.now();
+}
+
+function togglePlay() {
+  if (S.playTimer) { stopPlay(); return; }
+  const frames = S.video?.frames || [];
+  if (frames.length < 2) return;
+  $('btn-play').textContent = '⏸ Dừng';
+  let busy = false;
+  S.playTimer = setInterval(async () => {
+    if (busy) return;
+    const i = frames.findIndex((f) => f.frame_id === S.frame?.frame_id);
+    if (i >= frames.length - 1) { stopPlay(); return; }
+    busy = true;
+    try { await openFrame(frames[i + 1].frame_id, { preview: true }); } finally { busy = false; }
+  }, 700);
+}
+
+async function uploadVideo(file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  toast(`Đang tải lên ${file.name}…`);
+  try {
+    const res = await fetch(`${API}/videos/upload`, { method: 'POST', body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail?.message || res.statusText);
+    // Giữ nguyên video đang xem; danh sách bên trái hiện tiến độ, xong thì báo (loadVideos)
+    toast(`Đã cắt ${file.name}: auto-label đang chạy nền, xong sẽ báo`);
+    S.uploads.add(data.video_id);
+    await loadVideos();
+  } catch (err) {
+    toast('Tải lên lỗi: ' + err.message, true);
+  }
+}
+
+document.querySelectorAll('.mode').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+$('video-list').addEventListener('click', (e) => {
+  const li = e.target.closest('[data-video]');
+  if (!li) return;
+  const v = S.videos.find((x) => x.video_id === li.dataset.video);
+  if (!v?.n_frames) { toast(v?.status === 'processing' ? 'Video đang auto-label, đợi chút' : 'Video chưa có frame', !!v && v.status === 'error'); return; }
+  openVideo(li.dataset.video).catch((err) => toast(err.message, true));
+});
+$('btn-upload').addEventListener('click', () => $('upload-input').click());
+$('upload-input').addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (f) uploadVideo(f);
+});
+$('btn-prev').addEventListener('click', () => stepVideo(-1));
+$('btn-next').addEventListener('click', () => stepVideo(1));
+$('btn-play').addEventListener('click', togglePlay);
+$('timeline').addEventListener('click', (e) => {
+  const card = e.target.closest('.tl-card');
+  if (card) openFrame(card.dataset.id).catch((err) => toast(err.message, true));
+});
+// Kéo một frame từ timeline thả lên khung ảnh để mở ra chỉnh sửa như frame 2D
+$('timeline').addEventListener('dragstart', (e) => {
+  const card = e.target.closest('.tl-card');
+  if (!card) return;
+  e.dataTransfer.setData('text/x-frame-id', card.dataset.id);
+  e.dataTransfer.effectAllowed = 'copy';
+  S.dragging = true;
+  $('drop-hint').classList.remove('hidden');
+});
+function endDrag() {
+  if (!S.dragging) return;
+  S.dragging = false;
+  $('drop-hint').classList.add('hidden');
+  if (S.timelineStale) { S.timelineStale = false; renderTimeline(); }
+}
+// Bắt ở document: thẻ đang kéo có thể đã bị vẽ lại (timeline cập nhật tiến độ) nên dragend không tới #timeline
+document.addEventListener('dragend', endDrag);
+document.addEventListener('drop', endDrag);
+$('canvas-wrap').addEventListener('dragover', (e) => {
+  if (e.dataTransfer.types.includes('text/x-frame-id')) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }
+});
+$('canvas-wrap').addEventListener('drop', (e) => {
+  const id = e.dataTransfer.getData('text/x-frame-id');
+  $('drop-hint').classList.add('hidden');
+  if (id) { e.preventDefault(); openFrame(id).catch((err) => toast(err.message, true)); }
+});
+
 // ---------- correction log ----------
 
 async function loadLog() {
@@ -752,6 +1116,7 @@ async function loadMetrics() {
     ['M1 · thời gian TB/frame', m.m1_avg_review_time_s == null ? '—' : fmtTime(m.m1_avg_review_time_s), 'đo từ lúc mở tới lúc approve'],
     ['Box tracking được giữ', `${m.track_proposals.accepted}/${m.track_proposals.proposed}`, `${m.track_proposals.rejected} bị xoá`],
     ['Box người vẽ thêm', String(m.human_added_boxes), 'object model và tracking đều sót'],
+    ['Nhãn lan truyền phải sửa', pct(m.propagation.m4_correction_rate), `${m.propagation.fixed}/${m.propagation.reviewed} đã duyệt · ${m.propagation.auto_suppressed} tự xoá`],
   ];
   $('tiles').innerHTML = tiles.map(([l, v, n]) => `<div class="tile"><div class="tile-label">${l}</div><div class="tile-value">${v}</div><div class="tile-note">${n}</div></div>`).join('');
 
@@ -802,6 +1167,7 @@ function switchTab(tab) {
 document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
 function stepFrame(delta) {
+  if (S.viewMode === 'video') { stepVideo(delta); return; }
   if (!S.queue.length) return;
   const i = S.queue.findIndex((f) => f.frame_id === S.frame?.frame_id);
   const next = S.queue[(i + delta + S.queue.length) % S.queue.length];
@@ -825,6 +1191,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (!S.frame) return;
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (S.playTimer && key !== ' ') stopPlay();
 
   // Điều hướng: dùng được cả khi frame đã approve
   const nav = {
@@ -834,6 +1201,12 @@ document.addEventListener('keydown', (e) => {
     p: () => stepFrame(-1),
     l: () => $('show-lidar').click(),
     g: () => $('show-gt').click(),
+    t: propagateCurrent,
+    ' ': () => S.viewMode === 'video' && togglePlay(),
+    '+': () => zoomBy(1.5),
+    '=': () => zoomBy(1.5),
+    '-': () => zoomBy(1 / 1.5),
+    0: () => setZoom(1),
   };
   if (nav[key]) { nav[key](); e.preventDefault(); return; }
   if (S.frame.status === 'approved') return;
@@ -876,6 +1249,8 @@ $('show-gt').addEventListener('change', async (e) => { S.showGt = e.target.check
 $('show-low').addEventListener('change', (e) => { S.showLow = e.target.checked; draw(); });
 $('toggle-low').addEventListener('click', () => { S.lowOpen = !S.lowOpen; renderPanel(); });
 $('btn-approve-low').addEventListener('click', approveLow);
+$('btn-propagate').addEventListener('click', propagateCurrent);
+$('auto-prop').addEventListener('change', (e) => { S.autoProp = e.target.checked; storageSet('autoProp', S.autoProp ? '1' : '0'); });
 $('btn-add').addEventListener('click', () => (S.mode === 'add' ? cancelEdit() : startAdd()));
 $('edit-save').addEventListener('click', saveEdit);
 $('edit-cancel').addEventListener('click', cancelEdit);
@@ -890,9 +1265,10 @@ new ResizeObserver(() => { fitCanvas(); draw(); }).observe($('canvas-wrap'));
   try {
     S.cfg = await api('/config');
     $('reviewer').value = storageGet('reviewer', S.cfg.reviewer);
+    S.autoProp = storageGet('autoProp', '1') === '1';
+    $('auto-prop').checked = S.autoProp;
     $('add-class').innerHTML = classOptions('car');
-    await loadQueue();
-    if (S.queue.length) await openFrame(S.queue[0].frame_id);
+    await setMode(storageGet('viewMode', 'image') === 'video' ? 'video' : 'image');
   } catch (err) {
     toast('Không tải được dữ liệu: ' + err.message, true);
   }

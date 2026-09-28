@@ -1,3 +1,4 @@
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -6,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from src.api.routes import router
+from src.api.routes import resume_videos, router
 from src.config import get_settings
 
 WEB_DIR = Path(__file__).parent / "web"
@@ -16,6 +17,8 @@ WEB_DIR = Path(__file__).parent / "web"
 async def lifespan(app: FastAPI):
     settings = get_settings()
     print(f"Starting {settings.app_name} in {settings.app_env} mode — UI: http://localhost:{settings.app_port}/")
+    # Video tải lên còn dở (server tắt / --reload giữa lúc auto-label): làm tiếp ở luồng nền
+    threading.Thread(target=resume_videos, name="resume-videos", daemon=True).start()
     yield
     print("Shutting down...")
 
@@ -37,6 +40,18 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api/v1")
+
+
+@app.middleware("http")
+async def revalidate_ui(request, call_next):
+    # UI thay đổi thường xuyên: bắt trình duyệt hỏi lại server mỗi lần (304 nếu file không đổi),
+    # tránh chạy app.js cũ sau khi cập nhật code
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith("/ui"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 app.mount("/ui", StaticFiles(directory=WEB_DIR, html=True), name="ui")
 
 

@@ -32,6 +32,13 @@ class Florence2Cfg(BaseModel):
     default_score: float = 0.5
 
 
+class DemoDetectorCfg(BaseModel):
+    # Detector theo màu cho video demo (python -m src.demo), không cần GPU
+    tolerance: int = 48
+    min_area: int = 60
+    confident_area: int = 3500
+
+
 class DetectionCfg(BaseModel):
     detectors: list[str] = ["yolo_world"]
     score_threshold: float = 0.1
@@ -39,6 +46,7 @@ class DetectionCfg(BaseModel):
     yolo_world: YoloWorldCfg = YoloWorldCfg()
     grounding_dino: GroundingDinoCfg = GroundingDinoCfg()
     florence2: Florence2Cfg = Florence2Cfg()
+    demo: DemoDetectorCfg = DemoDetectorCfg()
 
 
 class ConfidenceCfg(BaseModel):
@@ -92,6 +100,40 @@ class QACfg(BaseModel):
     risk: RiskCfg = RiskCfg()
 
 
+class PropagationWeights(BaseModel):
+    agreement: float = 0.5
+    continuity: float = 0.3
+    lidar: float = 0.2
+
+
+class PropagationCfg(BaseModel):
+    match_iou: float = 0.3
+    suppress_iou: float = 0.5
+    smoothing: float = 0.7
+    velocity_smoothing: float = 0.5
+    max_coast_images: int = 6
+    min_visible: float = 0.3
+    min_box_px: float = 6
+    weights: PropagationWeights = PropagationWeights()
+    hop_decay: float = 0.99
+    flag_below: float = 0.6
+    stop_below: float = 0.15
+    max_keyframes: int = 20
+    class_differs_score: float = 0.5
+
+
+class VideoCfg(BaseModel):
+    # Video mp4 tải lên: cắt frame ở track_fps để tracking, cứ track_fps/label_fps frame có một keyframe để gán nhãn
+    track_fps: float = 10.0
+    label_fps: float = 2.0
+    max_seconds: float = 120.0
+    max_upload_mb: int = 500
+    # Check temporal (FLICKER, RECOVERED_BY_TRACK) chỉ dùng frame lân cận cách keyframe không quá ngần này (giây).
+    # Ngưỡng QA temporal được chỉnh cho sweep 12Hz (±167 ms); video thưa (vd. chỉ có keyframe 2 Hz) thì bỏ check
+    # thay vì báo FLICKER sai cho mọi vật đang chuyển động
+    max_sweep_gap_s: float = 0.25
+
+
 class AutoLabelConfig(BaseModel):
     camera: str = "CAM_FRONT"
     sweep_offsets: list[int] = [-2, -1, 1, 2]
@@ -99,6 +141,8 @@ class AutoLabelConfig(BaseModel):
     classes: dict[str, ClassSpec] = Field(default_factory=dict)
     gt_category_map: dict[str, str] = Field(default_factory=dict)
     qa: QACfg = QACfg()
+    propagation: PropagationCfg = PropagationCfg()
+    video: VideoCfg = VideoCfg()
 
     def prompt_to_class(self) -> dict[str, str]:
         """Map mỗi prompt văn bản về lớp nội bộ."""

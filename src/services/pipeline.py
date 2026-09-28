@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -14,7 +15,7 @@ from src.models.schemas import FrameRecord, ImageInfo, LabelObject, SweepInfo
 from src.services.detectors import DetectorEnsemble
 from src.services.nuscenes_data import CameraFrame, NuScenesMini
 from src.services.review import now_iso
-from src.services.store import WorkspaceStore
+from src.services.store import WORKSPACE_PREFIX, WorkspaceStore
 
 log = logging.getLogger(__name__)
 
@@ -62,56 +63,23 @@ class AutoLabelPipeline:
         if existing and (existing.status != "auto" or not overwrite):
             return None
 
-        offsets = sorted(frame.sweeps)
-        images = [(frame.image.sd_token, self.data.dataroot / frame.image.path)] + [
-            (frame.sweeps[o].sd_token, self.data.dataroot / frame.sweeps[o].path) for o in offsets
-        ]
-        detections = self.ensemble.detect_batch(images)
-        key_dets = detections[0]
-        sweep_dets = dict(zip(offsets, detections[1:], strict=True))
-
         uv, depth = (
             self.data.lidar_in_image(frame, self.config.qa.lidar.min_depth_m) if frame.lidar_sd_token else (None, None)
         )
-
-        objects = [
-            LabelObject(
-                object_id=str(i + 1),
-                bbox=d.bbox,
-                label=d.label,
-                score=d.score,
-                models=d.models,
-                alternatives=d.alternatives,
-            )
-            for i, d in enumerate(key_dets)
-        ]
-        state = qa_agent.invoke(
-            {
-                "config": self.config,
-                "image_size": (frame.image.width, frame.image.height),
-                "intrinsic": frame.intrinsic.tolist(),
-                "key_timestamp": frame.image.timestamp,
-                "objects": objects,
-                "sweeps": {o: {"timestamp": frame.sweeps[o].timestamp, "detections": sweep_dets[o]} for o in offsets},
-                "lidar_uv": uv,
-                "lidar_depth": depth,
-            }
-        )
-
-        record = FrameRecord(
+        record = label_keyframe(
+            self.ensemble,
+            self.config,
             frame_id=frame.frame_id,
             sample_token=sample_token,
             scene=scene,
             index=index,
             camera=frame.camera,
             image=ImageInfo(**vars(frame.image)),
+            sweeps={o: ImageInfo(**vars(ref)) for o, ref in frame.sweeps.items()},
+            image_file=lambda path: self.data.dataroot / path,
             intrinsic=frame.intrinsic.tolist(),
-            sweeps=[SweepInfo(offset=o, detections=sweep_dets[o], **vars(frame.sweeps[o])) for o in offsets],
-            detectors=self.ensemble.names,
-            has_lidar=uv is not None,
-            frame_risk=state["frame_risk"],
-            objects=state["reviewed"],
-            created_at=now_iso(),
+            uv=uv,
+            depth=depth,
         )
         self.store.save_frame(record)
         self._save_aux(frame, uv, depth)
@@ -132,10 +100,82 @@ class AutoLabelPipeline:
         self.store.save_aux("gt", frame.frame_id, self.data.gt_boxes_2d(frame, self.config.gt_category_map))
 
 
-def image_path(dataroot: str | Path, record: FrameRecord, offset: int = 0) -> Path:
+def label_keyframe(
+    ensemble: DetectorEnsemble,
+    config: AutoLabelConfig,
+    *,
+    frame_id: str,
+    sample_token: str,
+    scene: str,
+    index: int,
+    camera: str,
+    image: ImageInfo,
+    sweeps: dict[int, ImageInfo],
+    image_file: Callable[[str], Path],
+    intrinsic: list[list[float]],
+    uv: np.ndarray | None = None,
+    depth: np.ndarray | None = None,
+) -> FrameRecord:
+    """Bước 2 -> 3 cho một keyframe bất kỳ (scene nuScenes hoặc video tải lên): detect keyframe + sweep, QA Agent."""
+    offsets = sorted(sweeps)
+    images = [(image.sd_token, image_file(image.path))] + [
+        (sweeps[o].sd_token, image_file(sweeps[o].path)) for o in offsets
+    ]
+    detections = ensemble.detect_batch(images)
+    key_dets = detections[0]
+    sweep_dets = dict(zip(offsets, detections[1:], strict=True))
+
+    objects = [
+        LabelObject(
+            object_id=str(i + 1),
+            bbox=d.bbox,
+            label=d.label,
+            score=d.score,
+            models=d.models,
+            alternatives=d.alternatives,
+        )
+        for i, d in enumerate(key_dets)
+    ]
+    state = qa_agent.invoke(
+        {
+            "config": config,
+            "image_size": (image.width, image.height),
+            "intrinsic": intrinsic,
+            "key_timestamp": image.timestamp,
+            "objects": objects,
+            "sweeps": {o: {"timestamp": sweeps[o].timestamp, "detections": sweep_dets[o]} for o in offsets},
+            "lidar_uv": uv,
+            "lidar_depth": depth,
+        }
+    )
+    return FrameRecord(
+        frame_id=frame_id,
+        sample_token=sample_token,
+        scene=scene,
+        index=index,
+        camera=camera,
+        image=image,
+        intrinsic=intrinsic,
+        sweeps=[SweepInfo(offset=o, detections=sweep_dets[o], **sweeps[o].model_dump()) for o in offsets],
+        detectors=ensemble.names,
+        has_lidar=uv is not None,
+        frame_risk=state["frame_risk"],
+        objects=state["reviewed"],
+        created_at=now_iso(),
+    )
+
+
+def resolve_image(dataroot: str | Path, workspace: str | Path | None, path: str) -> Path:
+    """Ảnh nuScenes tương đối so với dataroot; frame của video tải lên có tiền tố '@workspace/'."""
+    if path.startswith(WORKSPACE_PREFIX) and workspace is not None:
+        return Path(workspace) / path.removeprefix(WORKSPACE_PREFIX)
+    return Path(dataroot) / path
+
+
+def image_path(dataroot: str | Path, record: FrameRecord, offset: int = 0, workspace: str | Path | None = None) -> Path:
     if offset == 0:
-        return Path(dataroot) / record.image.path
+        return resolve_image(dataroot, workspace, record.image.path)
     for s in record.sweeps:
         if s.offset == offset:
-            return Path(dataroot) / s.path
+            return resolve_image(dataroot, workspace, s.path)
     raise KeyError(offset)

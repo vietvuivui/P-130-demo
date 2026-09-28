@@ -6,7 +6,7 @@
   <title>AutoLabel 2D — Review</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=zoom1">
 </head>
 <body>
   <header class="topbar">
@@ -16,6 +16,10 @@
         <div class="brand-title">AutoLabel 2D</div>
         <div class="brand-sub">nuScenes CAM_FRONT · QA Agent · Review by exception</div>
       </div>
+    </div>
+    <div class="mode-switch" role="tablist" aria-label="Chế độ gán nhãn">
+      <button class="mode active" data-mode="image" role="tab" title="Gán nhãn từng frame ảnh độc lập">🖼 Ảnh</button>
+      <button class="mode" data-mode="video" role="tab" title="Gán nhãn cả video: timeline + lan truyền nhãn">🎞 Video</button>
     </div>
     <nav class="tabs" role="tablist">
       <button class="tab active" data-tab="review" role="tab">Review</button>
@@ -29,7 +33,7 @@
 
   <!-- ===== Review ===== -->
   <main id="tab-review" class="tab-panel review-layout">
-    <aside class="queue">
+    <aside class="queue" id="queue-panel">
       <div class="panel-head">
         <h2>Hàng đợi frame</h2>
         <select id="queue-sort" title="Sắp xếp">
@@ -46,6 +50,16 @@
       <ul id="queue-list" class="queue-list"></ul>
     </aside>
 
+    <aside class="queue hidden" id="video-panel">
+      <div class="panel-head">
+        <h2>Video</h2>
+        <button id="btn-upload" class="btn btn-ghost btn-sm" title="Tải lên video mp4 (cắt frame, auto-label chạy nền)">⬆ Tải lên mp4</button>
+        <input id="upload-input" type="file" accept="video/mp4,video/quicktime,video/x-msvideo,video/x-matroska,video/webm,.mp4,.mov,.avi,.mkv,.webm" hidden>
+      </div>
+      <p class="muted panel-note">Mỗi scene nuScenes là một video; video tải lên được cắt 10 fps, keyframe 2 fps.</p>
+      <ul id="video-list" class="queue-list"></ul>
+    </aside>
+
     <section class="workspace">
       <div class="toolbar">
         <div class="frame-title">
@@ -56,13 +70,19 @@
         </div>
         <div class="toolbar-actions">
           <label class="toggle"><input type="checkbox" id="show-lidar"> LiDAR <kbd>L</kbd></label>
-          <label class="toggle"><input type="checkbox" id="show-gt"> GT <kbd>G</kbd></label>
+          <label class="toggle" title="GT = nhãn gốc của nuScenes: box 3D người gán, chiếu xuống ảnh thành hình chữ nhật bao 8 đỉnh (nét đứt trắng). Box mờ không chữ = vật khó thấy (hiển thị 0–40%) hoặc không có điểm LiDAR/radar, bị bỏ qua khi đánh giá. Video tải lên không có GT."><input type="checkbox" id="show-gt"> GT <kbd>G</kbd></label>
           <label class="toggle"><input type="checkbox" id="show-low" checked> Box rủi ro thấp</label>
+          <span class="zoom-controls" title="Phóng to/thu nhỏ: lăn chuột trên ảnh, phím + / − ; phím 0 về vừa khung. Khi phóng to, kéo vùng trống để di chuyển ảnh">
+            <button id="btn-zoom-out" class="btn btn-ghost btn-sm" aria-label="Thu nhỏ">−</button>
+            <button id="btn-zoom-reset" class="btn btn-ghost btn-sm zoom-level" aria-label="Vừa khung">100%</button>
+            <button id="btn-zoom-in" class="btn btn-ghost btn-sm" aria-label="Phóng to">+</button>
+          </span>
           <button id="btn-add" class="btn btn-ghost" title="Vẽ box mới (B)">＋ Add box <kbd>B</kbd></button>
         </div>
       </div>
       <div class="canvas-wrap" id="canvas-wrap">
-        <canvas id="canvas"></canvas>
+        <div id="drop-hint" class="drop-hint hidden">Thả frame vào đây để chỉnh sửa</div>
+        <div id="canvas-scroll" class="canvas-scroll"><canvas id="canvas"></canvas></div>
         <div id="edit-bar" class="edit-bar hidden">
           <span id="edit-hint">Kéo góc/cạnh để sửa box</span>
           <select id="add-class" class="hidden"></select>
@@ -74,7 +94,27 @@
           <code>python -m src.cli run --limit 20</code>
         </div>
       </div>
-      <div class="filmstrip-head">
+      <section id="timeline-panel" class="timeline-panel hidden">
+        <div class="timeline-head">
+          <strong id="timeline-title">Timeline</strong>
+          <span class="muted" id="timeline-meta"></span>
+          <span id="video-controls" class="video-controls">
+            <button id="btn-prev" class="btn btn-ghost btn-sm" title="Frame trước (P)">◀</button>
+            <button id="btn-play" class="btn btn-ghost btn-sm" title="Phát / dừng xem nhanh cả video (Space)">▶ Phát</button>
+            <button id="btn-next" class="btn btn-ghost btn-sm" title="Frame sau (N)">▶|</button>
+            <label class="toggle" title="Sau khi approve, mang nhãn của frame này sang các frame sau của video"><input type="checkbox" id="auto-prop" checked> Lan truyền khi approve</label>
+            <button id="btn-propagate" class="btn btn-ghost btn-sm" title="Lan truyền nhãn đã duyệt sang các frame sau (T)" disabled>↦ Lan truyền <kbd>T</kbd></button>
+          </span>
+        </div>
+        <div class="timeline" id="timeline"></div>
+        <div class="timeline-legend">
+          <span><span class="tl-mark approved">★</span> người đã duyệt</span>
+          <span><span class="tl-mark propagated">↦</span> nhãn lan truyền (chưa ai mở)</span>
+          <span><span class="tl-mark editing">✎</span> đang sửa</span>
+          <span class="muted">Bấm vào frame, hoặc kéo frame thả lên khung ảnh, để chỉnh như ảnh 2D</span>
+        </div>
+      </section>
+      <div class="filmstrip-head" id="filmstrip-head">
         <span>Temporal consistency</span>
         <span class="muted" id="film-caption">Chọn một object để xem track qua các sweep</span>
       </div>
@@ -112,7 +152,7 @@
           <button id="btn-approve-frame" class="btn btn-primary">Approve frame <kbd>Enter</kbd></button>
         </div>
         <div class="shortcuts">
-          <kbd>↑</kbd><kbd>↓</kbd> chọn object · <kbd>K</kbd> keep · <kbd>D</kbd> delete · <kbd>C</kbd> đổi lớp · <kbd>E</kbd> sửa box · <kbd>N</kbd>/<kbd>P</kbd> frame kế
+          <kbd>↑</kbd><kbd>↓</kbd> chọn object · <kbd>K</kbd> keep · <kbd>D</kbd> delete · <kbd>C</kbd> đổi lớp · <kbd>E</kbd> sửa box · <kbd>T</kbd> lan truyền · <kbd>Space</kbd> phát video · <kbd>N</kbd>/<kbd>P</kbd> frame kế · lăn chuột, <kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>0</kbd> vừa khung
         </div>
       </div>
     </aside>
@@ -171,6 +211,6 @@
   </main>
 
   <div id="toast" class="toast hidden" role="status"></div>
-  <script src="app.js"></script>
+  <script src="app.js?v=zoom1"></script>
 </body>
 </html>

@@ -19,6 +19,27 @@ Sơ đồ: [docs/architecture_diagram.md](docs/architecture_diagram.md).
 5. `uvicorn src.main:app` phục vụ API + UI. Người duyệt; mỗi thao tác ghi `corrections.jsonl`.
 6. `POST /api/v1/export` ghi dataset vào `data/workspace/exports/<id>/`.
 
+Video mp4 tải lên (`POST /api/v1/videos/upload`, `src/services/video.py`) đi cùng đường, chỉ khác bước 1:
+
+1. OpenCV cắt frame ở `video.track_fps` (10 fps) vào `data/workspace/videos/<video_id>/frames/`; cứ
+   `track_fps / label_fps` frame (mặc định 5) là một keyframe. Record `videos/<video_id>.json` giữ timeline, đóng
+   vai `sample_data` next-chain của nuScenes. Đường dẫn ảnh ghi dạng `@workspace/videos/...`.
+2. Bước 2–4 chạy nền (FastAPI `BackgroundTasks`) bằng `pipeline.label_keyframe`, hàm dùng chung với nuScenes:
+   sweep = các frame t±1, t±2 quanh keyframe; không có LiDAR nên check LiDAR tự bỏ qua; intrinsic danh nghĩa
+   (tiêu cự = chiều rộng ảnh).
+3. Frame ID `<video_id>_NNN`, `scene = video_id`: UI và lan truyền coi mỗi video như một scene.
+
+## UI: hai chế độ
+
+| | 🖼 Ảnh | 🎞 Video |
+|---|---|---|
+| Danh sách trái | Hàng đợi frame theo risk (MVP) | Video: scene nuScenes (suy từ frame) + mp4 tải lên (`GET /videos`) |
+| Dưới khung ảnh | Dải temporal t-2 … t+2 | Timeline của video (`GET /videos/{id}`): kéo thẻ thả lên khung ảnh để mở |
+| Approve xong | Mở frame rủi ro cao nhất tiếp theo | Lan truyền (nếu bật) rồi mở frame kế tiếp chưa duyệt của video |
+| Lan truyền | Không | Tự chạy khi approve, hoặc nút ↦ / phím `T` |
+
+Khung chỉnh sửa (canvas + panel risk) là một, dùng chung cho cả hai chế độ.
+
 ## QA Agent
 
 | Check | Issue code | Cách tính |
@@ -37,6 +58,39 @@ trọng số chuẩn hoá về tổng 1. Object có bất kỳ issue nào bị n
 lọt vào nhóm duyệt theo lô. Nhóm: low < 0.30 ≤ medium < 0.60 ≤ high. Mọi ngưỡng ở
 `configs/autolabel.yaml`.
 
+## Lan truyền nhãn trên video
+
+Người approve một keyframe → `POST /frames/{id}/propagate` (UI tự gọi khi bật "Lan truyền khi approve").
+
+1. **Khởi tạo track** từ quyết định của người: object đã duyệt → track "keep" (lớp khoá theo người);
+   object máy sinh bị xoá → track "suppress". Object còn pending không lan truyền. Mỗi object nhận
+   `track_id` = `<keyframe>:<object_id>`, giữ nguyên qua các frame.
+2. **Tracker** đi qua mọi ảnh sau keyframe — CAM_FRONT 12Hz (`NuScenesMini.camera_timeline`) hoặc mọi frame
+   10 fps của video tải lên (timeline trong record; `sequence.WorkspaceSequenceSource` chọn nguồn), dự đoán box
+   theo vận tốc không đổi trong toạ độ ảnh, ghép với detection đã cache (IoU ≥ 0.3, một-một). Ảnh chưa có
+   trong cache: chỉ dự đoán. Dừng track khi > 6 ảnh liền không khớp, ra khỏi khung, hoặc box quá nhỏ.
+3. **Ở mỗi keyframe đích còn "auto"**: tính c_prop; track nhận box pre-label trùng nó (IoU ≥ 0.5) → object
+   `source="propagated"`, lớp của người, box của detector ở chính frame đó. Detector không thấy → thêm box
+   dự đoán (`PROP_COASTING`). Track "suppress" chỉ tự xoá box khớp chặt (IoU ≥ 0.5) và cùng lớp.
+4. **Dừng** trước frame đầu tiên có status khác "auto" (người đã mở/duyệt), hết scene, hoặc đủ `max_keyframes`.
+
+`c_prop = (0.5·agreement + 0.3·continuity + 0.2·lidar) / Σw × 0.99^(hops−1)`, trong đó agreement = IoU
+box dự đoán–detection ở frame đó (0 nếu detector không thấy), continuity = tỉ lệ ảnh có khớp kể từ keyframe,
+lidar = số điểm LiDAR trong box so với keyframe (chặn 1). Nhãn lan truyền đi qua cùng risk scoring:
+thành phần detection = 1 − c_prop; `PROP_LOW_CONF` khi c_prop < 0.6.
+
+| Quy tắc | Vì sao |
+|---|---|
+| Chỉ lan truyền từ frame đã approve | Chỉ mang đi quyết định đã chốt của người |
+| Không ghi vào frame status khác "auto" | Không bao giờ ghi đè công người đã làm |
+| Luôn dựng lại từ `frame.prelabel` | Lan truyền lại (từ keyframe khác) không bị cộng dồn |
+| Lớp detector khác lớp người chốt không phải là lỗi | Người đã sửa lớp ở keyframe; chỉ cờ `PROP_CLASS_DIFFERS` khi lớp detector đổi giữa chừng (dấu hiệu track nhảy object) |
+| M4 tách theo nguồn, bỏ object tự xoá | Tự xoá là máy làm, không phải người sửa |
+
+Đánh giá không cần người: `python -m src.cli eval-propagation` lấy GT keyframe đầu mỗi scene làm "nhãn người",
+lan truyền, so với GT cùng `instance_token` ở các keyframe sau (tỉ lệ đúng, đổi ID, độ phủ, c_prop có tách được
+đúng/sai không).
+
 ## Design Decisions
 
 | Decision | Choice | Reason |
@@ -48,6 +102,10 @@ lọt vào nhóm duyệt theo lô. Nhóm: low < 0.30 ≤ medium < 0.60 ≤ high.
 | Lưu trữ | File JSON + JSONL | 404 frame, 1 người duyệt; không cần DB cho demo, dễ diff/export |
 | UI | HTML/JS thuần do FastAPI phục vụ | Không cần build step, 1 lệnh là chạy |
 | GT 2D | Hộp bao 8 đỉnh box 3D chiếu xuống | nuScenes không có box 2D gốc; báo cáo AP@0.5 là chính |
+| Lan truyền 2D | Track qua sweep 12Hz bằng detection đã cache | Keyframe 2Hz quá thưa để khớp trực tiếp; không cần model mới (SAM2 video tốn GPU); `track_id` để gắn 3D sau |
+| Video tải lên | Cắt thành frame + keyframe giống nuScenes | Dùng lại nguyên pipeline, QA Agent, review và lan truyền; không cần code riêng cho video |
+| Xử lý video tải lên | `BackgroundTasks` trong process FastAPI | Đủ cho 1 người duyệt / demo; nhiều người thì chuyển sang hàng đợi job (RQ/Celery) |
+| Demo không GPU | Video tổng hợp + detector theo màu (`detectors/demo.py`) | Chạy được trên máy bất kỳ, có sẵn các tình huống lỗi để trình diễn QA và lan truyền |
 
 ## Chưa làm
 

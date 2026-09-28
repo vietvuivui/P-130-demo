@@ -1,19 +1,37 @@
+import logging
+import os
+import shutil
+import tempfile
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
 from src.config import get_settings
 from src.models.qa_config import AutoLabelConfig, get_autolabel_config
-from src.models.schemas import ExportResponse, FrameRecord, FrameSummary, ReviewActionRequest, ReviewerRequest
+from src.models.schemas import (
+    ExportResponse,
+    FrameRecord,
+    FrameSummary,
+    PropagateRequest,
+    PropagateResponse,
+    ReviewActionRequest,
+    ReviewerRequest,
+    VideoDetail,
+    VideoSummary,
+)
 from src.services import review
+from src.services import video as video_service
+from src.services.detectors import DetectorEnsemble
 from src.services.exporter import EXPORT_FILES, NothingToExportError, export_dataset
 from src.services.pipeline import image_path
+from src.services.sequence import PropagationError, SequenceSource, WorkspaceSequenceSource, propagate_from
 from src.services.store import WorkspaceStore
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 # Câu giải thích hiển thị cạnh issue code trên UI
 ISSUE_HELP = {
@@ -25,6 +43,9 @@ ISSUE_HELP = {
     "RECOVERED_BY_TRACK": "Detector sót ở keyframe, box nội suy từ sweep trước/sau: cần xác nhận",
     "BOX_TOO_LARGE": "Box chiếm phần lớn ảnh",
     "ASPECT_RATIO_ABNORMAL": "Tỉ lệ rộng/cao bất thường với lớp này",
+    "PROP_LOW_CONF": "Nhãn lan truyền từ keyframe trước nhưng độ tin cậy thấp: kiểm tra box có còn đúng object",
+    "PROP_COASTING": "Detector không thấy object ở frame này, box chỉ là dự đoán theo chuyển động: dễ lệch hoặc bị che",
+    "PROP_CLASS_DIFFERS": "Detector ở frame này nhận lớp khác lớp người đã chốt: có thể track đã nhảy sang object khác",
 }
 
 
@@ -43,6 +64,43 @@ def get_config() -> AutoLabelConfig:
 
 def get_dataroot() -> Path:
     return Path(get_settings().nuscenes_dataroot)
+
+
+@lru_cache
+def _ensemble(workspace: str, config_path: str) -> DetectorEnsemble:
+    # Model chỉ được nạp khi thật sự cần detect (video tải lên); đọc cache thì không cần torch
+    return DetectorEnsemble(get_autolabel_config(config_path), Path(workspace) / "cache" / "detections")
+
+
+def get_ensemble() -> DetectorEnsemble:
+    s = get_settings()
+    return _ensemble(s.workspace_dir, s.autolabel_config)
+
+
+@lru_cache
+def _nuscenes(dataroot: str, version: str):
+    # Bảng nuScenes chỉ đọc một lần cho mọi lần lan truyền (sample_data.json của bản đầy đủ rất lớn).
+    # Chưa có dataset thì NuScenesMini ném FileNotFoundError, lru_cache không lưu lỗi nên thêm dataset sau vẫn nhận
+    from src.services.nuscenes_data import NuScenesMini
+
+    return NuScenesMini(dataroot, version)
+
+
+def get_sequence_source(
+    store: WorkspaceStore = Depends(get_store), ensemble: DetectorEnsemble = Depends(get_ensemble)
+) -> SequenceSource:
+    s = get_settings()
+    return WorkspaceSequenceSource(store, ensemble, lambda: _nuscenes(s.nuscenes_dataroot, s.nuscenes_version))
+
+
+def resume_videos() -> None:
+    """Gọi khi server khởi động: làm tiếp video tải lên còn dở (server tắt / reload giữa lúc auto-label)."""
+    try:
+        store = get_store()
+        if any(v.status == "processing" for v in store.list_videos()):
+            video_service.resume_pending(store, get_ensemble(), get_config())
+    except Exception:  # không để lỗi ở đây làm hỏng lúc khởi động server
+        log.exception("Không làm tiếp được video đang xử lý")
 
 
 def _error(status: int, code: str, message: str) -> HTTPException:
@@ -105,7 +163,7 @@ def get_image(
 ):
     frame = _load(store, frame_id)
     try:
-        path = image_path(dataroot, frame, offset)
+        path = image_path(dataroot, frame, offset, workspace=store.root)
     except KeyError as e:
         raise _error(404, "SWEEP_NOT_FOUND", f"Frame không có sweep offset {offset}") from e
     if not path.exists():
@@ -164,6 +222,81 @@ def approve_frame(frame_id: str, req: ReviewerRequest, store: WorkspaceStore = D
         raise _error(409, "PENDING_OBJECTS", str(e)) from e
     store.save_frame(frame)
     return frame
+
+
+@router.post("/frames/{frame_id}/propagate", response_model=PropagateResponse)
+def propagate(
+    frame_id: str,
+    req: PropagateRequest,
+    store: WorkspaceStore = Depends(get_store),
+    config: AutoLabelConfig = Depends(get_config),
+    source: SequenceSource = Depends(get_sequence_source),
+):
+    """Lan truyền quyết định của người ở frame đã approve sang các keyframe sau còn "auto"."""
+    _load(store, frame_id)
+    try:
+        return propagate_from(store, source, config, frame_id, req.max_frames)
+    except PropagationError as e:
+        raise _error(e.status, e.code, str(e)) from e
+
+
+# ---- Video ----
+
+
+@router.get("/videos", response_model=list[VideoSummary])
+def list_videos(store: WorkspaceStore = Depends(get_store)):
+    """Scene nuScenes (mỗi scene là một video) và video mp4 đã tải lên."""
+    return video_service.list_videos(store)
+
+
+@router.get("/videos/{video_id}", response_model=VideoDetail)
+def get_video(video_id: str, store: WorkspaceStore = Depends(get_store)):
+    detail = video_service.video_detail(store, video_id)
+    if detail is None:
+        raise _error(404, "VIDEO_NOT_FOUND", f"Không có video {video_id}")
+    return detail
+
+
+@router.post("/videos/upload", response_model=VideoSummary)
+def upload_video(
+    background: BackgroundTasks,
+    file: UploadFile = File(...),
+    name: str | None = Form(None),
+    store: WorkspaceStore = Depends(get_store),
+    config: AutoLabelConfig = Depends(get_config),
+    ensemble: DetectorEnsemble = Depends(get_ensemble),
+):
+    """Tải lên video: cắt frame ngay, auto-label + QA chạy nền (UI hỏi lại GET /videos/{id} để xem tiến độ)."""
+    filename = file.filename or "video.mp4"
+    suffix = Path(filename).suffix.lower()
+    if suffix not in video_service.VIDEO_EXTENSIONS:
+        raise _error(422, "VIDEO_FORMAT", f"Chỉ nhận {', '.join(sorted(video_service.VIDEO_EXTENSIONS))}")
+    limit = config.video.max_upload_mb * 1024 * 1024
+    too_large = _error(413, "VIDEO_TOO_LARGE", f"Video lớn hơn {config.video.max_upload_mb} MB")
+    if file.size is not None and file.size > limit:
+        raise too_large
+    fd, tmp_name = tempfile.mkstemp(suffix=suffix)
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as tmp:
+            copied = 0
+            while chunk := file.file.read(1024 * 1024):
+                copied += len(chunk)
+                if copied > limit:
+                    raise too_large
+                tmp.write(chunk)
+        try:
+            video = video_service.import_video(store, config, tmp_path, name or filename, ensemble.names)
+        except video_service.VideoError as e:
+            raise _error(e.status, e.code, str(e)) from e
+        try:  # giữ file gốc để xem lại / xử lý lại; không có cũng không sao
+            shutil.copyfile(tmp_path, store.video_dir(video.video_id) / f"source{suffix}")
+        except OSError:
+            log.warning("Không lưu được file gốc của %s", video.video_id, exc_info=True)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+    background.add_task(video_service.process_video, store, ensemble, config, video.video_id)
+    return video_service.video_summary(video.video_id, [], video)
 
 
 @router.post("/frames/{frame_id}/reopen", response_model=FrameRecord)

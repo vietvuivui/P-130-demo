@@ -56,6 +56,11 @@ def _match(preds: list[dict], gts: list[dict], thr: float, class_aware: bool = T
     return status, used
 
 
+def prelabel_objects(frame: FrameRecord) -> list:
+    """Object pre-label của detector. Frame đã được lan truyền giữ bản gốc ở frame.prelabel."""
+    return frame.prelabel if frame.prelabel is not None else frame.objects
+
+
 def evaluate_map(frames: list[FrameRecord], gt: dict[str, list[dict]], thr: float) -> dict:
     per_class: dict[str, list[tuple[float, bool]]] = defaultdict(list)
     n_gt: dict[str, int] = defaultdict(int)
@@ -65,7 +70,7 @@ def evaluate_map(frames: list[FrameRecord], gt: dict[str, list[dict]], thr: floa
             if not g["ignore"]:
                 n_gt[g["label"]] += 1
         preds = sorted(
-            ({"bbox": o.bbox, "label": o.label, "score": o.score} for o in f.objects if o.source == "model"),
+            ({"bbox": o.bbox, "label": o.label, "score": o.score} for o in prelabel_objects(f) if o.source == "model"),
             key=lambda p: -p["score"],
         )
         for label in {p["label"] for p in preds}:
@@ -100,7 +105,8 @@ def evaluate_qa(frames: list[FrameRecord], gt: dict[str, list[dict]], thr: float
 
     for f in frames:
         gts = gt.get(f.frame_id, [])
-        model_objs = sorted((o for o in f.objects if o.source == "model" and o.qa), key=lambda o: -o.score)
+        objects = prelabel_objects(f)
+        model_objs = sorted((o for o in objects if o.source == "model" and o.qa), key=lambda o: -o.score)
         status, _ = _match([{"bbox": o.bbox, "label": o.label} for o in model_objs], gts, thr)
         for o, s in zip(model_objs, status, strict=True):
             if s == "ignore":
@@ -121,7 +127,7 @@ def evaluate_qa(frames: list[FrameRecord], gt: dict[str, list[dict]], thr: float
         _, hit = _match([{"bbox": o.bbox, "label": o.label} for o in model_objs], gts, thr, class_aware=False)
         missed = [g for j, g in enumerate(gts) if not g["ignore"] and j not in hit]
         fn_total += len(missed)
-        recovered = [o for o in f.objects if o.source == "track"]
+        recovered = [o for o in objects if o.source == "track"]
         proposals += len(recovered)
         _, rec_hit = _match([{"bbox": o.bbox, "label": o.label} for o in recovered], missed, thr, class_aware=False)
         fn_recovered += len(rec_hit)

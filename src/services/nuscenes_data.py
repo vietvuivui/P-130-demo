@@ -28,6 +28,21 @@ class ImageRef:
     height: int
 
 
+@dataclass(frozen=True)
+class TimelineImage:
+    """Một ảnh trong chuỗi camera của scene (keyframe 2Hz hoặc sweep 12Hz)."""
+
+    sd_token: str
+    timestamp: int  # micro giây
+    # Chỉ keyframe mới có sample_token: đó là những ảnh có FrameRecord để ghi nhãn
+    sample_token: str | None = None
+    path: str = ""
+
+    @property
+    def is_keyframe(self) -> bool:
+        return self.sample_token is not None
+
+
 @dataclass
 class CameraFrame:
     sample_token: str
@@ -146,6 +161,31 @@ class NuScenesMini:
             if tok:
                 frame.sweeps[offset] = self._image_ref(tok)
         return frame
+
+    def camera_timeline(self, scene_name: str, camera: str) -> list[TimelineImage]:
+        """Mọi ảnh của một camera trong scene theo thời gian: keyframe (2Hz) xen kẽ sweep (12Hz).
+
+        Đi theo chuỗi `next` của sample_data bắt đầu từ keyframe đầu tiên, dừng khi sang scene khác.
+        """
+        sc = next((s for s in self.scene.values() if s["name"] == scene_name), None)
+        if sc is None:
+            raise KeyError(f"Không có scene {scene_name}")
+        tok = self._keyframe_data[sc["first_sample_token"]][camera]
+        out: list[TimelineImage] = []
+        while tok:
+            sd = self.sample_data.get(tok)  # bảng đã lọc (scripts/pack_nuscenes_subset.py) có thể cắt chuỗi next
+            if sd is None or self.sample[sd["sample_token"]]["scene_token"] != sc["token"]:
+                break
+            out.append(
+                TimelineImage(
+                    sd_token=tok,
+                    timestamp=sd["timestamp"],
+                    sample_token=sd["sample_token"] if sd["is_key_frame"] else None,
+                    path=sd["filename"],
+                )
+            )
+            tok = sd["next"]
+        return out
 
     def _ego_from_sensor(self, sd_token: str) -> np.ndarray:
         cs = self.calibrated_sensor[self.sample_data[sd_token]["calibrated_sensor_token"]]

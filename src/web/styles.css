@@ -112,13 +112,22 @@ input[type=text], select { font: inherit; padding: 6px 8px; border: 1px solid va
 .workspace { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 12px; gap: 10px; }
 .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .frame-title { display: flex; align-items: center; gap: 10px; }
-.frame-title strong { font-family: var(--mono); font-size: 15px; }
+.frame-title strong { font-family: var(--mono); font-size: 15px; white-space: nowrap; }
+.frame-title .status-pill, .toolbar-actions .toggle, .toolbar-actions .btn { white-space: nowrap; }
 .detector { font-size: 12px; }
 .timer { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .toolbar-actions { display: flex; align-items: center; gap: 12px; }
 .toggle { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--text-2); cursor: pointer; }
 .canvas-wrap { position: relative; flex: 1; min-height: 0; background: var(--stage); border-radius: var(--radius); overflow: hidden; display: grid; place-items: center; }
 #canvas { max-width: 100%; max-height: 100%; display: block; cursor: default; }
+/* Phóng to: canvas lớn hơn khung, cuộn/kéo để di chuyển; các lớp phủ (edit-bar, drop-hint) nằm ngoài vùng cuộn */
+.canvas-scroll { position: absolute; inset: 0; overflow: hidden; display: grid; place-items: center; }
+.canvas-scroll.zoomed { display: flex; overflow: auto; scrollbar-width: none; }
+.canvas-scroll.zoomed::-webkit-scrollbar { display: none; } /* thanh cuộn làm lệch điểm neo khi zoom; di chuyển bằng kéo chuột */
+.canvas-scroll.zoomed #canvas { max-width: none; max-height: none; margin: auto; flex: none; }
+.canvas-scroll.panning, .canvas-scroll.panning #canvas { cursor: grabbing; }
+.zoom-controls { display: inline-flex; align-items: center; gap: 2px; }
+.zoom-controls .zoom-level { min-width: 52px; font-variant-numeric: tabular-nums; }
 #canvas.drawing { cursor: crosshair; }
 .edit-bar { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px; display: flex; gap: 8px; align-items: center; box-shadow: var(--shadow); font-size: 13px; }
 .empty-state { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; color: #cbd5e1; gap: 8px; }
@@ -230,3 +239,39 @@ input[type=text], select { font: inherit; padding: 6px 8px; border: 1px solid va
   .two-col { grid-template-columns: 1fr; }
   .page { padding: 16px; }
 }
+
+/* ---------- lan truyền nhãn ---------- */
+.prop-tag { font-size: 11px; font-weight: 600; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 1px 7px; }
+.done-tag.auto { color: var(--muted); }
+
+/* ---------- chế độ Ảnh / Video ---------- */
+.mode-switch { display: inline-flex; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 3px; gap: 2px; }
+.mode { border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--text-2); padding: 6px 12px; border-radius: 7px; cursor: pointer; }
+.mode.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
+.panel-note { font-size: 11px; margin: 0; padding: 0 12px 8px; }
+.video-item .vi-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.video-item .vi-src { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); flex: none; }
+.video-item .vi-src.upload { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.video-item .vi-err { color: var(--high); font-size: 11px; margin-top: 4px; }
+.video-controls { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.video-controls .toggle { font-size: 12px; }
+
+.timeline-panel { display: flex; flex-direction: column; gap: 6px; }
+.timeline-head { display: flex; align-items: center; gap: 10px; font-size: 12px; flex-wrap: wrap; }
+.timeline-legend { display: flex; gap: 14px; font-size: 11px; color: var(--text-2); flex-wrap: wrap; align-items: center; margin-top: -4px; }
+.timeline { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 8px; scroll-behavior: smooth; }
+.tl-card { flex: none; width: 128px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 3px; cursor: grab; position: relative; user-select: none; }
+.tl-card:active { cursor: grabbing; }
+.tl-card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; border-radius: 5px; background: var(--stage); pointer-events: none; }
+.tl-card.current { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tl-card.approved { border-color: var(--low); }
+.tl-card.editing { border-color: var(--medium); }
+.tl-card .tl-risk { height: 3px; border-radius: 2px; margin-top: 3px; }
+.tl-card .tl-cap { display: flex; justify-content: space-between; align-items: center; font-family: var(--mono); font-size: 10.5px; padding: 3px 2px 0; color: var(--text-2); }
+.tl-card .tl-badges { position: absolute; top: 6px; left: 6px; display: flex; gap: 3px; }
+.tl-mark { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 999px; font-size: 11px; font-weight: 700; background: var(--surface); border: 1px solid var(--border); }
+.tl-mark.approved { color: #fff; background: var(--low); border-color: var(--low); }
+.tl-mark.propagated { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+.tl-mark.editing { color: #fff; background: var(--medium); border-color: var(--medium); }
+.tl-card.from-current { box-shadow: inset 0 -3px 0 var(--accent); }
+.drop-hint { position: absolute; inset: 12px; border: 2px dashed var(--accent); border-radius: var(--radius); display: grid; place-items: center; color: #fff; font-weight: 600; background: rgba(42, 120, 214, .25); z-index: 5; pointer-events: none; }

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from pathlib import Path
 
 from src.models.qa_config import AutoLabelConfig
@@ -26,6 +27,10 @@ def build_detector(name: str, config: AutoLabelConfig) -> Detector:
         from src.services.detectors.florence2 import Florence2Detector
 
         return Florence2Detector(config)
+    if name == "demo":
+        from src.services.detectors.demo import DemoColorDetector
+
+        return DemoColorDetector(config)
     raise ValueError(f"Detector không hỗ trợ: {name}")
 
 
@@ -37,11 +42,13 @@ class DetectorEnsemble:
         self.names = names or config.detection.detectors
         self.cache_dir = cache_dir
         self._detectors: dict[str, Detector] = {}
+        self._lock = threading.Lock()
 
     def _get(self, name: str) -> Detector:
-        if name not in self._detectors:
-            self._detectors[name] = build_detector(name, self.config)
-        return self._detectors[name]
+        with self._lock:  # hai request cùng lúc không nạp model hai lần
+            if name not in self._detectors:
+                self._detectors[name] = build_detector(name, self.config)
+            return self._detectors[name]
 
     def _cache_file(self, name: str, sd_token: str) -> Path:
         # Khoá theo tên model + cấu hình liên quan, đổi prompt/weights/ngưỡng thì cache tự vô hiệu
@@ -49,6 +56,16 @@ class DetectorEnsemble:
         raw = json.dumps([det_cfg.model_dump(), self.config.prompt_to_class(), self.config.detection.score_threshold])
         key = f"{name}-{hashlib.sha1(raw.encode()).hexdigest()[:10]}"
         return self.cache_dir / key / f"{sd_token}.json"
+
+    def load_cached(self, sd_token: str) -> list[Detection] | None:
+        """Detection đã fuse của một ảnh, chỉ đọc cache (không cần torch). None nếu có model chưa chạy ảnh này."""
+        per_model: dict[str, list[Detection]] = {}
+        for name in self.names:
+            cache = self._cache_file(name, sd_token)
+            if not cache.exists():
+                return None
+            per_model[name] = [Detection.model_validate(d) for d in json.loads(cache.read_text())]
+        return fuse_detections(per_model, self.config.detection.fusion_iou)
 
     def detect_batch(self, images: list[tuple[str, Path]]) -> list[list[Detection]]:
         """images: list (sd_token, path). Trả về detection đã fuse cho từng ảnh."""

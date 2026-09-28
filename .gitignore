@@ -30,6 +30,8 @@ Thumbs.db
 
 # Data (never commit large data)
 data/
+autolabel_subset/
+autolabel_subset.zip
 *.db
 *.sqlite3
 

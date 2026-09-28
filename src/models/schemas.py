@@ -8,7 +8,8 @@ from pydantic import BaseModel, Field
 
 RiskLevel = Literal["low", "medium", "high"]
 IssueGroup = Literal["detection", "lidar", "temporal", "geometric"]
-HumanAction = Literal["KEEP", "DELETE", "CHANGE_CLASS", "EDIT_BOX", "ADD_BOX", "BATCH_APPROVE"]
+HumanAction = Literal["KEEP", "DELETE", "CHANGE_CLASS", "EDIT_BOX", "ADD_BOX", "BATCH_APPROVE", "PROPAGATED_DELETE"]
+ObjectSource = Literal["model", "track", "human", "propagated"]
 
 
 class Detection(BaseModel):
@@ -48,13 +49,33 @@ class ReviewState(BaseModel):
     at: str | None = None
 
 
+class PropagationInfo(BaseModel):
+    """Object này được lan truyền từ quyết định của người ở một keyframe trước (FR-11 → FR-13)."""
+
+    keyframe_id: str
+    keyframe_object_id: str
+    # Độ tin cậy lan truyền c_prop trong [0, 1]
+    prop_conf: float
+    # Detector có thấy object ở frame này không; False = box dự đoán từ chuyển động
+    matched: bool = True
+    # Số ảnh camera (keyframe + sweep) đã đi qua kể từ keyframe gốc
+    steps: int = 0
+    # Lớp và score detector gán ở frame này, nếu khác lớp lan truyền
+    detector_label: str | None = None
+    detector_score: float | None = None
+
+
 class LabelObject(BaseModel):
     object_id: str
     bbox: list[float]
     label: str
     score: float
-    # model: box từ detector; track: box nội suy (RECOVERED_BY_TRACK); human: box người vẽ
-    source: Literal["model", "track", "human"] = "model"
+    # model: box từ detector; track: box nội suy (RECOVERED_BY_TRACK); human: box người vẽ;
+    # propagated: lan truyền từ keyframe người đã duyệt
+    source: ObjectSource = "model"
+    # Định danh object xuyên suốt scene (giữ nguyên qua các frame nhờ lan truyền)
+    track_id: str | None = None
+    propagation: PropagationInfo | None = None
     models: dict[str, float] = Field(default_factory=dict)
     alternatives: dict[str, float] = Field(default_factory=dict)
     # Box của cùng object ở các sweep lân cận, key là offset ("-2", "-1", "1", "2")
@@ -95,6 +116,11 @@ class FrameRecord(BaseModel):
     approved_at: str | None = None
     approved_by: str | None = None
     review_time_s: float | None = None
+    # Lan truyền: frame gốc và lúc lan truyền. prelabel giữ bản pre-label trước lần lan truyền
+    # đầu tiên, để lan truyền lại (từ keyframe khác) luôn bắt đầu từ cùng một điểm.
+    propagated_from: str | None = None
+    propagated_at: str | None = None
+    prelabel: list[LabelObject] | None = None
 
 
 class FrameSummary(BaseModel):
@@ -106,6 +132,7 @@ class FrameSummary(BaseModel):
     counts: dict[str, int]
     pending: int
     n_objects: int
+    propagated_from: str | None = None
 
 
 # ---- API ----
@@ -122,6 +149,88 @@ class ReviewActionRequest(BaseModel):
 class ReviewerRequest(BaseModel):
     reviewer: str | None = None
     review_time_s: float | None = Field(default=None, ge=0)
+
+
+class PropagateRequest(BaseModel):
+    # Số keyframe tối đa đi tới; None = theo config
+    max_frames: int | None = Field(default=None, ge=1, le=200)
+
+
+class PropagateSkip(BaseModel):
+    frame_id: str
+    reason: str
+
+
+class PropagateResponse(BaseModel):
+    keyframe_id: str
+    frames_updated: list[str] = Field(default_factory=list)
+    frames_skipped: list[PropagateSkip] = Field(default_factory=list)
+    # Frame người đã mở/duyệt mà lan truyền dừng lại trước nó
+    stopped_at: str | None = None
+    stop_reason: str | None = None
+    tracks_started: int = 0
+    tracks_alive: int = 0
+    objects_propagated: int = 0
+    objects_suppressed: int = 0
+    # Ảnh camera chưa có detection trong cache (tracker chỉ dự đoán ở các ảnh này)
+    images_without_detections: int = 0
+
+
+# ---- Video ----
+# Một video = chuỗi ảnh theo thời gian. Keyframe (có FrameRecord) là frame để gán nhãn; ảnh giữa hai keyframe
+# chỉ dùng để tracking khi lan truyền. Scene nuScenes: keyframe 2Hz + sweep 12Hz. Video mp4 tải lên: cắt frame ở
+# track_fps, cứ (track_fps / label_fps) frame thì có một keyframe.
+
+
+class TimelineEntry(BaseModel):
+    sd_token: str
+    timestamp: int  # micro giây
+    sample_token: str | None = None  # chỉ keyframe
+    path: str = ""
+
+
+class VideoRecord(BaseModel):
+    """Video tải lên (mp4). Scene nuScenes không cần record: timeline đọc thẳng từ bảng nuScenes."""
+
+    video_id: str
+    name: str
+    source: Literal["upload"] = "upload"
+    status: Literal["processing", "ready", "error"] = "processing"
+    progress: float = 0.0
+    message: str | None = None
+    width: int = 0
+    height: int = 0
+    track_fps: float = 10.0
+    label_fps: float = 2.0
+    duration_s: float = 0.0
+    detectors: list[str] = Field(default_factory=list)
+    timeline: list[TimelineEntry] = Field(default_factory=list)
+    created_at: str | None = None
+
+
+class VideoFrame(FrameSummary):
+    timestamp: int
+    t: float  # giây kể từ đầu video
+
+
+class VideoSummary(BaseModel):
+    video_id: str
+    name: str
+    source: Literal["nuscenes", "upload"]
+    status: Literal["processing", "ready", "error"] = "ready"
+    progress: float = 1.0
+    message: str | None = None
+    n_frames: int = 0
+    approved: int = 0
+    editing: int = 0
+    propagated: int = 0
+    pending_objects: int = 0
+    duration_s: float = 0.0
+    first_frame_id: str | None = None
+
+
+class VideoDetail(VideoSummary):
+    frames: list[VideoFrame] = Field(default_factory=list)
 
 
 class ExportResponse(BaseModel):

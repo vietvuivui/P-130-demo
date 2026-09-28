@@ -137,6 +137,7 @@ def summarize(frame: FrameRecord) -> FrameSummary:
         counts={lv: counts.get(lv, 0) for lv in ("low", "medium", "high")},
         pending=sum(o.review.status == "pending" for o in frame.objects),
         n_objects=len(frame.objects),
+        propagated_from=frame.propagated_from,
     )
 
 
@@ -155,7 +156,11 @@ def _ratio(a: int, b: int) -> float | None:
 
 
 def compute_metrics(frames: list[FrameRecord]) -> dict:
-    """Số liệu từ log thật: M4, M1, chất lượng cờ của QA Agent, hiệu quả tracking."""
+    """Số liệu từ log thật: M4, M1, chất lượng cờ của QA Agent, hiệu quả tracking và lan truyền.
+
+    m4_correction_rate chỉ tính object detector sinh (source "model"); nhãn lan truyền có M4 riêng
+    trong "propagation". Cờ (flag_*) tính trên cả hai vì cả hai đều đi qua triage theo risk.
+    """
     status = Counter(f.status for f in frames)
     levels, issue_counts = Counter(), Counter()
     model_reviewed, model_fixed = 0, 0
@@ -164,6 +169,8 @@ def compute_metrics(frames: list[FrameRecord]) -> dict:
     per_issue: dict[str, dict[str, int]] = {}
     track = {"proposed": 0, "accepted": 0, "rejected": 0}
     human_added = 0
+    # Nhãn lan truyền: M4 riêng theo nguồn (PRD), và số object tự xoá theo keyframe
+    prop = {"reviewed": 0, "fixed": 0, "pending": 0, "auto_suppressed": 0, "suppress_undone": 0}
 
     for f in frames:
         for o in f.objects:
@@ -180,11 +187,23 @@ def compute_metrics(frames: list[FrameRecord]) -> dict:
                 elif o.review.status == "deleted":
                     track["rejected"] += 1
                 continue
+            if o.review.action == "PROPAGATED_DELETE":
+                # Máy tự xoá theo keyframe, không phải người sửa: không tính vào M4 hay cờ
+                prop["auto_suppressed"] += 1
+                continue
+            if o.propagation is not None and o.source != "propagated" and o.review.status == "approved":
+                prop["suppress_undone"] += 1
+            if o.source == "propagated" and o.review.status == "pending":
+                prop["pending"] += 1
             if o.review.status == "pending" or o.qa is None:
                 continue
             fixed = needs_fix(o)
-            model_reviewed += 1
-            model_fixed += fixed
+            if o.source == "propagated":
+                prop["reviewed"] += 1
+                prop["fixed"] += fixed
+            else:
+                model_reviewed += 1
+                model_fixed += fixed
             per_level[o.qa.level]["reviewed"] += 1
             per_level[o.qa.level]["fixed"] += fixed
             if o.qa.level != "low":
@@ -205,10 +224,11 @@ def compute_metrics(frames: list[FrameRecord]) -> dict:
         "model_objects_fixed": model_fixed,
         # Cờ của agent so với việc người thực sự sửa
         "flag_precision": _ratio(flagged_fixed, flagged),
-        "flag_recall": _ratio(flagged_fixed, model_fixed),
+        "flag_recall": _ratio(flagged_fixed, model_fixed + prop["fixed"]),
         "fix_rate_by_level": {lv: {**v, "rate": _ratio(v["fixed"], v["reviewed"])} for lv, v in per_level.items()},
         "fix_rate_by_issue": {c: {**v, "rate": _ratio(v["fixed"], v["flagged"])} for c, v in sorted(per_issue.items())},
         "track_proposals": track,
         "human_added_boxes": human_added,
+        "propagation": {**prop, "m4_correction_rate": _ratio(prop["fixed"], prop["reviewed"])},
         "m1_avg_review_time_s": round(sum(times) / len(times), 1) if times else None,
     }

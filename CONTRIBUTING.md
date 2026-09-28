@@ -1,5 +1,17 @@
 # Đóng góp cho AI20K Agent Template
 
+## Quy ước nội bộ nhóm P-130
+
+Áp dụng cho 4 thành viên khi làm trên repo của đội (phần bên dưới là hướng dẫn chung của template BTC).
+
+1. **Nhánh**: mỗi việc một nhánh tách từ nhánh đang dùng chung, đặt tên `feat/…`, `fix/…`, `docs/…`
+   (ví dụ `feat/label-propagation`). Không push thẳng lên `main`.
+2. **Commit** theo Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`).
+3. **Trước khi push**: `ruff check src tests` và `pytest` phải sạch.
+4. **Mỗi lần push thêm một mục vào đầu [`CHANGELOG.md`](CHANGELOG.md)**: làm gì, file chính, ảnh hưởng tới người
+   khác, cách kiểm tra, việc còn dở. Đổi schema / config / API thì bắt buộc ghi ở "Ảnh hưởng tới người khác".
+5. **Cuối ngày** thêm một dòng vào [`WORKLOG.md`](WORKLOG.md) (deliverable #9 của BTC).
+
 Cảm ơn bạn đã quan tâm. Repo này gồm hai phần với quy trình review khác nhau:
 
 | Phần | Đường dẫn | Ai duyệt |

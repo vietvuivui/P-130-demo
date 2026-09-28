@@ -8,7 +8,7 @@ from datetime import datetime
 from src.models.qa_config import AutoLabelConfig
 from src.models.schemas import ExportResponse
 from src.services.review import now_iso
-from src.services.store import WorkspaceStore
+from src.services.store import WORKSPACE_PREFIX, WorkspaceStore
 
 EXPORT_FILES = ("coco.json", "labels.jsonl", "corrections.jsonl", "manifest.json")
 
@@ -37,7 +37,9 @@ def export_dataset(store: WorkspaceStore, config: AutoLabelConfig) -> ExportResp
         images.append(
             {
                 "id": img_id,
-                "file_name": frame.image.path,
+                # Ảnh nuScenes: đường dẫn tương đối so với dataroot; video tải lên: tương đối so với workspace
+                "file_name": frame.image.path.removeprefix(WORKSPACE_PREFIX),
+                "image_root": "workspace" if frame.image.path.startswith(WORKSPACE_PREFIX) else "nuscenes",
                 "width": frame.image.width,
                 "height": frame.image.height,
                 "frame_id": frame.frame_id,
@@ -52,6 +54,9 @@ def export_dataset(store: WorkspaceStore, config: AutoLabelConfig) -> ExportResp
             x1, y1, x2, y2 = obj.review.final_bbox
             record = {
                 "object_id": obj.object_id,
+                # Cùng một object ở các frame khác nhau có cùng track_id (nhờ lan truyền)
+                "track_id": obj.track_id,
+                "propagated_from": obj.propagation.keyframe_id if obj.propagation else None,
                 "bbox": obj.review.final_bbox,
                 "class": obj.review.final_label,
                 "source": obj.source,
@@ -74,7 +79,12 @@ def export_dataset(store: WorkspaceStore, config: AutoLabelConfig) -> ExportResp
                 }
             )
         lines.append(
-            {"frame_id": frame.frame_id, "sample_token": frame.sample_token, "image": frame.image.path, "objects": objs}
+            {
+                "frame_id": frame.frame_id,
+                "sample_token": frame.sample_token,
+                "image": frame.image.path.removeprefix(WORKSPACE_PREFIX),
+                "objects": objs,
+            }
         )
 
     exported = {f.frame_id for f in approved}

@@ -22,6 +22,11 @@ detection:
     model_id: microsoft/Florence-2-base
     # Florence-2 không trả confidence; gán một điểm cố định để risk scoring vẫn chạy
     default_score: 0.5
+  # Chỉ cho video demo tổng hợp (python -m src.demo): tìm vật thể theo màu, không cần GPU
+  demo:
+    tolerance: 48
+    min_area: 60
+    confident_area: 3500
 
 # Lớp nhãn: prompt cho model open-vocab + khoảng hợp lý dùng cho check LiDAR/hình học
 #   height_m  : chiều cao thật (m) hợp lý của lớp
@@ -132,3 +137,48 @@ qa:
     levels:
       medium: 0.30
       high: 0.60
+
+# Lan truyền nhãn trên video (FR-11 → FR-13): mang quyết định của người ở một keyframe đã approve
+# sang các keyframe sau, bằng cách track qua mọi ảnh camera 12Hz nằm giữa (dùng detection đã cache).
+propagation:
+  # Ghép box dự đoán với detection ở ảnh kế tiếp (các ảnh cách nhau ~83 ms nên box dịch rất ít)
+  match_iou: 0.3
+  # Box người đã xoá ở keyframe chỉ được tự xoá ở frame sau khi khớp chặt và cùng lớp
+  suppress_iou: 0.5
+  # Tỉ trọng của detection khi cập nhật box (phần còn lại là dự đoán theo vận tốc)
+  smoothing: 0.7
+  velocity_smoothing: 0.5
+  # Không khớp detection quá bấy nhiêu ảnh liên tiếp (~0.5 s ở 12Hz) thì dừng track
+  max_coast_images: 6
+  # Phần box còn nằm trong ảnh dưới tỉ lệ này (đi ra khỏi khung) thì dừng
+  min_visible: 0.3
+  min_box_px: 6
+  # c_prop = trung bình có trọng số của 3 thành phần (thành phần nào không đo được thì bỏ và chuẩn hoá lại):
+  #   agreement : IoU giữa box dự đoán và detection ở chính frame này (0 nếu detector không thấy)
+  #   continuity: tỉ lệ ảnh có detection khớp kể từ keyframe gốc
+  #   lidar     : số điểm LiDAR trong box so với ở keyframe gốc (tụt = bị che hoặc đi xa), chặn trên 1
+  # rồi nhân hop_decay^(số keyframe đã đi qua - 1). Mô phỏng (detection rung ±4px, rơi 15%): 0.97 làm mọi
+  # nhãn đúng bị gắn cờ từ keyframe thứ ~12; 0.99 thì nhãn khớp detector chỉ bị gắn cờ sau ~30 keyframe
+  weights:
+    agreement: 0.5
+    continuity: 0.3
+    lidar: 0.2
+  hop_decay: 0.99
+  # c_prop dưới ngưỡng này -> issue PROP_LOW_CONF (không rơi vào nhóm duyệt theo lô)
+  flag_below: 0.6
+  # c_prop dưới ngưỡng này -> dừng lan truyền object đó. Để thấp: object detector tạm không thấy vẫn được
+  # đưa ra (kèm PROP_COASTING) cho người xem; mất dấu thật thì đã có max_coast_images cắt
+  stop_below: 0.15
+  # Số keyframe tối đa đi tới trong một lần lan truyền
+  max_keyframes: 20
+  # Detector ở frame đích gán lớp khác lớp lan truyền với score >= ngưỡng -> PROP_CLASS_DIFFERS
+  class_differs_score: 0.5
+
+# Video mp4 tải lên (chế độ Video trên UI). Frame cắt ở track_fps dùng cho tracking khi lan truyền; cứ
+# track_fps/label_fps frame thì có một keyframe để gán nhãn (giống keyframe 2Hz + sweep 12Hz của nuScenes)
+video:
+  track_fps: 10
+  label_fps: 2
+  max_seconds: 120
+  max_upload_mb: 500
+  max_sweep_gap_s: 0.25   # frame lân cận xa hơn ngần này (s) không dùng cho check temporal

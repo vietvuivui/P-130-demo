@@ -1,754 +1,1018 @@
 # PRD — AutoLabel 3D: Tự động gán nhãn Ảnh & LiDAR (human-in-the-loop)
 
-2026-09-19 · @Someone · Nhóm 4 người · Thời lượng 6 tuần
+2026-09-25 · Kiên · Nhóm 4 người · Thời lượng 6 tuần
 
 ## Thông tin tài liệu
 
 | Mục | Nội dung |
-| :---- | :---- |
+| --- | --- |
 | Tên đề tài | Công cụ tự động gán nhãn ảnh & LiDAR (2D/3D box, segmentation) với human-in-the-loop |
 | Tên sản phẩm | AutoLabel 3D |
 | Lĩnh vực | Perception cho xe tự hành — công cụ gán nhãn dữ liệu |
 | Nhóm thực hiện | 4 thành viên (ML 2D, ML 3D, Backend, Frontend) |
-| Thời lượng | 6 tuần, chia hai giai đoạn: mức cơ bản (tuần 1–4) và mức nâng cao (tuần 5–6) |
-| Hạ tầng | GPU miễn phí trên Colab/Kaggle; backend và frontend chạy cục bộ qua Docker |
-| Trạng thái | Bản nháp đang hoàn thiện — ngưỡng chất lượng chưa chốt |
-| Phạm vi dữ liệu | Subset nuScenes mini / KITTI, mở rộng dần trong kỳ |
+| Thời lượng | 6 tuần, làm toàn bộ phạm vi trong kỳ |
+| Hạ tầng | RTX 3090 (24 GB) chạy cả ngày làm model service thường trực; A100 trên Google Colab thuê thêm cho job nặng; backend và frontend chạy qua Docker |
+| Phạm vi dữ liệu | Subset nuScenes mini / KITTI; dataset và danh sách lớp phương tiện mở rộng dần trong kỳ |
+| Trạng thái | Bản hoàn chỉnh — ngưỡng các chỉ số chốt sau khi có baseline, cuối tuần 2 |
 
 ## Mục lục
 
-1. [Tóm tắt](#myn0hpr8e35.125)  
-2. [Bối cảnh và vấn đề](#myn0hpr8e35.1246)  
-3. [Mục tiêu và chỉ số thành công](#myn0hpr8e35.2322)  
-4. [Phạm vi](#myn0hpr8e35.3711)  
-5. [Sản phẩm cần nộp](#myn0hpr8e35.19158)  
-6. [Người dùng và vai trò](#myn0hpr8e35.4939)  
-7. [Chân dung người dùng và user stories](#myn0hpr8e35.32138)  
-8. [Luồng người dùng chính](#myn0hpr8e35.5971)  
-9. [Yêu cầu chức năng](#myn0hpr8e35.6940)  
-10. [Tiêu chí chấp nhận chi tiết](#myn0hpr8e35.34279)  
-11. [Tình huống biên và cách xử lý](#myn0hpr8e35.36778)  
-12. [Yêu cầu phi chức năng](#myn0hpr8e35.9588)  
-13. [Kiến trúc và công nghệ](#myn0hpr8e35.10642)  
-14. [Đặc tả API và schema](#myn0hpr8e35.38871)  
-15. [Mô hình dữ liệu và định dạng nhãn](#myn0hpr8e35.12219)  
-16. [Công thức đo và hàm tính điểm](#myn0hpr8e35.41232)  
-17. [Kế hoạch đánh giá](#myn0hpr8e35.13548)  
-18. [Kịch bản demo và danh sách màn hình](#myn0hpr8e35.43156)  
-19. [Kế hoạch 6 tuần cho 4 người](#myn0hpr8e35.14864)  
-20. [Rủi ro và giả định](#myn0hpr8e35.16269)  
-21. [Hướng mở rộng sau kỳ này](#myn0hpr8e35.29338)  
-22. [Checklist nghiệm thu](#myn0hpr8e35.45662)
+1. [Tóm tắt](#tóm-tắt)
+2. [Bối cảnh và vấn đề](#bối-cảnh-và-vấn-đề)
+3. [Mục tiêu và chỉ số thành công](#mục-tiêu-và-chỉ-số-thành-công)
+4. [Phạm vi](#phạm-vi)
+5. [Sản phẩm cần nộp](#sản-phẩm-cần-nộp)
+6. [Người dùng và vai trò](#người-dùng-và-vai-trò)
+7. [Chân dung người dùng và user stories](#chân-dung-người-dùng-và-user-stories)
+8. [Luồng người dùng chính](#luồng-người-dùng-chính)
+9. [Luồng duyệt và kiểm soát chất lượng](#luồng-duyệt-và-kiểm-soát-chất-lượng)
+10. [Xử lý video](#xử-lý-video)
+11. [Đo năng suất annotator](#đo-năng-suất-annotator)
+12. [Yêu cầu chức năng](#yêu-cầu-chức-năng)
+13. [Tiêu chí chấp nhận chi tiết](#tiêu-chí-chấp-nhận-chi-tiết)
+14. [Tình huống biên và cách xử lý](#tình-huống-biên-và-cách-xử-lý)
+15. [Yêu cầu phi chức năng](#yêu-cầu-phi-chức-năng)
+16. [Hạ tầng tính toán](#hạ-tầng-tính-toán)
+17. [Kiến trúc và công nghệ](#kiến-trúc-và-công-nghệ)
+18. [Đặc tả API và schema](#đặc-tả-api-và-schema)
+19. [Mô hình dữ liệu và định dạng nhãn](#mô-hình-dữ-liệu-và-định-dạng-nhãn)
+20. [Công thức đo và hàm tính điểm](#công-thức-đo-và-hàm-tính-điểm)
+21. [Kế hoạch đánh giá](#kế-hoạch-đánh-giá)
+22. [Kịch bản demo và danh sách màn hình](#kịch-bản-demo-và-danh-sách-màn-hình)
+23. [Kế hoạch 6 tuần cho 4 người](#kế-hoạch-6-tuần-cho-4-người)
+24. [Rủi ro và giả định](#rủi-ro-và-giả-định)
+25. [Hướng mở rộng sau kỳ này](#hướng-mở-rộng-sau-kỳ-này)
+26. [Checklist nghiệm thu](#checklist-nghiệm-thu)
 
 ## Tóm tắt
 
-AutoLabel 3D là công cụ web sinh nhãn sơ bộ cho ảnh và point cloud bằng mô hình pretrained, rồi đưa nhãn đó vào giao diện để annotator và reviewer sửa, xác nhận trước khi nhãn được dùng cho tập train. Trong 6 tuần, nhóm làm cả hai mức của đề tài. Mức cơ bản là công cụ chạy được trên một frame đồng bộ camera \+ LiDAR: tự sinh 2D box/segmentation và 3D box, cho sửa ở cả hai không gian với chiếu 2D↔3D, có luồng duyệt hai vai trò, xuất nhãn theo chuẩn nuScenes/KITTI và báo cáo mAP/IoU so với ground truth. Mức nâng cao mở rộng sang cả một sequence: chạy batch, tracking object qua frame, xếp hạng frame khó và thống kê năng suất.
+AutoLabel 3D là công cụ web sinh nhãn sơ bộ cho ảnh và point cloud bằng mô hình pretrained, rồi đưa nhãn đó vào giao diện để annotator và reviewer sửa, xác nhận trước khi nhãn được dùng cho tập train.
 
-Giá trị đo được của sản phẩm là thời gian gán nhãn mỗi frame giảm so với làm thủ công, với điều kiện chất lượng nhãn cuối không giảm. Vì vậy PRD này coi hai số liệu — thời gian mỗi frame và tỷ lệ nhãn tự động phải sửa — là tiêu chí nghiệm thu chính, không phải số lượng tính năng.
+Sản phẩm làm việc ở hai mức hạt. Với một frame: tự sinh 2D box, segmentation mask và 3D box; sửa được ở cả hai không gian với chiếu 2D↔3D; duyệt bởi người khác người gán; xuất theo chuẩn nuScenes/KITTI. Với cả một sequence video: gộp các frame gần trùng để không làm một việc nhiều lần, annotator chỉ gán frame đầu rồi hệ thống lan truyền nhãn sang các frame sau, và khi annotator xong việc thì các nhãn máy chưa ai kiểm mà có confidence thấp — hoặc bị VLM nghi sai lớp — được đánh cờ cho một reviewer khác xem.
 
-Hệ thống chỉ xử lý dữ liệu đã ghi, không điều khiển phương tiện và không có thành phần thời gian thực trên xe. Mọi nhãn tự động đều bắt buộc qua người duyệt trước khi xuất.
+Giá trị đo được của sản phẩm là thời gian gán nhãn giảm so với làm thủ công, với điều kiện chất lượng nhãn cuối không giảm. Vì vậy PRD coi thời gian mỗi frame, tỷ lệ nhãn tự động phải sửa và tỷ lệ nhãn kém lọt qua là tiêu chí nghiệm thu chính, không phải số lượng tính năng. Năng suất của từng annotator cũng được đo và kết luận đạt hay chưa đạt ngưỡng — luôn đi kèm chất lượng, để làm nhanh bằng cách làm ẩu không bao giờ được tính là đạt.
 
-**Điều kiện triển khai nhóm đã chốt:** làm cả mức cơ bản lẫn mức nâng cao; chạy inference trên GPU miễn phí của Colab/Kaggle; dataset và danh sách lớp phương tiện mở rộng dần trong suốt dự án; ngưỡng chất lượng chưa chốt, sẽ đặt sau khi có baseline.
+Hệ thống chỉ xử lý dữ liệu đã ghi, không điều khiển phương tiện và không có thành phần thời gian thực trên xe. Mọi frame đều qua tay ít nhất một người trước khi được approved; frame bị cờ hoặc trúng mẫu kiểm tra thì qua thêm một người thứ hai. Không nhãn nào được xuất khi frame chưa approved.
 
 ## Bối cảnh và vấn đề
 
-Gán nhãn dữ liệu perception là khâu tốn kém nhất trong vòng đời một mô hình AV. Một frame đầy đủ gồm 2D box và segmentation trên ảnh, cộng 3D box trên point cloud, và phải nhất quán giữa hai không gian đó.
+Gán nhãn dữ liệu perception là khâu tốn kém nhất trong vòng đời một mô hình AV. Một frame đầy đủ gồm 2D box và segmentation trên ảnh, cộng 3D box trên point cloud, và phải nhất quán giữa hai không gian đó. Dữ liệu lại đến theo sequence: hàng trăm frame liên tiếp của cùng một cảnh.
 
-Ba vấn đề cụ thể mà sản phẩm nhắm tới:
+Năm vấn đề cụ thể mà sản phẩm nhắm tới:
 
-1. **Chi phí thời gian.** Vẽ thủ công 3D box trên point cloud chậm hơn nhiều lần so với 2D box, vì annotator phải xoay góc nhìn và ước lượng kích thước, hướng (yaw) từ tập điểm thưa.  
-2. **Không đồng nhất giữa người gán nhãn.** Cùng một vật thể, hai annotator cho ra box lệch nhau về biên và nhãn lớp, kéo chất lượng tập train xuống mà không ai đo được độ lệch đó.  
-3. **Thiếu đồng bộ 2D–3D.** Nhãn ảnh và nhãn LiDAR thường làm rời ở hai công cụ khác nhau, nên một vật thể có thể có ID hay lớp khác nhau giữa hai modal.
+1. **Chi phí thời gian.** Vẽ thủ công 3D box trên point cloud chậm hơn nhiều lần so với 2D box, vì annotator phải xoay góc nhìn và ước lượng kích thước, hướng (yaw) từ tập điểm thưa.
+2. **Công việc lặp trong video.** Các frame liền nhau chứa gần như cùng một tập vật thể; khi xe dừng đèn đỏ thì hàng chục frame gần như giống hệt. Gán từng frame là trả công — và trả GPU — nhiều lần cho cùng một thông tin.
+3. **Không đồng nhất giữa người gán nhãn.** Cùng một vật thể, hai annotator cho ra box lệch nhau về biên và lớp, kéo chất lượng tập train xuống mà không ai đo được độ lệch đó.
+4. **Thiếu đồng bộ 2D–3D.** Nhãn ảnh và nhãn LiDAR thường làm rời ở hai công cụ, nên một vật thể có thể mang ID hay lớp khác nhau giữa hai modal.
+5. **Duyệt tốn công mà vẫn lọt lỗi.** Duyệt lại toàn bộ thì gấp đôi chi phí; không duyệt thì không biết lỗi ở đâu. Reviewer cần được chỉ đúng chỗ đáng ngờ.
 
-Hướng giải quyết là đảo ngược vai trò của người: thay vì vẽ từ đầu, người chỉ sửa và duyệt đề xuất của mô hình pretrained. Đây là human-in-the-loop bắt buộc chứ không phải tùy chọn: mô hình pretrained không đủ tin cậy để nhãn đi thẳng vào tập train, còn người thì không cần làm lại phần mà mô hình đã làm đúng.
+Hướng giải quyết là đảo ngược vai trò của người: thay vì vẽ từ đầu, người chỉ sửa và duyệt đề xuất của máy, và máy chỉ ra cho người những chỗ nó không chắc. Human-in-the-loop là bắt buộc chứ không phải tùy chọn: mô hình pretrained không đủ tin cậy để nhãn đi thẳng vào tập train, còn người thì không cần làm lại phần máy đã làm đúng.
 
 ## Mục tiêu và chỉ số thành công
 
-Mục tiêu sản phẩm: giảm thời gian gán nhãn một frame camera \+ LiDAR mà không làm giảm chất lượng nhãn cuối cùng, và làm cho chất lượng đó trở nên đo được.
+Mục tiêu sản phẩm: giảm thời gian gán nhãn một frame camera + LiDAR và một sequence video mà không làm giảm chất lượng nhãn cuối cùng, và làm cho cả chất lượng lẫn năng suất trở nên đo được.
 
-| \# | Chỉ số | Cách đo | Ngưỡng tham khảo |
-| :---- | :---- | :---- | :---- |
-| M1 | Thời gian gán nhãn mỗi frame | Đồng hồ trong app, từ lúc mở frame tới lúc approve | Giảm so với baseline thủ công của chính nhóm |
-| M2 | mAP của nhãn tự động 3D | So với ground truth của dataset, IoU 3D ≥ 0.5 | Báo cáo theo từng lớp |
-| M3 | mAP của nhãn tự động 2D | So với ground truth, IoU 2D ≥ 0.5 | Báo cáo theo từng lớp |
-| M4 | Tỷ lệ nhãn phải sửa | Số object bị người chỉnh hoặc xóa / tổng object tự sinh | Theo dõi xu hướng giảm dần |
-| M5 | Chất lượng sau khi người duyệt | IoU trung bình của nhãn đã approve so với ground truth | Không thấp hơn nhánh làm thủ công |
-| M6 | Độ trễ auto-label một frame | Từ lúc bấm nút tới lúc nhãn hiển thị | Đo và ghi nhận trên GPU Colab/Kaggle |
+| # | Chỉ số | Cách đo | Cách đọc |
+| --- | --- | --- | --- |
+| M1 | Thời gian gán nhãn mỗi frame | Đồng hồ thao tác trong app, từ lúc mở frame tới lúc submit, chỉ tính thời gian đang thao tác | Giảm so với baseline thủ công của chính nhóm |
+| M2 | mAP của nhãn tự động 3D | So với ground truth của dataset, IoU 3D ≥ 0.5 và 0.7 | Báo cáo theo từng lớp |
+| M3 | mAP của nhãn tự động 2D | So với ground truth, IoU 2D ≥ 0.5 và 0.7 | Báo cáo theo từng lớp |
+| M4 | Tỷ lệ nhãn phải sửa | Số object bị người chỉnh hoặc xóa / tổng object máy sinh, tách theo nguồn model / propagated / inherited | Theo dõi xu hướng giảm dần |
+| M5 | Chất lượng sau khi duyệt | IoU trung bình của nhãn đã approve so với ground truth | Không thấp hơn nhánh làm thủ công |
+| M6 | Độ trễ auto-label một frame | Từ lúc bấm nút tới lúc nhãn hiển thị, trên RTX 3090 | Mục tiêu ≤ 5 giây |
 | M7 | Ẩn danh | Tỷ lệ khuôn mặt / biển số được làm mờ trong ảnh hiển thị | Đo trên tập kiểm thử thủ công |
+| M8 | Tỷ lệ frame không cần người thứ hai | Số frame đi thẳng sang approved / tổng frame submit | Càng cao càng tiết kiệm, chỉ có nghĩa khi đọc cùng M9 |
+| M9 | Tỷ lệ nhãn kém lẽ ra đã lọt | Chỉ trên frame trúng mẫu ngẫu nhiên: số frame người duyệt phải sửa / số frame được kiểm tra | Phải thấp; đây là cái giá của M8 |
+| M10 | Số object người phải chạm mỗi frame | Tổng object được tạo, sửa hoặc xóa tay trong sequence / số frame của sequence | So có lan truyền với chỉ có tracking |
+| M11 | Tỷ lệ gộp và chất lượng nhãn kế thừa | Số frame thành viên / tổng frame; IoU của nhãn kế thừa so với ground truth | IoU nhãn kế thừa không được thấp rõ so với frame đại diện |
+| M12 | Precision của cờ | Số object bị cờ mà reviewer phải sửa hoặc xóa / tổng object bị cờ; tách cờ confidence và cờ VLM | Quyết định ngưỡng cờ và việc bật VLM mặc định |
+| M13 | GPU-giờ tiết kiệm | Số frame không phải auto-label × thời gian auto-label trung bình, quy ra giờ 3090 và giờ A100 | Đọc cùng M11 |
+| M14 | Năng suất annotator | Chỉ số năng suất P của từng người mỗi kỳ và tỷ lệ người-kỳ đạt ngưỡng | Xem mục Đo năng suất annotator |
 
-Nhóm chưa chốt ngưỡng đạt cụ thể cho các chỉ số này, nên cột cuối mới chỉ là cách đọc số liệu. Cách đặt ngưỡng hợp lý nhất là đợi đủ hai số gốc: baseline thời gian gán nhãn thủ công (tuần 1\) và mAP của mô hình pretrained trên dataset đã chọn (tuần 2), rồi chốt ngưỡng cuối tuần 2 và ghi ngược vào bảng này. Đặt ngưỡng trước khi có hai số đó chỉ là đoán.
+Ngưỡng đạt cho các chỉ số chưa chốt. Cách đặt hợp lý nhất là đợi đủ hai số gốc — baseline thời gian gán nhãn thủ công (tuần 1) và mAP của mô hình pretrained trên dataset đã chọn (tuần 2) — rồi chốt ngưỡng cuối tuần 2 và ghi ngược vào bảng này. Đặt ngưỡng trước khi có hai số đó chỉ là đoán.
 
-M1 phụ thuộc một baseline đo trước: tuần 1, mỗi thành viên gán nhãn thủ công 5 frame bằng CVAT để lấy số gốc. Không có số này thì không có gì để so.
+M1 và M14 phụ thuộc một baseline đo trước: tuần 1, mỗi thành viên gán nhãn thủ công ít nhất 5 frame, có đồng hồ thao tác. Không có số này thì không có gì để so.
 
-**Non-goals.** Huấn luyện hay fine-tune mô hình mới; điều khiển phương tiện hay bất kỳ thành phần thời gian thực nào trên xe; đạt SOTA về độ chính xác detection; thay thế hoàn toàn annotator; hỗ trợ nhiều dataset ngoài nuScenes và KITTI.
+**Non-goals.** Huấn luyện hay fine-tune mô hình mới; điều khiển phương tiện hay bất kỳ thành phần thời gian thực nào trên xe; đạt SOTA về độ chính xác detection; thay thế hoàn toàn annotator; hỗ trợ dataset ngoài nuScenes và KITTI.
 
 ## Phạm vi
 
-**Giai đoạn 1 — mức cơ bản (tuần 1–4).**
+Nhóm làm toàn bộ phạm vi dưới đây trong 6 tuần; không chia mức.
 
-- Nạp một frame gồm ảnh camera \+ point cloud LiDAR \+ file calibration, từ subset nuScenes mini hoặc KITTI.  
-- Tự sinh 2D box và 2D segmentation mask trên ảnh.  
-- Tự sinh 3D box trên point cloud.  
-- Chiếu 2D↔3D: chọn object ở một bên thì bên kia sáng theo, và ghi nhận cặp object tương ứng.  
-- Editor sửa nhãn ở cả hai không gian: thêm, xóa, chỉnh biên, đổi lớp, chỉnh vị trí–kích thước–yaw của 3D box.  
-- Hai vai trò annotator và reviewer, với trạng thái duyệt và luồng từ chối.  
-- Xuất nhãn đã duyệt theo định dạng nuScenes hoặc KITTI.  
-- Làm mờ khuôn mặt và biển số trong ảnh trước khi hiển thị.  
-- Trang báo cáo mAP/IoU của nhãn tự động so với ground truth, và thời gian gán nhãn mỗi frame.
-
-**Giai đoạn 2 — mức nâng cao (tuần 5–6).** Nhóm quyết định làm đủ bốn mục, nên chúng nằm trong phạm vi chứ không phải roadmap.
-
-- Pipeline auto-label chạy batch cả sequence, có hàng đợi và tiến độ, giữ đồng bộ 2D–3D qua cả loạt frame.  
-- Tracking object qua frame: `object_id` ổn định giữa các frame và nội suy box giữa hai frame người đã sửa.  
-- Thống kê năng suất và độ chính xác theo người và theo phiên làm việc.  
-- Active learning: xếp hạng và ưu tiên frame khó trong hàng đợi.  
-- Tối ưu throughput inference: batch, half precision, cache kết quả; đo frame/giờ trên một phiên GPU.
+- **Nạp và tiền xử lý:** nạp frame hoặc cả sequence gồm ảnh camera + point cloud LiDAR + calibration từ subset nuScenes mini / KITTI; làm mờ khuôn mặt và biển số phía server; phát hiện và gộp các frame gần trùng trong một sequence.
+- **Auto-label:** 2D box và segmentation mask trên ảnh; 3D box trên point cloud; chạy batch cả sequence có hàng đợi, tiến độ và checkpoint; tracking giữ `object_id` qua frame; lan truyền nhãn từ keyframe sang các frame sau; nội suy giữa hai keyframe; tối ưu throughput inference.
+- **Sửa nhãn:** editor 2D và 3D (thêm, xóa, chỉnh biên, đổi lớp, chỉnh vị trí–kích thước–yaw); chiếu 2D↔3D và highlight hai chiều; dải sequence để xem cả đoạn video.
+- **Duyệt và kiểm soát chất lượng:** hai vai trò annotator và reviewer; bộ kiểm tra sau submit; đánh cờ nhãn máy chưa ai chạm có confidence thấp; VLM kiểm tra lớp và vật thể bị sót; mẫu kiểm tra ngẫu nhiên mù; điểm tin cậy theo người; review theo object; duyệt theo lô; gán reviewer luân phiên; so sánh hai annotator.
+- **Hàng đợi và năng suất:** xếp hạng frame khó lên trước (active learning); đo năng suất từng annotator và kết luận đạt hay chưa đạt ngưỡng; frame vàng có ground truth chèn mù vào hàng đợi; thống kê theo người và theo phiên.
+- **Xuất và báo cáo:** xuất nhãn đã duyệt theo nuScenes hoặc KITTI; phiên bản hóa bằng DVC; trang báo cáo cho mọi chỉ số M1–M14.
 
 **Ngoài phạm vi kỳ này.**
 
-- Huấn luyện lại mô hình từ nhãn đã duyệt; active learning chỉ dừng ở xếp hạng frame khó.  
-- Đa người dùng cùng sửa một frame theo thời gian thực.  
-- 3D semantic segmentation trên point cloud; chỉ làm 3D box.  
+- Huấn luyện lại mô hình từ nhãn đã duyệt; active learning dừng ở xếp hạng frame khó.
+- Nhiều người cùng sửa một frame theo thời gian thực.
+- 3D semantic segmentation trên point cloud; chỉ làm 3D box.
+- Nhiều camera mỗi frame; chỉ một camera.
 - Triển khai production, SSO, phân quyền chi tiết, audit log đầy đủ.
 
 Ranh giới quan trọng nhất: hệ thống chỉ xử lý dữ liệu đã ghi. Không có module nào gắn vào phương tiện đang chạy, không có đầu ra nào đi vào hệ điều khiển.
 
 ## Sản phẩm cần nộp
 
-Yêu cầu nộp của đề tài chia hai mức. Bảng dưới ánh xạ từng gạch đầu dòng sang yêu cầu chức năng tương ứng, để không sót mục nào khi nghiệm thu.
-
-**Mức cơ bản — bắt buộc, là toàn bộ MVP 6 tuần.**
+Bảng dưới ánh xạ từng yêu cầu nộp của đề tài sang yêu cầu chức năng tương ứng, để không sót mục nào khi nghiệm thu.
 
 | Yêu cầu đề bài | Yêu cầu chức năng | Tuần hoàn thành |
-| :---- | :---- | :---- |
-| Web tool nạp 1 frame ảnh \+ LiDAR | FR-01, FR-02 | 2–3 |
-| Tự sinh box và segmentation sơ bộ | FR-04, FR-05 | 2 |
-| Giao diện sửa nhãn 2D và 3D | FR-09 → FR-14 | 3–4 |
-| Xuất nhãn chuẩn nuScenes/KITTI | FR-17, FR-18 | 5 |
-| ≥ 2 vai trò (annotator, reviewer) | FR-15, FR-16, FR-21 | 5 |
-| Báo cáo IoU/mAP so ground truth | FR-19 | 5–6 |
+| --- | --- | --- |
+| Web tool nạp frame ảnh + LiDAR | FR-01, FR-02 | 2–3 |
+| Tự sinh box và segmentation sơ bộ | FR-06, FR-07 | 2 |
+| Giao diện sửa nhãn 2D và 3D | FR-16 → FR-23 | 3–4 |
+| Xuất nhãn chuẩn nuScenes/KITTI | FR-43, FR-44 | 4 |
+| Ít nhất 2 vai trò (annotator, reviewer) | FR-25, FR-26, FR-36 | 4 |
+| Báo cáo IoU/mAP so ground truth | FR-46 | 5 |
+| Auto-label batch cả sequence, đồng bộ 2D–3D | FR-09 | 3 |
+| Tracking object qua frame | FR-10, FR-14 | 4 |
+| Tối ưu throughput inference | FR-15 | 5 |
+| Thống kê năng suất và độ chính xác | FR-39 → FR-42 | 5 |
+| Active learning ưu tiên frame khó | FR-38 | 6 |
 
-Hai điểm điều chỉnh so với bản PRD ban đầu, vì đề bài đã nói rõ: segmentation là bắt buộc chứ không phải tùy chọn, nên FR-04 giữ mức M; và FR-10 (brush sửa mask) vẫn có thể cắt nếu thiếu thời gian, vì đề bài chỉ yêu cầu *sinh* segmentation sơ bộ, không bắt phải sửa mask bằng tay.
-
-**Mức nâng cao — nhóm làm đủ bốn mục, tập trung ở tuần 5–6.**
-
-| Yêu cầu đề bài | Cách triển khai | Tuần |
-| :---- | :---- | :---- |
-| Auto-label batch cả sequence, đồng bộ 2D–3D | Mở rộng job queue thành job theo sequence, có tiến độ và checkpoint từng frame | 5 |
-| Tracking object qua frame | Ghép cặp box giữa hai frame liền nhau theo IoU 3D, giữ `object_id`, nội suy box giữa hai frame người đã sửa | 5–6 |
-| Thống kê năng suất và độ chính xác | Mở rộng trang báo cáo: tách số liệu theo người và theo phiên làm việc | 6 |
-| Active learning ưu tiên frame khó | Điểm độ khó \= confidence thấp \+ số object nhiều \+ bất đồng 2D–3D; sắp xếp hàng đợi theo điểm này | 6 |
-| Tối ưu throughput inference | Batch inference, half precision, cache kết quả theo frame; đo frame/giờ mỗi phiên GPU | 6 |
-
-Bốn mục nâng cao trong hai tuần với bốn người là lịch căng, nên thứ tự trên không phải ngẫu nhiên: batch và tracking làm trước vì hai mục còn lại dựa trên chúng — active learning cần confidence của cả loạt frame, tối ưu throughput chỉ đo được khi đã chạy batch. Nếu phải cắt, cắt theo chiều ngược lại: tối ưu throughput trước, rồi active learning.
+Ngoài các mục đề bài, sản phẩm có thêm lan truyền nhãn (FR-11 → FR-13), gộp frame gần trùng (FR-04, FR-05), luồng duyệt có đánh cờ (FR-28 → FR-35) và VLM kiểm tra chất lượng (FR-30, FR-31). Đây là phần giảm công sức người lớn nhất trên dữ liệu video.
 
 ## Người dùng và vai trò
 
-Hệ thống có ba vai trò, trong đó hai vai trò đầu bắt buộc phải có trong MVP.
-
 | Vai trò | Mục tiêu khi dùng | Được làm | Không được làm |
-| :---- | :---- | :---- | :---- |
-| Annotator | Sửa nhãn tự động cho đúng, nhanh nhất có thể | Chạy auto-label, sửa/thêm/xóa nhãn 2D và 3D, gửi frame đi duyệt | Approve frame của chính mình, xuất dữ liệu |
-| Reviewer | Đảm bảo nhãn đủ chất lượng trước khi vào tập train | Xem nhãn, sửa trực tiếp, approve hoặc reject kèm lý do, xuất dữ liệu | — |
-| ML Engineer | Theo dõi chất lượng mô hình và năng suất gán nhãn | Xem trang báo cáo mAP/IoU, chọn checkpoint mô hình, xuất dữ liệu | Sửa nhãn đã approve mà không đổi trạng thái frame |
+| --- | --- | --- | --- |
+| Annotator | Sửa nhãn máy cho đúng, nhanh nhất có thể | Chạy auto-label và lan truyền, sửa/thêm/xóa nhãn 2D và 3D, tách cụm frame, submit; xem năng suất của chính mình | Approve frame của chính mình, xuất dữ liệu, xem năng suất người khác |
+| Reviewer | Đảm bảo nhãn đủ chất lượng trước khi vào tập train | Xem frame được kéo vào review, giữ/sửa/xóa object, approve hoặc reject kèm lý do, xuất dữ liệu | Duyệt frame do chính mình sửa |
+| ML Engineer (kiêm quản lý gán nhãn) | Theo dõi chất lượng mô hình, năng suất và chi phí | Xem báo cáo M1–M14, xem kết luận năng suất của mọi người, chỉnh ngưỡng, chọn checkpoint, chạy batch, bật/tắt VLM, xuất dữ liệu | Sửa nhãn đã approve mà không đổi trạng thái frame |
 
-Quy tắc human-in-the-loop, áp dụng ở tầng backend chứ không chỉ ở giao diện:
+Trong đồ án, bốn thành viên đổi vai cho nhau giữa các sequence. Quy tắc human-in-the-loop áp ở tầng backend, không chỉ ở giao diện:
 
-- Nhãn do mô hình sinh ra luôn mang trạng thái `auto` và không bao giờ được xuất trực tiếp.  
-- API export chỉ trả về các frame ở trạng thái `approved`.  
-- Mỗi frame `approved` phải ghi lại ai duyệt và duyệt lúc nào.  
-- Người duyệt phải khác người gán nhãn. Trong đề tài môn học, các thành viên đổi vai cho nhau giữa các frame.
+- Nhãn do máy sinh mang nguồn `model`, `propagated` hoặc `inherited` và không bao giờ được xuất khi frame chưa approved.
+- API export chỉ trả về frame ở trạng thái `approved`.
+- Mỗi frame `approved` ghi lại ai submit, ai duyệt (nếu có), duyệt lúc nào và frame đi đường nào (qua người thứ hai hay qua bộ kiểm tra).
+- Người duyệt phải khác người gán nhãn.
 
 ## Chân dung người dùng và user stories
 
-**Persona 1 — Annotator.** Sinh viên hoặc nhân viên gán nhãn, làm việc theo ca vài giờ liên tục trên cùng một màn hình. Quen 2D box, lúng túng với point cloud. Điều họ sợ nhất là mất công đã làm vì trình duyệt treo hoặc bấm nhầm. Đo thành công bằng số frame xong mỗi giờ.
+**Persona 1 — Annotator.** Sinh viên hoặc nhân viên gán nhãn, làm theo ca vài giờ liên tục trên cùng một màn hình. Quen 2D box, lúng túng với point cloud. Sợ nhất là mất công đã làm vì trình duyệt treo hoặc bấm nhầm. Muốn biết mình đang làm đủ nhanh và đủ đúng chưa, và vì sao.
 
-**Persona 2 — Reviewer.** Thành viên nắm tiêu chuẩn nhãn, duyệt frame của người khác. Cần nhìn nhanh chỗ nào đáng ngờ thay vì soát lại từng object, và cần lý do từ chối đến đúng người gán nhãn.
+**Persona 2 — Reviewer.** Thành viên nắm tiêu chuẩn nhãn, duyệt việc của người khác. Cần được chỉ thẳng tới chỗ đáng ngờ thay vì soát lại từng object, và cần lý do từ chối đến đúng người gán nhãn.
 
-**Persona 3 — ML Engineer.** Người dùng tập nhãn để train. Quan tâm chất lượng và truy vết: nhãn này do mô hình nào sinh, ai duyệt, phiên bản dataset nào.
+**Persona 3 — ML Engineer.** Người dùng tập nhãn để train và quản lý nhóm gán nhãn. Quan tâm chất lượng và truy vết (nhãn do mô hình nào sinh, ai duyệt, phiên bản dataset nào), chi phí GPU, và ai trong nhóm cần hỗ trợ.
 
 | Mã | Vai trò | Mong muốn | Để mà |
-| :---- | :---- | :---- | :---- |
+| --- | --- | --- | --- |
 | US-01 | Annotator | Mở một frame và thấy ngay nhãn sơ bộ trên cả ảnh và point cloud | Tôi sửa thay vì vẽ lại từ đầu |
 | US-02 | Annotator | Điều chỉnh ngưỡng confidence để ẩn nhãn rác | Khung hình không bị phủ kín bởi box sai |
 | US-03 | Annotator | Chọn một object ở khung ảnh và thấy nó sáng lên trong point cloud | Tôi biết hai bên đang nói về cùng một vật thể |
-| US-04 | Annotator | Chỉnh vị trí, kích thước và hướng của 3D box bằng chuột hoặc nhập số | Tôi sửa được box lệch mà không phải xoá đi vẽ lại |
+| US-04 | Annotator | Chỉnh vị trí, kích thước và hướng của 3D box bằng chuột hoặc nhập số | Tôi sửa được box lệch mà không phải xóa đi vẽ lại |
 | US-05 | Annotator | Được lưu nháp tự động | Mất mạng hay lỡ tải lại trang không mất công đã làm |
-| US-06 | Annotator | Gửi frame đi duyệt và thấy lý do khi bị trả về | Tôi sửa đúng chỗ reviewer chê |
-| US-07 | Reviewer | Xem frame đang chờ duyệt kèm dấu vết chỉnh sửa của annotator | Tôi tập trung vào phần người ta đã động vào |
-| US-08 | Reviewer | Approve hoặc reject kèm lý do | Nhãn kém không lọt vào tập train |
-| US-09 | Reviewer | Xuất nhãn đã duyệt theo chuẩn nuScenes/KITTI | Nhóm dùng được ngay bằng devkit có sẵn |
-| US-10 | ML Engineer | Xem mAP/IoU của nhãn tự động so với ground truth | Tôi biết mô hình pretrained đang giúp được đến đâu |
-| US-11 | ML Engineer | Xem thời gian mỗi frame và tỷ lệ nhãn phải sửa | Tôi chứng minh được công cụ tiết kiệm thời gian thật |
-| US-12 | ML Engineer | Chạy auto-label cả một sequence rồi quay lại xem kết quả | Tôi không phải ngồi bấm từng frame |
-| US-13 | ML Engineer | Hàng đợi đưa frame khó lên trước | Công sức của người đổ vào chỗ mô hình yếu nhất |
+| US-06 | Annotator | Chỉ gán frame đầu của sequence, các frame sau có nhãn sẵn | Tôi không phải gán cùng một chiếc xe hàng chục lần |
+| US-07 | Annotator | Sửa một frame giữa chừng thì các frame sau cập nhật theo, không đè lên chỗ tôi đã sửa | Công của tôi không bị máy ghi đè |
+| US-08 | Annotator | Các frame gần như giống hệt được gộp lại | Tôi không phải duyệt lại những frame trùng |
+| US-09 | Annotator | Gửi đi và thấy lý do khi bị trả về | Tôi sửa đúng chỗ reviewer chê |
+| US-10 | Annotator | Xem mình đạt ngưỡng năng suất chưa và chỉ số nào kéo xuống | Tôi biết cần cải thiện tốc độ hay độ chính xác |
+| US-11 | Reviewer | Mở frame là nhảy thẳng tới object đáng ngờ, kèm dấu vết chỉnh sửa | Tôi không phải soát lại cả frame |
+| US-12 | Reviewer | Approve hoặc reject kèm lý do | Nhãn kém không lọt vào tập train |
+| US-13 | Reviewer | Xuất nhãn đã duyệt theo chuẩn nuScenes/KITTI | Nhóm dùng được ngay bằng devkit có sẵn |
+| US-14 | ML Engineer | Xem mAP/IoU của nhãn tự động so với ground truth | Tôi biết mô hình pretrained đang giúp được đến đâu |
+| US-15 | ML Engineer | Chạy auto-label cả một sequence trên A100 rồi quay lại xem kết quả | Tôi không phải ngồi bấm từng frame |
+| US-16 | ML Engineer | Thấy frame trùng không bị chạy auto-label và GPU-giờ tiết kiệm được | Tôi kiểm soát được chi phí thuê A100 |
+| US-17 | ML Engineer | Xem ai đạt, ai chưa đạt ngưỡng năng suất và vì sao | Tôi biết ai cần hỗ trợ và hỗ trợ về mặt nào |
+| US-18 | ML Engineer | Hàng đợi đưa frame khó lên trước | Công sức của người đổ vào chỗ mô hình yếu nhất |
 
 ## Luồng người dùng chính
 
+```mermaid
 flowchart TD
+  A[Nạp sequence:<br/>ảnh + LiDAR + calib] --> B[Ẩn danh<br/>mặt & biển số]
+  B --> C[Gộp frame gần trùng<br/>thành cụm]
+  C --> D[Auto-label<br/>frame đại diện]
+  D --> E[Annotator sửa keyframe<br/>2D và 3D]
+  E --> F[Lan truyền nhãn<br/>sang các frame sau]
+  F --> G[Annotator lướt sequence,<br/>sửa frame lệch → lan truyền lại]
+  G --> H[Submit cả sequence]
+  H --> I[Frame thành viên<br/>kế thừa nhãn cụm]
+  I --> J{Bộ kiểm tra:<br/>dấu hiệu, cờ, VLM,<br/>mẫu ngẫu nhiên}
+  J -->|Có cờ hoặc trúng mẫu| K[Reviewer khác annotator<br/>xem object tô sáng]
+  K -->|Reject + lý do| G
+  K -->|Approve| L[(Nhãn approved)]
+  J -->|Không| L
+  L --> M[Export<br/>nuScenes / KITTI]
+  L --> N[Báo cáo M1–M14<br/>và năng suất]
+```
 
-&nbsp;&nbsp;A\[Nạp frame:\<br/\>ảnh \+ LiDAR \+ calib\] \--\> B\[Ẩn danh\<br/\>mặt & biển số\]
-
-&nbsp;&nbsp;B \--\> C\[Auto-label\<br/\>2D \+ 3D\]
-
-&nbsp;&nbsp;C \--\> D\[Annotator sửa\<br/\>2D và 3D\]
-
-&nbsp;&nbsp;D \--\> E{Reviewer\<br/\>duyệt}
-
-&nbsp;&nbsp;E \--\>|Reject \+ lý do| D
-
-&nbsp;&nbsp;E \--\>|Approve| F\[Nhãn approved\]
-
-&nbsp;&nbsp;F \--\> G\[Export\<br/\>nuScenes / KITTI\]
-
-&nbsp;&nbsp;F \--\> H\[Báo cáo\<br/\>mAP / IoU / thời gian\]
-
-Annotator mở một frame, bấm chạy auto-label, chờ nhãn sơ bộ hiện lên ở cả khung ảnh và khung point cloud, sửa những chỗ sai, rồi gửi đi duyệt. Reviewer xem lại, sửa nếu cần, và approve hoặc reject kèm lý do; frame bị reject quay về hàng đợi của annotator với ghi chú của reviewer.
+Annotator mở sequence và thấy nó đã được chia thành các cụm frame gần trùng. Annotator chạy auto-label cho frame đầu, sửa cho đúng, bấm lan truyền; các frame sau có nhãn sẵn. Annotator lướt dải sequence, sửa những frame lệch — mỗi lần sửa, lan truyền chạy lại từ frame đó — rồi submit cả sequence. Bộ kiểm tra quyết định frame nào cần người thứ hai; frame bị reject quay về annotator kèm lý do.
 
 Ba điểm cần giữ đúng trong luồng này:
 
-- Ẩn danh chạy trước khi ảnh được trả về trình duyệt, không phải làm mờ ở phía client.  
-- Đồng hồ đo thời gian chạy từ lúc mở frame tới lúc approve, và dừng khi tab không được focus quá 60 giây.  
-- Mỗi lần chạy lại auto-label trên frame đã có người sửa phải hỏi xác nhận, vì nó ghi đè nhãn đang có.
+- Ẩn danh chạy trước khi ảnh được trả về trình duyệt, không làm mờ ở phía client.
+- Đồng hồ thao tác chỉ chạy khi annotator đang làm việc: dừng khi tab mất focus quá 60 giây hoặc không có thao tác nào quá 120 giây.
+- Mỗi lần chạy lại auto-label hoặc lan truyền trên frame đã có người sửa phải hỏi xác nhận, nói rõ số object sẽ bị ảnh hưởng; object nguồn `human` không bao giờ bị ghi đè.
+
+## Luồng duyệt và kiểm soát chất lượng
+
+Duyệt không phải một bước cố định. Mặc định annotator sửa xong thì frame sang `approved`. Người thứ hai chỉ được gọi vào trong hai trường hợp: frame trúng mẫu kiểm tra ngẫu nhiên, hoặc bộ kiểm tra sau submit thấy dấu hiệu bất thường.
+
+**Nguyên tắc: chấm phần việc của người, và chấm output của máy mà chưa người nào kiểm — không chấm output của máy mà người đã sửa.** Confidence thấp chỉ có nghĩa object khó, mà object khó thì annotator thường đã sửa rồi; sửa xong nó không còn là nhãn của máy nữa. Lấy confidence thấp của những nhãn đó để bắt review là phạt người ta vì được giao frame khó, và với mô hình pretrained thì gần như frame nào cũng bị bắt. Ngược lại, nhãn lan truyền, nhãn kế thừa hay nhãn model mà annotator chỉ lướt qua, chưa sửa, vẫn là sản phẩm của máy — confidence thấp của chúng là tín hiệu hợp lệ.
+
+```mermaid
+flowchart TD
+  S[Annotator submit<br/>cả sequence] --> C{Có dấu hiệu<br/>bất thường?}
+  C -->|Có| F[Người thứ hai xem<br/>frame bị đánh cờ]
+  C -->|Không| R{Trúng mẫu<br/>ngẫu nhiên?}
+  R -->|Có| Q[Người thứ hai xem<br/>frame kiểm tra]
+  R -->|Không| A[Approved<br/>không qua người thứ hai]
+  F --> D[(Nhãn approved)]
+  Q --> D
+  A --> D
+  Q --> M9[Chỉ số M9]
+  F --> T[Cập nhật điểm tin cậy]
+  Q --> T
+  T --> R
+```
+
+Sáu dấu hiệu bất thường. Bốn dấu hiệu đầu nói về việc người làm, hai dấu hiệu sau nói về nhãn máy chưa ai kiểm:
+
+1. **Sửa ít hơn mức frame đòi hỏi.** Frame có N object confidence dưới 0.62 nhưng annotator đụng vào dưới 40% số đó.
+2. **Xong nhanh bất thường.** Thời gian thao tác dưới 45% thời gian kỳ vọng của frame đó (công thức ở mục Đo năng suất annotator).
+3. **Còn object chưa ghép cặp 2D–3D khi gửi đi.**
+4. **Không thêm object nào** trong khi frame cùng cảnh thường còn vật thể model bỏ sót.
+5. **Còn nhãn máy chưa ai chạm có confidence thấp.** Object có `edited = false`, nguồn `model`, `propagated` hoặc `inherited`, và confidence (c\_prop với nhãn lan truyền, confidence detector với nhãn model) dưới ngưỡng cờ τ\_flag.
+6. **VLM bất đồng lớp.** VLM chọn lớp khác lớp đang gán cho một object chưa ai chạm hoặc vừa bị đổi lớp.
+
+**Thời điểm chấm.** Sau khi annotator submit cả sequence, không chấm từng frame — vì annotator có thể sửa ở frame sau và lan truyền lại làm frame trước tốt lên.
+
+**Review theo object.** Reviewer luôn khác annotator và được gán luân phiên, không ai làm reviewer toàn thời gian. Mở frame là nhảy thẳng tới các object được tô sáng; với mỗi object, reviewer giữ, sửa hoặc xóa. Sửa object nào thì lan truyền lại từ frame đó để các frame sau hưởng luôn. Frame kéo vào cùng đợt được xem dạng lưới thumbnail + BEV để approve theo lô, mở riêng frame nào thấy ngờ.
+
+**Mẫu ngẫu nhiên.** Tỉ lệ mặc định 15%, điều chỉnh được, và thay đổi theo từng người: điểm tin cậy dưới 0.7 thì nhân đôi, dưới 0.4 thì kiểm tra hết. Mức giám sát vì vậy đi theo lịch sử từng người chứ không đồng loạt.
+
+Bốn ràng buộc khiến thiết kế này đứng được:
+
+- **Cold start.** Lúc đầu chưa có dữ liệu để chấm điểm ai, nên mọi frame đều bị kiểm tra; chỉ nới dần khi mỗi người đã có đủ số frame được duyệt sạch.
+- **Mẫu ngẫu nhiên không bao giờ được tắt.** Nếu chỉ xem frame bị cờ thì không ai biết tỉ lệ sai trong đám đi thẳng, và hệ thống tự khen chính nó.
+- **M9 chỉ tính trên frame trúng mẫu ngẫu nhiên**, không tính frame bị cờ. Frame bị cờ là mẫu thiên lệch; gộp vào sẽ thổi phồng tỉ lệ lỗi.
+- **Mẫu ngẫu nhiên phải mù.** Mọi frame trong hàng đợi review, kể cả frame trúng mẫu ngẫu nhiên, đều có k object được tô sáng (với frame không có cờ, đó là k object chưa ai chạm có confidence thấp nhất), và reviewer chịu trách nhiệm cho cả frame. Lý do thật frame bị kéo vào chỉ hiện sau khi reviewer bấm xong. Biết trước là frame kiểm tra thì reviewer soát kỹ hơn bình thường và M9 mất giá trị.
+
+### VLM kiểm tra chất lượng
+
+VLM không sinh nhãn và không bao giờ tự sửa nhãn. Nó là người kiểm tra thứ hai, chỉ tạo cờ.
+
+- **Kiểm lớp.** Cắt vùng ảnh quanh từng 2D box, hỏi VLM chọn một lớp trong taxonomy hiện hành. VLM không đồng ý thì object bị cờ với lý do VLM bất đồng lớp. Có ích nhất với các lớp phương tiện mới thêm trong kỳ — đúng chỗ detector pretrained yếu nhất.
+- **Kiểm sót.** Đưa cả ảnh đã vẽ box, hỏi còn phương tiện hay người nào chưa có box. Kết quả là một vùng nghi ngờ hiển thị cho reviewer như một cờ.
+
+VLM là một mô hình mã nguồn mở cỡ khoảng 7B (ứng viên: họ Qwen-VL hoặc InternVL, chốt sau spike tuần 3), chỉ nhận ảnh đã ẩn danh, và chỉ chạy trên object chưa ai chạm hoặc vừa đổi lớp — không chạy toàn bộ object, để giữ chi phí. VLM được bật mặc định khi precision cờ của nó (M12) trên tập đánh giá đạt ngưỡng nhóm chốt. Nếu phần lớn cờ VLM là báo nhầm, reviewer sẽ quen bỏ qua cờ — kể cả cờ đúng; khi đó VLM tắt và kết quả được trình bày như một phát hiện của đồ án.
+
+## Xử lý video
+
+Hai cơ chế làm cho một sequence rẻ hơn nhiều so với tổng các frame lẻ: gộp frame gần trùng và lan truyền nhãn. Gộp chạy trước để lan truyền và auto-label chỉ chạy trên frame đại diện.
+
+### Gộp frame gần trùng
+
+Hai frame liền nhau chỉ được coi là gần trùng khi thỏa **cả ba** điều kiện:
+
+1. Ego gần như đứng yên: dịch chuyển dưới 0.2 m và quay dưới 1° giữa hai frame, tính từ ego pose.
+2. Ảnh gần giống: khoảng cách embedding ảnh (hoặc SSIM) nằm trong ngưỡng.
+3. Point cloud gần giống: sai khác Chamfer giữa hai point cloud đã downsample nằm trong ngưỡng.
+
+Không được dùng mỗi điều kiện 1: xe mình đứng yên nhưng xe khác vẫn chạy qua. Điều kiện 3 bắt được trường hợp đó, vì vật thể đang chạy làm point cloud đổi rõ.
+
+Chỉ gộp các frame liên tiếp, không gộp xuyên đoạn. Mỗi cụm tối đa 20 frame để lỗi không lan xa, và có một frame đại diện (frame giữa cụm). Chỉ frame đại diện được auto-label, lan truyền và gán nhãn; frame thành viên kế thừa nhãn với nguồn `inherited`. Export vẫn ghi đủ nhãn cho mọi frame thành viên — gộp chỉ tiết kiệm công sức và GPU, không làm thiếu dữ liệu. Annotator xem cụm trên dải sequence và tách cụm tại bất kỳ frame nào. Ngưỡng gộp mặc định để chặt, chỉ nới sau khi đo M11.
+
+### Lan truyền nhãn từ keyframe
+
+Annotator gán đầy đủ frame đầu (keyframe). Hệ thống lan truyền từng object sang các frame sau:
+
+- **2D:** SAM2 ở chế độ video, khởi tạo từ mask của keyframe.
+- **3D:** giữ nguyên w, l, h của box keyframe — xe là vật rắn, và người đã sửa kích thước thì máy không được đổi lại. Chỉ cập nhật x, y, z, yaw: dự đoán bằng bù chuyển động ego (ego pose có sẵn trong nuScenes/KITTI) cộng mô hình chuyển động hằng tốc của object, rồi hiệu chỉnh theo box detector khớp nhất về IoU 3D.
+- Object mới xuất hiện giữa chừng lấy từ detector như bình thường, nguồn `model`, và được tracking nối `object_id`.
+
+**Dừng lan truyền.** Mỗi object dừng khi confidence lan truyền c\_prop tụt dưới ngưỡng dừng, hoặc khi ra khỏi tầm nhìn camera và vùng LiDAR. Không lan truyền mù tới hết sequence.
+
+**Sửa giữa chừng.** Annotator sửa một object ở frame k thì frame k thành keyframe của object đó và lan truyền chạy lại từ k về sau. Frame nào đã có người sửa object đó thì không bị ghi đè — lan truyền dừng tại đó; đoạn nằm giữa hai keyframe dùng nội suy.
+
+**Tracking và nội suy.** Tracking ghép box giữa hai frame liền nhau theo IoU 3D để giữ `object_id` ổn định; nội suy điền box cho đoạn giữa hai keyframe người đã sửa. Cả hai đánh dấu nhãn sinh ra là nguồn máy, nên cũng đi qua dấu hiệu 5.
+
+## Đo năng suất annotator
+
+Mục tiêu: với từng annotator, theo từng kỳ đo (mặc định một tuần, xem được theo từng ca), trả lời rõ **đạt hay chưa đạt ngưỡng năng suất** — mà không bao giờ thưởng cho việc làm nhanh bằng cách làm ẩu.
+
+Bốn nguyên tắc:
+
+1. **Năng suất và chất lượng đo cùng lúc.** Chỉ kết luận đạt khi cả hai qua ngưỡng.
+2. **Chuẩn hóa theo khối lượng việc.** Frame 20 xe không so với frame 2 xe; nhãn lan truyền hay kế thừa đã đúng sẵn không được tính là công của người.
+3. **Chỉ tính thời gian thao tác thật.** Đồng hồ dừng khi tab mất focus quá 60 giây hoặc không có thao tác nào quá 120 giây.
+4. **Đủ mẫu mới kết luận.** Kỳ có dưới 20 frame thì kết luận là chưa đủ dữ liệu, không phải chưa đạt.
+
+**Thời gian kỳ vọng mỗi frame.** Hồi quy tuyến tính trên dữ liệu baseline tuần 1–2 của cả nhóm:
+
+```latex
+\hat{T}(f) = t_0 + t_{add}\,n_{add}(f) + t_{fix}\,n_{fix}(f) + t_{chk}\,n_{chk}(f)
+```
+
+Trong đó n\_add là số object phải tạo mới, n\_fix là số object phải sửa (theo định nghĩa của M4), n\_chk là số object chỉ cần kiểm mà không sửa. Các hệ số fit lại mỗi khi dataset hoặc taxonomy mở rộng.
+
+**Chỉ số năng suất** của annotator u trong kỳ là tỉ số giữa thời gian kỳ vọng và thời gian thực tế trên các frame người đó làm; P = 1 là đúng mức kỳ vọng, P = 1.3 là nhanh hơn 30%:
+
+```latex
+P_u = \frac{\sum_{f \in F_u} \hat{T}(f)}{\sum_{f \in F_u} T(f)}
+```
+
+**Chất lượng** đo trên hai nguồn không phụ thuộc lời khai của chính annotator:
+
+- **Frame vàng:** frame có ground truth của dataset, chèn mù vào hàng đợi với tỉ lệ 5–10%, trông giống hệt frame thường. Q2D và Q3D là IoU trung bình 2D và 3D của nhãn annotator so với ground truth trên các frame này. Nhãn trên frame vàng chỉ dùng để đo, không đi vào export.
+- **Tỉ lệ lỗi E:** số frame của người đó bị người thứ hai sửa hoặc trả về trong mẫu ngẫu nhiên, chia cho số frame được kiểm tra.
+
+Vì n\_fix đếm từ log chỉnh sửa, người bỏ qua lỗi sẽ có thời gian kỳ vọng thấp đi — nhưng cũng chính người đó sẽ trượt Q và E. Đây là lý do cổng chất lượng là bắt buộc, không phải phụ.
+
+**Kết luận mỗi kỳ:**
+
+| Năng suất (P ≥ τ\_P) | Chất lượng (Q2D ≥ τ\_Q2D, Q3D ≥ τ\_Q3D, E ≤ τ\_E) | Kết luận |
+| --- | --- | --- |
+| Đạt | Đạt | **Đạt ngưỡng** |
+| Đạt | Không đạt | Chưa đạt — nhanh nhưng chưa đủ chính xác |
+| Không đạt | Đạt | Chưa đạt — chính xác nhưng chưa đủ nhanh |
+| Không đạt | Không đạt | Chưa đạt |
+| Dưới 20 frame trong kỳ | — | Chưa đủ dữ liệu |
+
+**Ngưỡng khởi điểm:** τ\_P = 1.0; τ\_Q2D = 0.80; τ\_Q3D = 0.70; τ\_E = 10%. Đây là giá trị để hệ thống chạy được ngay; nhóm chốt lại cuối tuần 2 dựa trên baseline của chính mình và ghi ngược vào đây. Ngưỡng chỉnh được trong cấu hình, và mỗi kết luận lưu kèm bộ ngưỡng đã dùng để so được giữa các kỳ.
+
+**Hiển thị.** Annotator thấy kết luận của chính mình kèm chỉ số nào kéo xuống; ML Engineer thấy của mọi người. Kết luận dùng để biết ai cần hỗ trợ về tốc độ hay độ chính xác, không tự động thay đổi quyền hay hàng đợi của ai. Điểm tin cậy dùng cho mẫu ngẫu nhiên (FR-33) là một cơ chế riêng, không lấy từ kết luận năng suất.
 
 ## Yêu cầu chức năng
 
-Ưu tiên theo MoSCoW: M \= bắt buộc, S \= nên có, C \= có thể có nếu còn thời gian. FR-01 đến FR-22 thuộc mức cơ bản, FR-23 đến FR-27 thuộc mức nâng cao.
+Tất cả yêu cầu dưới đây nằm trong phạm vi 6 tuần.
 
-| ID | Yêu cầu | Ưu tiên | Tiêu chí chấp nhận |
-| :---- | :---- | :---- | :---- |
-| FR-01 | Nạp một frame gồm ảnh, file point cloud (.pcd/.bin) và calibration | M | Upload sai định dạng báo lỗi rõ; frame hợp lệ hiển thị được cả hai khung trong 5 giây |
-| FR-02 | Chọn frame từ subset nuScenes mini / KITTI đã nạp sẵn | M | Danh sách frame có trạng thái và người đang xử lý |
-| FR-03 | Ẩn danh khuôn mặt và biển số trên ảnh trước khi hiển thị | M | Ảnh trả về client đã bị làm mờ; đạt M7 |
-| FR-04 | Auto-label 2D: box \+ segmentation mask trên ảnh | M | Trả về danh sách object có lớp, box, mask, confidence |
-| FR-05 | Auto-label 3D: box trên point cloud | M | Trả về box dạng (x, y, z, w, l, h, yaw), lớp, confidence |
-| FR-06 | Ngưỡng confidence điều chỉnh được để lọc nhãn tự động | S | Thanh trượt 0–1, số object hiển thị đổi ngay |
-| FR-07 | Chiếu 3D box xuống ảnh và gợi ý ghép cặp với 2D box | M | Cặp có IoU chiếu ≥ 0.5 được ghép tự động; người sửa được cặp ghép |
-| FR-08 | Chọn object ở một khung thì khung kia highlight object tương ứng | M | Hai chiều, độ trễ dưới 200 ms |
-| FR-09 | Editor 2D: thêm, xóa, kéo biên box, đổi lớp | M | Thao tác bằng chuột; có undo/redo |
-| FR-10 | Editor 2D cho mask: tô thêm, xóa bớt bằng brush | S | Brush đổi kích thước được |
-| FR-11 | Editor 3D: xem point cloud, xoay, zoom, chọn box | M | Hiển thị mượt ở mức \~100k điểm |
-| FR-12 | Editor 3D: chỉnh vị trí, kích thước và yaw của box | M | Có cả gizmo kéo và ô nhập số; có chế độ nhìn từ trên xuống (BEV) |
-| FR-13 | Phím tắt cho các thao tác hay dùng | S | Ít nhất: chuyển object, xóa, đổi lớp, lưu, approve |
-| FR-14 | Lưu nháp tự động | M | Mất kết nối hoặc tải lại trang không mất quá 30 giây công việc |
-| FR-15 | Gửi duyệt, approve, reject kèm lý do | M | Trạng thái frame chuyển đúng; reject bắt buộc nhập lý do |
-| FR-16 | Ghi lịch sử: ai sửa gì, lúc nào, nhãn nào do máy sinh và nhãn nào do người sửa | M | Mỗi annotation có trường nguồn và dấu vết chỉnh sửa |
-| FR-17 | Export nhãn đã approve theo định dạng nuScenes hoặc KITTI | M | File xuất đọc được bằng devkit tương ứng mà không lỗi |
-| FR-18 | Export chặn frame chưa duyệt | M | Frame `auto` hoặc `in_review` không xuất hiện trong file xuất |
-| FR-19 | Trang báo cáo: mAP/IoU nhãn tự động vs ground truth, tỷ lệ nhãn phải sửa, thời gian mỗi frame | M | Số liệu cập nhật sau mỗi frame approve; xuất CSV |
-| FR-20 | Quản lý phiên bản nhãn bằng DVC | S | Mỗi lần export tạo một phiên bản truy lại được |
-| FR-21 | Đăng nhập và phân vai annotator/reviewer | M | Người dùng chỉ thấy hành động thuộc vai của mình |
-| FR-22 | So sánh nhãn của hai annotator trên cùng frame | C | Báo cáo IoU giữa hai người (inter-annotator agreement) |
-| FR-23 | Auto-label batch cả một sequence, có hàng đợi và tiến độ | M | Job chạy tiếp được sau khi phiên GPU bị ngắt; tiến độ hiển thị theo frame |
-| FR-24 | Tracking: giữ object\_id ổn định qua các frame trong sequence | M | Cùng một xe giữ nguyên id qua ít nhất 10 frame liên tiếp; người sửa được liên kết id |
-| FR-25 | Nội suy box giữa hai frame người đã sửa | S | Sửa frame đầu và cuối, các frame giữa được điền và đánh dấu là nội suy |
-| FR-26 | Active learning: xếp hạng frame theo độ khó và ưu tiên trong hàng đợi | M | Hàng đợi sắp theo điểm độ khó; xem được lý do một frame bị xếp khó |
-| FR-27 | Thống kê năng suất theo người và theo phiên, kèm throughput inference | M | Báo cáo có frame/giờ mỗi người và frame/giờ inference mỗi phiên GPU |
+| ID | Yêu cầu | Tiêu chí chấp nhận |
+| --- | --- | --- |
+| FR-01 | Nạp một frame gồm ảnh, point cloud (.pcd/.bin) và calibration | Upload sai định dạng báo lỗi rõ; frame hợp lệ hiển thị được cả hai khung trong 3 giây |
+| FR-02 | Chọn frame hoặc sequence từ subset nuScenes mini / KITTI đã nạp sẵn | Danh sách có trạng thái và người đang xử lý |
+| FR-03 | Ẩn danh khuôn mặt và biển số trên ảnh trước khi hiển thị | Ảnh trả về client đã bị làm mờ; đạt M7 |
+| FR-04 | Phát hiện frame gần trùng theo ego pose + ảnh + point cloud, gộp thành cụm liên tiếp | Cụm tối đa 20 frame; ego đứng yên nhưng có xe khác chạy qua thì không bị gộp |
+| FR-05 | Frame thành viên kế thừa nhãn của frame đại diện; tách cụm bằng tay | Frame thành viên không chạy auto-label; export có đủ nhãn cho từng frame |
+| FR-06 | Auto-label 2D: box + segmentation mask trên ảnh | Trả về danh sách object có lớp, box, mask, confidence |
+| FR-07 | Auto-label 3D: box trên point cloud | Trả về box dạng (x, y, z, w, l, h, yaw), lớp, confidence |
+| FR-08 | Ngưỡng confidence điều chỉnh được để lọc nhãn tự động | Thanh trượt 0–1, số object hiển thị đổi ngay |
+| FR-09 | Auto-label batch cả sequence, có hàng đợi, tiến độ và checkpoint | Worker A100 bị ngắt thì job chạy tiếp từ frame dở, trên A100 mới hoặc trên 3090 |
+| FR-10 | Tracking: giữ object\_id ổn định qua các frame | Cùng một xe giữ nguyên id qua ít nhất 10 frame liên tiếp; người tách và gộp được id |
+| FR-11 | Lan truyền nhãn từ keyframe: 2D bằng SAM2 video, 3D giữ kích thước và bù chuyển động ego | Gán xong frame đầu của sequence 20 frame thì mọi object còn trong tầm nhìn có nhãn nguồn propagated ở các frame sau |
+| FR-12 | Sửa object ở frame giữa thì frame đó thành keyframe và lan truyền chạy lại về sau | Không ghi đè object người đã sửa ở bất kỳ frame nào |
+| FR-13 | Confidence lan truyền c\_prop cho từng nhãn; dừng lan truyền dưới ngưỡng dừng | Mỗi nhãn propagated có prop\_conf; object bị che hẳn thì dừng chứ không trôi theo vật khác |
+| FR-14 | Nội suy box giữa hai keyframe | Các frame giữa được điền và đánh dấu nguồn máy |
+| FR-15 | Tối ưu throughput inference: half precision, batch nhiều frame, cache kết quả theo frame | Báo cáo frame/giờ trên 3090 và A100, trước và sau tối ưu |
+| FR-16 | Chiếu 3D box xuống ảnh và gợi ý ghép cặp với 2D box | Cặp có IoU chiếu ≥ 0.5 được ghép tự động; người sửa được cặp ghép |
+| FR-17 | Chọn object ở một khung thì khung kia highlight object tương ứng | Hai chiều, độ trễ dưới 200 ms |
+| FR-18 | Editor 2D: thêm, xóa, kéo biên box, đổi lớp | Thao tác bằng chuột; có undo/redo |
+| FR-19 | Editor 2D cho mask: tô thêm, xóa bớt bằng brush | Brush đổi kích thước được |
+| FR-20 | Viewer 3D: xem point cloud, xoay, zoom, chọn box | Hiển thị mượt ở mức khoảng 100k điểm |
+| FR-21 | Chỉnh vị trí, kích thước và yaw của 3D box | Có cả gizmo kéo và ô nhập số; có chế độ nhìn từ trên xuống (BEV) |
+| FR-22 | Phím tắt cho các thao tác hay dùng | Ít nhất: chuyển object, xóa, đổi lớp, lưu, submit, sang frame kế |
+| FR-23 | Lưu nháp tự động | Mất kết nối hoặc tải lại trang không mất quá 30 giây công việc |
+| FR-24 | Dải sequence: thumbnail theo thời gian, keyframe, cụm frame, đường c\_prop của object đang chọn | Nhảy tới frame bất kỳ bằng một cú bấm; thấy ngay đoạn nào c\_prop tụt |
+| FR-25 | Đăng nhập và phân vai annotator / reviewer / ML Engineer | Người dùng chỉ thấy hành động thuộc vai của mình |
+| FR-26 | Submit, approve, reject kèm lý do | Trạng thái frame chuyển đúng; reject bắt buộc nhập lý do |
+| FR-27 | Ghi lịch sử: ai sửa gì, lúc nào, nhãn nào do máy sinh và nhãn nào do người sửa | Mỗi annotation có trường nguồn, edited và dấu vết chỉnh sửa |
+| FR-28 | Bộ kiểm tra sau submit sinh danh sách dấu hiệu bất thường | Frame không có dấu hiệu nào và không trúng mẫu thì đi thẳng sang approved |
+| FR-29 | Đánh cờ object chưa ai chạm có confidence dưới τ\_flag | Object có edited = true không bao giờ bị cờ vì confidence |
+| FR-30 | VLM kiểm lớp trên vùng cắt quanh 2D box | VLM không tự sửa nhãn; chỉ chạy trên object chưa ai chạm hoặc vừa đổi lớp; tắt được bằng cấu hình |
+| FR-31 | VLM kiểm object bị sót trên toàn ảnh | Vùng nghi ngờ hiển thị cho reviewer như một cờ |
+| FR-32 | Mẫu kiểm tra ngẫu nhiên, mù với reviewer | Tỉ lệ mặc định 15%; reviewer không phân biệt được với frame bị cờ; chỉ mẫu này dùng tính M9 |
+| FR-33 | Điểm tin cậy theo người, cập nhật sau mỗi lần duyệt | Dưới 0.4 thì kiểm tra hết, dưới 0.7 thì nhân đôi tỉ lệ mẫu |
+| FR-34 | Review theo object: nhảy tới object tô sáng, giữ / sửa / xóa | Sửa xong thì lan truyền lại; lý do hiện sau khi bấm xong |
+| FR-35 | Duyệt theo lô cho các frame kéo vào cùng đợt | Lưới thumbnail + BEV, approve nhiều frame một lần |
+| FR-36 | Gán reviewer luân phiên, chặn tự duyệt | Reviewer luôn khác người sửa; không ai làm reviewer toàn thời gian |
+| FR-37 | So sánh nhãn của hai annotator trên cùng frame | Báo cáo IoU giữa hai người (inter-annotator agreement) |
+| FR-38 | Active learning: xếp hạng frame theo độ khó và ưu tiên trong hàng đợi | Hàng đợi sắp theo điểm độ khó; xem được lý do một frame bị xếp khó |
+| FR-39 | Đồng hồ thao tác cho từng frame | Dừng khi mất focus quá 60 giây hoặc không thao tác quá 120 giây; lưu theo phiên |
+| FR-40 | Frame vàng có ground truth chèn mù vào hàng đợi | Tỉ lệ 5–10%; không phân biệt được với frame thường; nhãn trên frame vàng không vào export |
+| FR-41 | Chỉ số năng suất P, chất lượng Q và E, và kết luận đạt / chưa đạt ngưỡng mỗi kỳ | Đúng năm loại kết luận ở mục Đo năng suất; lưu kèm bộ ngưỡng đã dùng; dưới 20 frame thì chưa đủ dữ liệu |
+| FR-42 | Thống kê theo người và theo phiên, kèm throughput inference | Frame/giờ mỗi người, frame chuẩn/giờ, frame/giờ inference mỗi GPU |
+| FR-43 | Export nhãn đã approve theo định dạng nuScenes hoặc KITTI | File xuất đọc được bằng devkit tương ứng mà không lỗi |
+| FR-44 | Export chặn frame chưa duyệt | Frame chưa approved và frame vàng không xuất hiện trong file xuất |
+| FR-45 | Quản lý phiên bản nhãn bằng DVC | Mỗi lần export tạo một phiên bản truy lại được |
+| FR-46 | Trang báo cáo M1–M14 | Cập nhật sau mỗi frame approve; M4 tách theo nguồn; xuất CSV |
 
 ## Tiêu chí chấp nhận chi tiết
 
-Viết theo cấu trúc Given – When – Then cho các yêu cầu mức M. Mỗi kịch bản phải chạy được tay trước buổi demo.
+Viết theo cấu trúc Given – When – Then. Mỗi kịch bản phải chạy được tay trước buổi demo.
 
-### FR-04, FR-05 — Auto-label 2D và 3D
+### FR-06, FR-07 — Auto-label 2D và 3D
 
+```gherkin
 Scenario: Sinh nhãn sơ bộ cho một frame
+  Given một frame có đủ ảnh, point cloud và calibration
+  And model service trên RTX 3090 đang chạy
+  When annotator bấm "Chạy auto-label"
+  Then hệ thống trả về danh sách object có lớp, hình học và confidence cho cả 2D và 3D trong tối đa 5 giây
+  And mỗi object được đánh dấu nguồn là `model`
+  And hệ thống ghi lại tên model, phiên bản checkpoint và ngưỡng confidence đã dùng
+```
 
-&nbsp;&nbsp;Given một frame có đủ ảnh, point cloud và calibration
+### FR-16, FR-17 — Đồng bộ 2D–3D
 
-&nbsp;&nbsp;And phiên GPU Colab/Kaggle đang kết nối
-
-&nbsp;&nbsp;When annotator bấm "Chạy auto-label"
-
-&nbsp;&nbsp;Then hệ thống trả về danh sách object có lớp, hình học và confidence cho cả 2D và 3D
-
-&nbsp;&nbsp;And mỗi object được đánh dấu nguồn là \`model\`
-
-&nbsp;&nbsp;And hệ thống ghi lại tên model, phiên bản checkpoint và ngưỡng confidence đã dùng
-
-### FR-07, FR-08 — Đồng bộ 2D–3D
-
+```gherkin
 Scenario: Chọn object ở một khung thì khung kia sáng theo
-
-&nbsp;&nbsp;Given một frame đã có nhãn 2D và 3D, các cặp đã được ghép
-
-&nbsp;&nbsp;When annotator chọn một 3D box trong khung point cloud
-
-&nbsp;&nbsp;Then 2D box tương ứng trên ảnh được highlight trong dưới 200 ms
-
-&nbsp;&nbsp;And khi chọn ngược lại từ khung ảnh thì 3D box tương ứng cũng sáng
-
-&nbsp;
+  Given một frame đã có nhãn 2D và 3D, các cặp đã được ghép
+  When annotator chọn một 3D box trong khung point cloud
+  Then 2D box tương ứng trên ảnh được highlight trong dưới 200 ms
+  And khi chọn ngược lại từ khung ảnh thì 3D box tương ứng cũng sáng
 
 Scenario: Object chưa được ghép cặp
-
-&nbsp;&nbsp;Given một 3D box không tìm được 2D box nào có IoU chiếu ≥ 0.5
-
-&nbsp;&nbsp;When annotator chọn 3D box đó
-
-&nbsp;&nbsp;Then hệ thống báo object chưa có cặp và cho phép ghép thủ công
-
-### FR-15, FR-18 — Duyệt và chặn xuất nhãn chưa duyệt
-
-Scenario: Frame bị từ chối quay về annotator
-
-&nbsp;&nbsp;Given một frame ở trạng thái \`in\_review\`
-
-&nbsp;&nbsp;When reviewer bấm "Reject" và nhập lý do
-
-&nbsp;&nbsp;Then frame chuyển về \`rejected\` và hiện trong hàng đợi của annotator kèm lý do
-
-&nbsp;&nbsp;And hệ thống không cho bấm Reject khi lý do để trống
-
-&nbsp;
-
-Scenario: Export chỉ lấy nhãn đã duyệt
-
-&nbsp;&nbsp;Given tập dữ liệu có frame ở cả bốn trạng thái auto, editing, in\_review và approved
-
-&nbsp;&nbsp;When người dùng gọi chức năng export
-
-&nbsp;&nbsp;Then file xuất chỉ chứa frame \`approved\`
-
-&nbsp;&nbsp;And file đọc được bằng devkit nuScenes hoặc KITTI mà không lỗi
+  Given một 3D box không tìm được 2D box nào có IoU chiếu ≥ 0.5
+  When annotator chọn 3D box đó
+  Then hệ thống báo object chưa có cặp và cho phép ghép thủ công
+```
 
 ### FR-03 — Ẩn danh trước khi hiển thị
 
+```gherkin
 Scenario: Ảnh rời server đã ẩn danh
+  Given một frame có khuôn mặt người đi đường và biển số xe trong ảnh
+  When client yêu cầu ảnh của frame đó
+  Then ảnh trả về đã được làm mờ ở phía server
+  And không có endpoint nào trả về ảnh gốc chưa làm mờ
+```
 
-&nbsp;&nbsp;Given một frame có khuôn mặt người đi đường và biển số xe trong ảnh
+### FR-04, FR-05 — Gộp frame gần trùng
 
-&nbsp;&nbsp;When client yêu cầu ảnh của frame đó
+```gherkin
+Scenario: Gộp frame khi xe đứng đèn đỏ
+  Given frame 30 → 42 ego đứng yên và cảnh gần như không đổi
+  When bộ phát hiện frame gần trùng chạy
+  Then frame 30 → 42 thành một cụm với một frame đại diện
+  And chỉ frame đại diện được chạy auto-label
+  And export vẫn có nhãn đầy đủ cho cả 13 frame
 
-&nbsp;&nbsp;Then ảnh trả về đã được làm mờ ở phía server
+Scenario: Không gộp khi có xe khác chạy qua
+  Given ego đứng yên ở frame 50 → 55 nhưng một xe máy chạy ngang qua
+  When bộ phát hiện frame gần trùng chạy
+  Then các frame có xe máy không bị gộp vì point cloud khác nhau
+```
 
-&nbsp;&nbsp;And không có endpoint nào trả về ảnh gốc chưa làm mờ
+### FR-09 → FR-14 — Batch, tracking và lan truyền
 
-### FR-23, FR-24 — Batch cả sequence và tracking
+```gherkin
+Scenario: Worker A100 bị ngắt giữa job batch
+  Given một job auto-label đang chạy trên sequence 50 frame và đã xong 20 frame
+  When phiên Colab A100 bị ngắt
+  Then 20 frame đã xong vẫn giữ nguyên nhãn
+  And job chạy tiếp từ frame 21 trên worker còn lại chứ không làm lại từ đầu
 
-Scenario: Phiên GPU bị ngắt giữa job batch
+Scenario: Gán frame đầu, các frame sau có nhãn sẵn
+  Given một sequence 20 frame chưa có nhãn nào
+  When annotator gán đầy đủ frame 1 và bấm "Lan truyền"
+  Then các object còn trong tầm nhìn có nhãn nguồn `propagated` ở frame 2 → 20
+  And 3D box lan truyền giữ nguyên w, l, h của keyframe
+  And mỗi nhãn lan truyền có `prop_conf` và `keyframe_id`
 
-&nbsp;&nbsp;Given một job auto-label đang chạy trên sequence 50 frame và đã xong 20 frame
+Scenario: Sửa giữa chừng không ghi đè công của người
+  Given object obj_37 đã được lan truyền từ frame 1
+  And annotator đã sửa obj_37 ở frame 15
+  When annotator sửa obj_37 ở frame 8
+  Then lan truyền chạy lại từ frame 8
+  And obj_37 ở frame 15 giữ nguyên bản người sửa
+  And frame 9 → 14 được nội suy giữa hai keyframe 8 và 15
 
-&nbsp;&nbsp;When phiên Colab/Kaggle bị ngắt
+Scenario: Object bị che thì dừng lan truyền
+  Given một xe bị xe tải che hoàn toàn từ frame 12
+  When lan truyền chạy qua frame 12
+  Then `prop_conf` của xe đó tụt dưới ngưỡng dừng và lan truyền dừng
+  And không có box nào của xe đó trôi theo xe tải
 
-&nbsp;&nbsp;Then 20 frame đã xong vẫn giữ nguyên nhãn
+Scenario: Giữ object_id qua các frame
+  Given một sequence đã chạy auto-label và tracking
+  When người dùng xem cùng một chiếc xe ở frame 10 và frame 20
+  Then hai box mang cùng một `object_id`
+```
 
-&nbsp;&nbsp;And khi mở phiên GPU mới, job chạy tiếp từ frame 21 chứ không làm lại từ đầu
+### FR-26, FR-43, FR-44 — Duyệt và xuất
 
-&nbsp;
+```gherkin
+Scenario: Frame bị từ chối quay về annotator
+  Given một frame đang ở hàng đợi review
+  When reviewer bấm "Reject" và nhập lý do
+  Then frame chuyển về `rejected` và hiện trong hàng đợi của annotator kèm lý do
+  And hệ thống không cho bấm Reject khi lý do để trống
 
-Scenario: Giữ object\_id qua các frame
+Scenario: Export chỉ lấy nhãn đã duyệt
+  Given tập dữ liệu có frame ở mọi trạng thái, kèm vài frame vàng
+  When người dùng gọi chức năng export
+  Then file xuất chỉ chứa frame `approved` và không chứa frame vàng
+  And file đọc được bằng devkit nuScenes hoặc KITTI mà không lỗi
+```
 
-&nbsp;&nbsp;Given một sequence đã chạy auto-label và tracking
+### FR-28 → FR-36 — Kiểm soát chất lượng
 
-&nbsp;&nbsp;When người dùng xem cùng một chiếc xe ở frame 10 và frame 20
+```gherkin
+Scenario: Frame bình thường không cần người thứ hai
+  Given annotator đã sửa frame và thời gian thao tác nằm trong khoảng kỳ vọng
+  And không còn object chưa ghép cặp hay nhãn máy chưa ai chạm có confidence thấp
+  And frame không trúng mẫu kiểm tra ngẫu nhiên
+  When bộ kiểm tra sau submit chạy
+  Then frame chuyển thẳng sang `approved`
 
-&nbsp;&nbsp;Then hai box mang cùng một \`object\_id\`
+Scenario: Chỉ nhãn chưa ai chạm mới bị cờ vì confidence
+  Given frame 10 có một object `propagated`, edited = false, prop_conf 0.3
+  And frame 11 có một object confidence 0.3 nhưng annotator đã sửa
+  When bộ kiểm tra sau submit chạy
+  Then frame 10 vào hàng đợi review với object đó được tô sáng
+  And frame 11 không bị kéo vào vì confidence
+
+Scenario: Bắt được annotator bấm qua loa
+  Given một frame có 6 object confidence dưới 0.62
+  When annotator gửi đi sau 30 giây mà không sửa object nào
+  Then hệ thống bắt được ít nhất hai dấu hiệu: sửa ít hơn mức đòi hỏi, và xong nhanh bất thường
+
+Scenario: Mẫu ngẫu nhiên là mù
+  Given frame 5 không có dấu hiệu nào nhưng trúng mẫu ngẫu nhiên
+  When reviewer mở frame 5
+  Then k object chưa ai chạm có confidence thấp nhất được tô sáng như frame bị cờ
+  And lý do frame được kéo vào chỉ hiện sau khi reviewer bấm xong
+  And kết quả cộng vào M9; frame bị cờ thì không
+
+Scenario: VLM chỉ tạo cờ, không sửa nhãn
+  Given một object chưa ai chạm đang gán lớp `car`
+  When VLM trả lời lớp `truck`
+  Then object đó bị cờ với lý do VLM bất đồng lớp
+  And lớp của object vẫn là `car` cho tới khi reviewer quyết định
+
+Scenario: Tỉ lệ kiểm tra đi theo từng người
+  Given thành viên A có điểm tin cậy 0.35 và thành viên B có 0.85
+  When cả hai gửi frame không có dấu hiệu bất thường
+  Then mọi frame của A đều bị kiểm tra
+  And frame của B chỉ bị kiểm tra ở tỉ lệ mẫu cơ bản
+
+Scenario: Không ai được duyệt frame của chính mình
+  Given một frame được kéo vào hàng đợi và người sửa là thành viên A
+  When hệ thống gán người xem
+  Then người được chọn khác A
+  And nếu A tự mở frame đó thì không thấy nút duyệt
+```
+
+### FR-39 → FR-41 — Đo năng suất
+
+```gherkin
+Scenario: Đạt ngưỡng năng suất
+  Given annotator A làm 40 frame trong tuần với P = 1.15
+  And Q2D = 0.84, Q3D = 0.73 trên frame vàng và E = 6%
+  When hệ thống tính kết luận tuần
+  Then kết luận của A là "Đạt ngưỡng"
+
+Scenario: Nhanh nhưng ẩu thì không đạt
+  Given annotator B làm 60 frame trong tuần với P = 1.6
+  And Q3D = 0.58 trên frame vàng
+  When hệ thống tính kết luận tuần
+  Then kết luận của B là "Chưa đạt — nhanh nhưng chưa đủ chính xác"
+  And trang năng suất của B chỉ rõ Q3D là chỉ số kéo xuống
+
+Scenario: Không kết luận khi thiếu dữ liệu
+  Given annotator C chỉ làm 12 frame trong tuần
+  When hệ thống tính kết luận tuần
+  Then kết luận của C là "Chưa đủ dữ liệu"
+
+Scenario: Thời gian rảnh không bị tính
+  Given annotator mở một frame rồi chuyển sang tab khác 5 phút
+  When annotator quay lại và submit sau 2 phút thao tác
+  Then thời gian thao tác ghi nhận khoảng 2 phút cộng tối đa 60 giây chờ
+```
 
 ## Tình huống biên và cách xử lý
 
 | Mã | Tình huống | Hậu quả nếu bỏ qua | Cách xử lý |
-| :---- | :---- | :---- | :---- |
-| EC-01 | Không có phiên GPU nào đang mở | Annotator bấm auto-label rồi chờ vô vọng | Nút auto-label bị vô hiệu hóa kèm thông báo; giao diện sửa nhãn vẫn dùng được với nhãn đã sinh trước đó |
-| EC-02 | Phiên GPU bị ngắt giữa job batch | Mất hàng chục phút tính toán | Checkpoint sau mỗi frame; job chạy tiếp từ frame dở khi có phiên mới |
-| EC-03 | Mô hình không phát hiện được object nào | Annotator tưởng hệ thống hỏng | Báo rõ "không tìm thấy object nào ở ngưỡng hiện tại", gợi ý hạ ngưỡng, vẫn cho vẽ tay từ đầu |
-| EC-04 | Mô hình sinh quá nhiều box rác | Màn hình phủ kín box, sửa lâu hơn vẽ tay | Thanh trượt confidence; nút xoá hàng loạt theo ngưỡng; ghi nhận vào M4 để biết mô hình đang hại nhiều hơn lợi |
-| EC-05 | Frame thiếu calibration hoặc calibration sai | Chiếu 2D↔3D lệch hoàn toàn, nhãn hỏng hàng loạt | Kiểm tra khi nạp frame; thiếu calibration thì chặn auto-label 3D và báo lý do, không chạy tiếp |
-| EC-06 | Hai người mở cùng một frame | Người này ghi đè công của người kia | Khóa mềm theo frame: người thứ hai vào ở chế độ chỉ xem, kèm tên người đang giữ |
-| EC-07 | Chạy lại auto-label trên frame người đã sửa | Mất toàn bộ chỉnh sửa thủ công | Hỏi xác nhận, nói rõ số object sẽ bị ghi đè; giữ lại nhãn nguồn `human` nếu người dùng chọn |
-| EC-08 | Thêm lớp mới giữa kỳ | Nhãn cũ đổi lớp hoặc mất khi xuất | Lớp có id riêng trong CSDL; migration có test trên nhãn đã duyệt; lớp mới không đổi nhãn cũ |
-| EC-09 | Point cloud quá lớn so với giới hạn trình duyệt | Tab đơ hoặc sập | Giới hạn 200k điểm, lấy mẫu bớt khi vượt; báo cho người dùng rằng đang xem bản lấy mẫu |
-| EC-10 | Mất kết nối khi đang sửa | Mất công nửa chừng | Lưu nháp cục bộ và đồng bộ lại khi có mạng; không mất quá 30 giây công việc |
-| EC-11 | Reviewer cũng là người gán nhãn frame đó | Human-in-the-loop chỉ còn trên giấy | Backend chặn approve frame do chính mình sửa; nhóm đổi vai giữa các frame |
-| EC-12 | Tracking ghép nhầm hai xe khác nhau | Nhãn sai lan ra cả sequence | Cho phép tách `object_id` tại frame bất kỳ; nhãn nội suy được đánh dấu riêng để reviewer soát kỹ hơn |
+| --- | --- | --- | --- |
+| EC-01 | RTX 3090 tắt hoặc model service lỗi | Annotator bấm auto-label rồi chờ vô vọng | Job tự chuyển sang worker A100 nếu đang thuê; nếu không thì nút auto-label bị vô hiệu kèm thông báo, giao diện sửa nhãn vẫn dùng được với nhãn đã sinh |
+| EC-02 | Phiên Colab A100 bị ngắt giữa job batch | Mất hàng chục phút tính toán và tiền thuê | Checkpoint sau mỗi frame; job chạy tiếp từ frame dở trên A100 mới hoặc trên 3090 |
+| EC-03 | Mô hình không phát hiện được object nào | Annotator tưởng hệ thống hỏng | Báo rõ không tìm thấy object ở ngưỡng hiện tại, gợi ý hạ ngưỡng, vẫn cho vẽ tay |
+| EC-04 | Mô hình sinh quá nhiều box rác | Sửa lâu hơn vẽ tay | Thanh trượt confidence; xóa hàng loạt theo ngưỡng; ghi nhận vào M4 |
+| EC-05 | Frame thiếu hoặc sai calibration | Chiếu 2D↔3D lệch hoàn toàn | Kiểm tra khi nạp; thiếu calibration thì chặn auto-label 3D và báo lý do |
+| EC-06 | Hai người mở cùng một frame hoặc sequence | Ghi đè công của nhau | Khóa mềm: người thứ hai vào chế độ chỉ xem, kèm tên người đang giữ |
+| EC-07 | Chạy lại auto-label trên frame người đã sửa | Mất chỉnh sửa thủ công | Hỏi xác nhận, nói rõ số object bị ảnh hưởng; không ghi đè nhãn nguồn human |
+| EC-08 | Thêm lớp mới giữa kỳ | Nhãn cũ đổi lớp hoặc mất khi xuất | Lớp có id riêng trong CSDL; migration có test trên nhãn đã duyệt |
+| EC-09 | Point cloud quá lớn so với trình duyệt | Tab đơ hoặc sập | Giới hạn 200k điểm, lấy mẫu bớt khi vượt và báo đang xem bản lấy mẫu |
+| EC-10 | Mất kết nối khi đang sửa | Mất công nửa chừng | Lưu nháp cục bộ và đồng bộ lại khi có mạng |
+| EC-11 | Reviewer cũng là người gán nhãn frame đó | Human-in-the-loop chỉ còn trên giấy | Backend chặn; reviewer được gán luân phiên |
+| EC-12 | Tracking ghép nhầm hai xe khác nhau | Nhãn sai lan ra cả sequence | Tách object\_id tại frame bất kỳ; nhãn máy luôn đi qua dấu hiệu 5 |
+| EC-13 | Keyframe gán sai | Lỗi lan ra cả sequence | Lan truyền tự dừng khi c\_prop tụt; sửa keyframe thì lan truyền lại, hỏi xác nhận kèm số nhãn bị ghi đè |
+| EC-14 | Object bị che vài frame rồi xuất hiện lại | Một xe mang hai object\_id | Tracking gợi ý nối id theo vị trí dự đoán; annotator gộp id bằng một thao tác |
+| EC-15 | Gộp nhầm frame có vật thể nhỏ di chuyển | Nhãn kế thừa sai mà không ai xem | Ngưỡng gộp mặc định chặt; mẫu ngẫu nhiên được phép rơi vào frame thành viên; M11 đo IoU nhãn kế thừa |
+| EC-16 | VLM trả lời ngoài taxonomy hoặc sai định dạng | Cờ rác | Coi như VLM không có ý kiến; ghi log để đo tỷ lệ trả lời hỏng |
+| EC-17 | Không có GPU trống cho VLM lúc chấm | Sequence kẹt | Sequence đi tiếp chỉ với cờ confidence; VLM chạy bù sau và chỉ thêm cờ cho frame chưa approved |
+| EC-18 | Gần như mọi object đều bị cờ (lớp mới, model yếu) | Reviewer quá tải | Giới hạn số object tô sáng mỗi frame; báo cáo nêu τ\_flag cần chỉnh cho lớp đó |
+| EC-19 | Annotator để frame mở rồi đi làm việc khác | Năng suất bị tính sai | Đồng hồ dừng khi mất focus hoặc không thao tác; chỉ tính thời gian thao tác |
+| EC-20 | Kỳ đo có quá ít frame vàng cho một người | Q2D, Q3D dao động mạnh | Cần tối thiểu 3 frame vàng mỗi kỳ; thiếu thì hệ thống tăng tỉ lệ chèn frame vàng cho người đó ở kỳ sau và kết luận chưa đủ dữ liệu |
 
 ## Yêu cầu phi chức năng
 
 | Nhóm | Yêu cầu |
-| :---- | :---- |
-| Hiệu năng | Auto-label một frame trong khoảng chấp nhận được trên GPU Colab/Kaggle, đo và ghi nhận chứ chưa chốt ngưỡng. Tải frame và hiển thị point cloud \~100k điểm ≤ 3 giây. Thao tác sửa box phản hồi dưới 100 ms. |
-| Chi phí GPU | GPU là Colab/Kaggle miễn phí, nên model service phải chịu được phiên bị ngắt: load model một lần rồi giữ trong VRAM, ghi checkpoint sau mỗi frame trong job batch, cache kết quả auto-label theo frame để không chạy lại, và có chế độ CPU để demo khi không có phiên GPU nào. |
-| Riêng tư | Ảnh chỉ rời server sau khi đã ẩn danh. Ảnh gốc chưa ẩn danh không được cache ở client. |
-| Bảo mật | API yêu cầu token; endpoint export chỉ mở cho reviewer và ML engineer. |
-| Khả năng tái lập | Mỗi lần auto-label ghi lại tên model, phiên bản checkpoint và ngưỡng confidence đã dùng. |
+| --- | --- |
+| Hiệu năng | Auto-label một frame ≤ 5 giây trên RTX 3090. Tải frame và hiển thị point cloud khoảng 100k điểm ≤ 3 giây. Thao tác sửa box phản hồi dưới 100 ms. Lan truyền 20 frame ≤ 1 phút trên 3090. |
+| Chi phí GPU | 3090 gánh toàn bộ việc tương tác. A100 chỉ bật khi có job batch hoặc đánh giá đã xếp lịch, tắt ngay khi hàng đợi batch rỗng; giờ A100 đã dùng hiện trên trang báo cáo. |
+| Chịu lỗi | Job batch checkpoint sau mỗi frame; mọi job chạy tiếp được trên worker còn lại. Kết quả auto-label cache theo frame để không chạy lại. |
+| Riêng tư | Ảnh chỉ rời server sau khi đã ẩn danh; VLM chỉ nhận ảnh đã ẩn danh. Ảnh gốc không được cache ở client. Kết luận năng suất của một người chỉ người đó và ML Engineer xem được. |
+| Bảo mật | API yêu cầu token; endpoint export chỉ mở cho reviewer và ML Engineer. |
+| Khả năng tái lập | Mỗi lần auto-label, lan truyền hay chạy VLM ghi lại tên model, checkpoint, ngưỡng và prompt đã dùng. Mỗi kết luận năng suất lưu kèm bộ ngưỡng và hệ số T̂ đã dùng. |
 | Khả năng dùng | Annotator mới làm xong một frame đầy đủ sau ≤ 10 phút hướng dẫn. |
-| Tương thích | Chạy trên Chrome và Edge bản mới, màn hình ≥ 1440×900. Không hỗ trợ mobile. |
+| Tương thích | Chrome và Edge bản mới, màn hình ≥ 1440×900. Không hỗ trợ mobile. |
 | Triển khai | Toàn bộ hệ thống dựng được bằng một lệnh `docker compose up`. |
 
-Giới hạn đã biết và chấp nhận trong kỳ này: một người sửa một frame tại một thời điểm (khóa mềm theo frame), không xử lý point cloud quá 200k điểm, và chỉ hỗ trợ một camera cho mỗi frame.
+Giới hạn đã biết và chấp nhận trong kỳ này: một người sửa một frame tại một thời điểm (khóa mềm), không xử lý point cloud quá 200k điểm, và chỉ một camera cho mỗi frame.
 
-Hệ quả của việc chỉ có GPU Colab/Kaggle: model service không chạy thường trực cạnh API mà là một phiên notebook mở khi cần, nối về hệ thống qua một đường hầm (ngrok hoặc tương đương). Khi không có phiên nào mở, giao diện sửa nhãn vẫn phải dùng được với nhãn đã sinh trước đó; chỉ nút chạy auto-label bị vô hiệu hóa kèm thông báo.
+## Hạ tầng tính toán
+
+| Tài nguyên | Vai trò | Chạy gì |
+| --- | --- | --- |
+| RTX 3090 24 GB, máy nội bộ, chạy cả ngày | Model service thường trực, hàng đợi interactive | Auto-label từng frame khi annotator bấm; lan truyền sequence ngắn; gộp frame; VLM kiểm lớp (lượng tử hóa 4-bit); ẩn danh |
+| A100 trên Google Colab, thuê thêm | Worker hàng đợi batch, bật theo lịch | Auto-label batch sequence dài; lan truyền SAM2 video cho sequence dài; VLM chạy lô và kiểm sót; đánh giá trên tập đánh giá |
+| CPU | Dự phòng | Hiển thị và sửa nhãn đã cache khi không có GPU |
+
+Quy tắc phân việc: hàng đợi `interactive` chỉ chạy trên 3090 để annotator không phải chờ. Hàng đợi `batch` chạy trên A100 khi đang thuê; khi không thuê thì chạy trên 3090 ngoài giờ gán nhãn (ví dụ ban đêm). Detector 2D, detector 3D và SAM2 luôn nạp sẵn trên 3090; VLM nạp theo nhu cầu nếu tổng VRAM không đủ giữ cả bốn — ngân sách VRAM đo thật ở tuần 1 và ghi vào đây.
+
+Worker A100 là một notebook Colab nối về hệ thống qua đường hầm (ngrok hoặc tương đương), đăng ký với hàng đợi khi mở và tự hủy đăng ký khi đóng. Vì phiên Colab có thể bị ngắt bất kỳ lúc nào, mọi job trên A100 phải checkpoint theo frame.
 
 ## Kiến trúc và công nghệ
 
+```mermaid
 flowchart LR
-
-&nbsp;&nbsp;FE\[Web app\<br/\>Next.js \+ three.js\] \--\> API\[FastAPI\<br/\>REST\]
-
-&nbsp;&nbsp;API \--\> DB\[(PostgreSQL\<br/\>nhãn, frame, user)\]
-
-&nbsp;&nbsp;API \--\> ST\[(Object storage\<br/\>ảnh, point cloud)\]
-
-&nbsp;&nbsp;API \--\> Q\[Job queue\<br/\>Celery \+ Redis\]
-
-&nbsp;&nbsp;Q \--\> MS\[Model service\<br/\>GPU\]
-
-&nbsp;&nbsp;MS \--\> M2D\[YOLO \+ SAM2\<br/\>2D\]
-
-&nbsp;&nbsp;MS \--\> M3D\[MMDetection3D\<br/\>3D\]
-
-&nbsp;&nbsp;API \--\> EV\[Eval & export\<br/\>nuScenes / KITTI \+ DVC\]
+  FE[Web app<br/>Next.js + three.js] --> API[FastAPI<br/>REST]
+  API --> DB[(PostgreSQL<br/>nhãn, frame, user, năng suất)]
+  API --> ST[(Object storage<br/>ảnh, point cloud)]
+  API --> Q[Celery + Redis<br/>hàng đợi interactive / batch]
+  Q --> G1[Model service<br/>RTX 3090 thường trực]
+  Q --> G2[Worker batch<br/>A100 Colab khi thuê]
+  G1 --> MD[YOLO + SAM2 · detector 3D · VLM]
+  G2 --> MD
+  API --> QC[Bộ kiểm tra chất lượng<br/>dấu hiệu · cờ · mẫu ngẫu nhiên]
+  API --> PR[Đo năng suất<br/>đồng hồ · frame vàng · kết luận]
+  API --> EV[Eval & export<br/>nuScenes / KITTI + DVC]
+```
 
 Lý do chọn từng mảnh:
 
-- **FastAPI** — cùng ngôn ngữ Python với phần model, đỡ một lớp chuyển đổi.  
-- **Job queue** — auto-label mất nhiều giây nên không chạy đồng bộ trong request; client poll trạng thái job.  
-- **Model service tách riêng** — giữ model nạp sẵn trong RAM/VRAM, tránh load lại mỗi lần gọi, và cho phép chạy trên máy GPU khác với máy chạy API.  
-- **three.js** — render point cloud trên trình duyệt, không cần cài đặt gì phía annotator.  
-- **PostgreSQL** — nhãn và trạng thái duyệt cần truy vấn và ràng buộc, không hợp để ở file JSON rời.  
+- **FastAPI** — cùng ngôn ngữ Python với phần model, đỡ một lớp chuyển đổi.
+- **Hai hàng đợi** — việc tương tác cần phản hồi trong vài giây nên không được xếp sau một job batch dài; tách hàng đợi là cách đơn giản nhất để 3090 luôn rảnh cho annotator.
+- **Model service tách riêng** — giữ model nạp sẵn trong VRAM, tránh load lại mỗi lần gọi, và cho phép cùng một mã chạy trên 3090 và A100.
+- **three.js** — render point cloud trên trình duyệt, không cần cài đặt gì phía annotator.
+- **PostgreSQL** — nhãn, trạng thái duyệt, cờ và số liệu năng suất cần truy vấn và ràng buộc, không hợp để ở file JSON rời.
 - **DVC** — phiên bản hóa tập nhãn đã xuất, để mỗi lần train biết mình dùng nhãn phiên bản nào.
 
-Về công cụ gán nhãn có sẵn: đề tài nhắc tới CVAT và Label Studio. Nhóm nên chốt sớm giữa hai hướng, vì nó đổi gần như toàn bộ khối lượng frontend:
-
-| Hướng | Ưu | Nhược |
-| :---- | :---- | :---- |
-| Tự xây giao diện (Next.js \+ three.js) | Kiểm soát hoàn toàn đồng bộ 2D–3D và đo thời gian; là điểm demo của đồ án | Tốn phần lớn công sức 6 tuần |
-| Dùng CVAT, chỉ viết phần auto-label | Đỡ code UI, có sẵn luồng review | Khó làm đồng bộ 2D–3D và khó đo số liệu theo ý; đóng góp riêng của nhóm mờ nhạt hơn |
-
-PRD này đang giả định hướng tự xây giao diện, vì FR-07, FR-08 và M1 khó đạt nếu đi đường CVAT.
+Nhóm tự xây giao diện thay vì dùng CVAT hay Label Studio. Lý do: đồng bộ chọn object 2D↔3D, dải sequence với lan truyền, review theo object và đồng hồ thao tác đều cần kiểm soát giao diện ở mức mà công cụ có sẵn không cho, và đây cũng là phần đóng góp riêng của đồ án.
 
 ## Đặc tả API và schema
 
-Ba nhóm endpoint chính giữa frontend, backend và model service. Chốt schema sớm để người làm frontend không phải chờ người làm model.
+Chốt schema sớm để người làm frontend không phải chờ người làm model.
 
 | Endpoint | Mục đích | Vai trò được gọi |
-| :---- | :---- | :---- |
-| `GET /frames` | Danh sách frame kèm trạng thái và người đang giữ | Tất cả |
+| --- | --- | --- |
+| `GET /frames` | Danh sách frame kèm trạng thái, người đang giữ, điểm độ khó | Tất cả |
 | `GET /frames/{id}` | Ảnh đã ẩn danh, point cloud, calibration, nhãn hiện có | Tất cả |
-| `POST /frames/{id}/autolabel` | Tạo job auto-label cho một frame | Annotator |
+| `POST /frames/{id}/autolabel` | Tạo job auto-label cho một frame (hàng đợi interactive) | Annotator |
 | `POST /sequences/{id}/autolabel` | Tạo job batch cho cả sequence | ML Engineer |
-| `GET /jobs/{id}` | Trạng thái và tiến độ job | Tất cả |
+| `POST /sequences/{id}/dedup` | Chạy phát hiện frame gần trùng | ML Engineer, Annotator |
+| `GET /sequences/{id}/groups` | Danh sách cụm frame | Tất cả |
+| `POST /frame-groups/{id}/split` | Tách cụm tại một frame | Annotator |
+| `POST /frames/{id}/propagate` | Lan truyền từ frame này (keyframe) về sau | Annotator, Reviewer |
+| `GET /jobs/{id}` | Trạng thái, tiến độ, worker đang chạy | Tất cả |
 | `PUT /frames/{id}/annotations` | Lưu nhãn sau khi sửa | Annotator, Reviewer |
-| `POST /frames/{id}/submit` | Gửi frame đi duyệt | Annotator |
+| `POST /sequences/{id}/submit` | Submit cả sequence, kích hoạt bộ kiểm tra | Annotator |
+| `GET /review/queue` | Hàng đợi review của người đang đăng nhập | Reviewer |
 | `POST /frames/{id}/review` | Approve hoặc reject kèm lý do | Reviewer |
+| `POST /flags/{id}/resolve` | Ghi kết quả giữ / sửa / xóa cho một cờ | Reviewer |
+| `POST /work-sessions/heartbeat` | Nhịp đồng hồ thao tác từ client | Annotator, Reviewer |
+| `GET /productivity` | Chỉ số P, Q, E và kết luận theo người và kỳ | Annotator (của mình), ML Engineer |
 | `POST /export` | Xuất nhãn đã duyệt theo định dạng chọn | Reviewer, ML Engineer |
-| `GET /metrics` | Số liệu mAP/IoU, thời gian, tỷ lệ nhãn phải sửa | Tất cả |
+| `GET /metrics` | Số liệu M1–M14 | Tất cả |
 
 ### Schema nhãn của một frame
 
+```json
 {
-
-&nbsp;&nbsp;"frame\_id": "scene0061\_f012",
-
-&nbsp;&nbsp;"status": "editing",
-
-&nbsp;&nbsp;"annotations": \[
-
-&nbsp;&nbsp;&nbsp;&nbsp;{
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"id": "ann\_10482",
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"object\_id": "obj\_37",
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"type": "box3d",
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"label": "car",
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"geometry": {"x": 12.4, "y": \-3.1, "z": 0.8, "w": 1.9, "l": 4.6, "h": 1.5, "yaw": 1.57},
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"confidence": 0.82,
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"source": "model",
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"edited": false
-
-&nbsp;&nbsp;&nbsp;&nbsp;},
-
-&nbsp;&nbsp;&nbsp;&nbsp;{
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"id": "ann\_10483",
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"object\_id": "obj\_37",
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"type": "box2d",
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"label": "car",
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"geometry": {"x1": 420, "y1": 310, "x2": 690, "y2": 468},
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"confidence": 0.91,
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"source": "human",
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"edited": true
-
-&nbsp;&nbsp;&nbsp;&nbsp;}
-
-&nbsp;&nbsp;\]
-
+  "frame_id": "scene0061_f012",
+  "status": "editing",
+  "group_id": null,
+  "is_gold": false,
+  "annotations": [
+    {
+      "id": "ann_10482",
+      "object_id": "obj_37",
+      "type": "box3d",
+      "label": "car",
+      "geometry": {"x": 12.4, "y": -3.1, "z": 0.8, "w": 1.9, "l": 4.6, "h": 1.5, "yaw": 1.57},
+      "confidence": 0.82,
+      "source": "propagated",
+      "keyframe_id": "scene0061_f001",
+      "prop_conf": 0.74,
+      "edited": false
+    },
+    {
+      "id": "ann_10483",
+      "object_id": "obj_37",
+      "type": "box2d",
+      "label": "car",
+      "geometry": {"x1": 420, "y1": 310, "x2": 690, "y2": 468},
+      "confidence": 0.91,
+      "source": "human",
+      "edited": true
+    }
+  ]
 }
+```
 
 ### Schema job auto-label
 
+```json
 {
-
-&nbsp;&nbsp;"job\_id": "job\_221",
-
-&nbsp;&nbsp;"scope": "sequence",
-
-&nbsp;&nbsp;"target": "scene0061",
-
-&nbsp;&nbsp;"status": "running",
-
-&nbsp;&nbsp;"frames\_total": 50,
-
-&nbsp;&nbsp;"frames\_done": 21,
-
-&nbsp;&nbsp;"model": {"2d": "yolo11x-seg", "3d": "bevfusion-nus", "conf\_threshold": 0.3},
-
-&nbsp;&nbsp;"started\_at": "2026-09-19T08:10:00Z",
-
-&nbsp;&nbsp;"resumable\_from": 22
-
+  "job_id": "job_221",
+  "scope": "sequence",
+  "target": "scene0061",
+  "queue": "batch",
+  "worker": "a100-colab-01",
+  "status": "running",
+  "frames_total": 50,
+  "frames_skipped_dedup": 12,
+  "frames_done": 21,
+  "model": {"2d": "yolo11x-seg", "3d": "bevfusion-nus", "conf_threshold": 0.3},
+  "started_at": "2026-09-25T08:10:00Z",
+  "resumable_from": 22
 }
+```
+
+### Schema kết luận năng suất
+
+```json
+{
+  "user_id": "u_annotator_a",
+  "period": "2026-W40",
+  "frames": 40,
+  "gold_frames": 4,
+  "P": 1.15,
+  "Q2D": 0.84,
+  "Q3D": 0.73,
+  "E": 0.06,
+  "verdict": "pass",
+  "thresholds": {"P": 1.0, "Q2D": 0.8, "Q3D": 0.7, "E": 0.1},
+  "t_hat_coeffs": "fit_2026-W39"
+}
+```
 
 ### Mã lỗi cần xử lý rõ
 
 | Mã | Khi nào | Frontend làm gì |
-| :---- | :---- | :---- |
-| `GPU_UNAVAILABLE` | Không có phiên GPU nào đăng ký | Vô hiệu hóa nút auto-label, hiện hướng dẫn mở phiên |
+| --- | --- | --- |
+| `GPU_UNAVAILABLE` | 3090 không phản hồi và không có worker A100 nào đăng ký | Vô hiệu nút auto-label, vẫn cho sửa nhãn đã có |
 | `MISSING_CALIBRATION` | Frame thiếu file calibration | Chặn auto-label 3D, cho phép làm 2D |
-| `FRAME_LOCKED` | Người khác đang giữ frame | Mở ở chế độ chỉ xem, hiện tên người giữ |
+| `FRAME_LOCKED` | Người khác đang giữ frame hoặc sequence | Mở ở chế độ chỉ xem, hiện tên người giữ |
 | `SELF_REVIEW_FORBIDDEN` | Reviewer duyệt frame do chính mình sửa | Ẩn nút approve, giải thích lý do |
+| `PROPAGATION_OVERWRITE` | Lan truyền lại sẽ ảnh hưởng nhãn đã có | Hỏi xác nhận, hiện số nhãn bị ảnh hưởng |
+| `VLM_UNAVAILABLE` | Không có GPU trống cho VLM | Tiếp tục với cờ confidence, ghi chú VLM sẽ chạy bù |
 | `NOTHING_TO_EXPORT` | Không có frame nào ở trạng thái approved | Báo số frame đang chờ duyệt |
 
 ## Mô hình dữ liệu và định dạng nhãn
 
-Bốn thực thể chính:
-
 | Thực thể | Trường chính |
-| :---- | :---- |
-| `frame` | id, sample\_token, đường dẫn ảnh, đường dẫn point cloud, calibration, trạng thái (`new` / `auto` / `editing` / `in_review` / `approved` / `rejected`), người đang giữ |
-| `annotation` | id, frame\_id, object\_id, loại (`box2d` / `mask2d` / `box3d`), lớp, hình học, confidence, nguồn (`model` / `human`), đã bị sửa hay chưa |
-| `review` | id, frame\_id, reviewer\_id, kết quả, lý do, thời điểm |
-| `run` | id, frame\_id, tên model, phiên bản checkpoint, ngưỡng confidence, thời gian chạy |
+| --- | --- |
+| `frame` | id, sequence\_id, sample\_token, đường dẫn ảnh và point cloud, calibration, ego pose, trạng thái (`new` / `auto` / `editing` / `submitted` / `in_review` / `approved` / `rejected`), người đang giữ, group\_id, is\_gold |
+| `annotation` | id, frame\_id, object\_id, loại (`box2d` / `mask2d` / `box3d`), lớp, hình học, confidence, nguồn (`model` / `human` / `propagated` / `inherited`), edited, keyframe\_id, prop\_conf |
+| `frame_group` | id, sequence\_id, frame đại diện, danh sách frame thành viên, ngưỡng gộp đã dùng |
+| `review` | id, frame\_id, reviewer\_id, kết quả, lý do, lý do bị kéo vào (dấu hiệu / cờ / mẫu ngẫu nhiên), thời điểm |
+| `flag` | id, annotation\_id, loại (`low_conf` / `vlm_class` / `vlm_missing` / dấu hiệu 1–4), điểm, kết quả reviewer (giữ / sửa / xóa) |
+| `run` | id, frame\_id, loại (auto-label / lan truyền / VLM), tên model, checkpoint, ngưỡng, prompt, worker, thời gian chạy |
+| `work_session` | id, user\_id, frame\_id, thời gian thao tác, số thao tác, bắt đầu, kết thúc |
+| `productivity_period` | user\_id, kỳ, số frame, số frame vàng, P, Q2D, Q3D, E, kết luận, bộ ngưỡng và hệ số T̂ đã dùng |
 
-`object_id` là khóa nối 2D và 3D: một chiếc xe có cùng `object_id` ở cả box2d, mask2d và box3d. Đây là thứ làm cho FR-08 chạy được và làm cho nhãn hai modal nhất quán.
+`object_id` là khóa nối 2D và 3D: một chiếc xe có cùng `object_id` ở cả box2d, mask2d và box3d, và giữ nguyên qua các frame nhờ tracking và lan truyền.
 
-Hệ toạ độ và quy ước:
+Hệ tọa độ và quy ước:
 
-- 3D box lưu trong hệ toạ độ LiDAR sensor, dạng `(x, y, z, w, l, h, yaw)`, `z` là tâm box.  
-- Chiếu 3D→2D dùng ma trận `camera_intrinsic` và phép biến đổi LiDAR→camera lấy từ calibration của dataset.  
-- Danh sách lớp không cố định: bắt đầu với một tập nhỏ (`car`, `pedestrian`, `cyclist`, `truck`) và bổ sung dần các lớp phương tiện khác trong suốt dự án. Taxonomy vì vậy lưu trong CSDL chứ không hardcode trong mã, bảng ánh xạ lớp nội bộ sang lớp nuScenes/KITTI là file cấu hình sửa được, và thêm lớp mới không được phá nhãn đã gán trước đó.  
-- Chuyển sang KITTI phải đổi quy ước: KITTI lưu toạ độ trong hệ camera và `z` ở đáy box, không phải tâm. Hàm chuyển đổi cần unit test riêng, vì đây là chỗ hay sai lặng.
+- 3D box lưu trong hệ tọa độ LiDAR sensor, dạng `(x, y, z, w, l, h, yaw)`, `z` là tâm box.
+- Chiếu 3D→2D dùng `camera_intrinsic` và phép biến đổi LiDAR→camera lấy từ calibration của dataset.
+- Danh sách lớp không cố định: bắt đầu với `car`, `pedestrian`, `cyclist`, `truck` và bổ sung dần các lớp phương tiện khác. Taxonomy lưu trong CSDL chứ không hardcode; bảng ánh xạ lớp nội bộ sang lớp nuScenes/KITTI là file cấu hình; thêm lớp mới không được phá nhãn cũ. VLM luôn đọc taxonomy hiện hành từ CSDL.
+- Chuyển sang KITTI phải đổi quy ước: KITTI lưu tọa độ trong hệ camera và `z` ở đáy box. Hàm chuyển đổi cần unit test riêng, vì đây là chỗ hay sai lặng.
 
 Lưu trữ nội bộ dùng một schema JSON trung gian; nuScenes và KITTI đều là bộ chuyển đổi đầu ra từ schema đó, không phải hai đường lưu song song.
 
 ## Công thức đo và hàm tính điểm
 
-Bốn công thức dưới đây quyết định mọi con số trong báo cáo, nên phải viết thành code dùng chung, không để mỗi người tự tính một kiểu.
+Các công thức dưới đây quyết định mọi con số trong báo cáo, nên phải viết thành code dùng chung, không để mỗi người tự tính một kiểu.
 
-**IoU 3D.** Với hai box A và B, tính giao trên mặt phẳng BEV rồi nhân với phần chồng theo trục đứng:
+**IoU 3D.** Tính giao trên mặt phẳng BEV rồi nhân với phần chồng theo trục đứng:
 
-\\mathrm{IoU}\_{3D}(A,B) \= \\frac{\\mathrm{Area}\_{BEV}(A \\cap B)\\cdot h\_{\\cap}}{V\_A \+ V\_B \- \\mathrm{Area}\_{BEV}(A \\cap B)\\cdot h\_{\\cap}}
+```latex
+\mathrm{IoU}_{3D}(A,B) = \frac{\mathrm{Area}_{BEV}(A \cap B)\cdot h_{\cap}}{V_A + V_B - \mathrm{Area}_{BEV}(A \cap B)\cdot h_{\cap}}
+```
 
-**mAP.** Với mỗi lớp, sắp các dự đoán theo confidence giảm dần, ghép với ground truth theo ngưỡng IoU, rồi lấy diện tích dưới đường precision–recall; mAP là trung bình AP của các lớp:
+**mAP.** Với mỗi lớp, sắp các dự đoán theo confidence giảm dần, ghép với ground truth theo ngưỡng IoU, lấy diện tích dưới đường precision–recall; mAP là trung bình AP của các lớp:
 
-AP\_c \= \\int\_0^1 p\_c(r)\\,dr, \\qquad mAP \= \\frac{1}{|C|}\\sum\_{c \\in C} AP\_c
+```latex
+AP_c = \int_0^1 p_c(r)\,dr, \qquad mAP = \frac{1}{|C|}\sum_{c \in C} AP_c
+```
 
-Báo cáo ở hai ngưỡng IoU 0.5 và 0.7, tách riêng 2D và 3D, tách theo từng lớp. Vì danh sách lớp mở rộng dần, `|C|` phải lấy theo tập lớp có mặt trong lần đo đó và ghi kèm vào báo cáo.
+Báo cáo ở hai ngưỡng IoU 0.5 và 0.7, tách 2D và 3D, tách theo lớp. Vì danh sách lớp mở rộng dần, tập lớp C lấy theo các lớp có mặt trong lần đo đó và ghi kèm vào báo cáo.
 
-**Ghép cặp 2D–3D.** Chiếu tám đỉnh của 3D box qua ma trận calibration, lấy hộp bao của các điểm chiếu, rồi ghép với 2D box theo IoU lớn nhất:
+**Ghép cặp 2D–3D.** Chiếu tám đỉnh 3D box qua calibration, lấy hộp bao, ghép với 2D box theo IoU lớn nhất; mỗi 2D box chỉ ghép với một 3D box:
 
-\\mathrm{match}(b\_{3D}) \= \\arg\\max\_{b\_{2D}} \\mathrm{IoU}\_{2D}\\big(\\pi(b\_{3D}),\\, b\_{2D}\\big), \\quad \\text{chỉ nhận khi } \\mathrm{IoU}\_{2D} \\ge 0.5
+```latex
+\mathrm{match}(b_{3D}) = \arg\max_{b_{2D}} \mathrm{IoU}_{2D}\big(\pi(b_{3D}),\, b_{2D}\big), \quad \text{chỉ nhận khi } \mathrm{IoU}_{2D} \ge 0.5
+```
 
-Mỗi 2D box chỉ được ghép với một 3D box; các cặp còn lại để trống cho người ghép tay.
+**Confidence lan truyền.** Ba thành phần lần lượt hỏi: box lan truyền có khớp detector ở frame đó không; hình chiếu 3D có khớp mask 2D lan truyền không; số điểm LiDAR trong box có tụt so với keyframe không. Không có box detector nào khớp thì thành phần đầu bằng 0.
 
-**Điểm độ khó cho active learning.** Một frame càng đáng đưa lên đầu hàng đợi khi mô hình càng thiếu chắc chắn và hai modal càng bất đồng:
+```latex
+c_{prop} = w_1\,\mathrm{IoU}_{3D}(b_{prop}, b_{det}) + w_2\,\mathrm{IoU}_{2D}\big(\pi(b_{prop}),\, m_{prop}\big) + w_3\,\min\!\Big(1, \frac{n_{pts}}{n_{pts}^{key}}\Big)
+```
 
-D(f) \= \\alpha\\big(1 \- \\overline{conf}(f)\\big) \+ \\beta\\,\\frac{n\_{unmatched}(f)}{n\_{obj}(f)} \+ \\gamma\\,\\frac{n\_{obj}(f)}{n\_{max}}
+**Điểm độ khó cho active learning.** Frame càng đáng đưa lên đầu hàng đợi khi máy càng thiếu chắc chắn và hai modal càng bất đồng:
 
-Trong đó `conf` là confidence trung bình, `n_unmatched` là số object không ghép được cặp 2D–3D, `n_obj` là số object trong frame. Ba trọng số `α`, `β`, `γ` đặt bằng nhau ở lần chạy đầu, chỉnh lại sau khi đối chiếu với thời gian sửa thực tế của từng frame — đây là cách kiểm chứng xem điểm độ khó có đo đúng cái nó muốn đo hay không.
+```latex
+D(f) = \alpha\big(1 - \overline{conf}(f)\big) + \beta\,\frac{n_{unmatched}(f)}{n_{obj}(f)} + \gamma\,\frac{n_{obj}(f)}{n_{max}}
+```
 
-**Tỷ lệ nhãn phải sửa (M4).** Một object tính là phải sửa nếu bị xóa, đổi lớp, hoặc hình học đổi làm IoU với bản gốc của mô hình xuống dưới 0.9.
+**Tỷ lệ nhãn phải sửa (M4).** Một object tính là phải sửa nếu bị xóa, đổi lớp, hoặc hình học đổi làm IoU với bản gốc của máy xuống dưới 0.9. Ngưỡng này chốt trước khi chạy, không chọn sau khi thấy kết quả.
+
+**Năng suất.** Thời gian kỳ vọng T̂ và chỉ số P như ở mục Đo năng suất annotator.
+
+Mọi bộ trọng số (w cho c\_prop; α, β, γ cho D; hệ số của T̂) đặt bằng nhau hoặc fit từ baseline ở lần chạy đầu, rồi chỉnh lại bằng cách đối chiếu với dữ liệu thật — nhãn reviewer đã phải sửa, thời gian sửa thực tế. Đó là cách kiểm chứng mỗi điểm số có đo đúng cái nó muốn đo.
 
 ## Kế hoạch đánh giá
 
-Phần này là thứ biến đồ án từ "đã làm xong công cụ" thành "chứng minh được công cụ có tác dụng". Nên thiết kế trước, chạy ở tuần 5–6.
+Phần này biến đồ án từ đã làm xong công cụ thành chứng minh được công cụ có tác dụng. Thiết kế từ tuần 2, chạy ở tuần 5–6. Mọi lần chạy đánh giá lớn đặt trên A100 để không chiếm 3090 của annotator.
 
-**Tập dữ liệu.** 60 frame có sẵn ground truth, lấy từ dataset đang dùng tại thời điểm đo. Chia: 30 frame cho nhánh auto-label, 30 frame cho nhánh thủ công, phân bổ ngẫu nhiên và cân bằng độ khó (số object mỗi frame). Vì dataset và danh sách lớp mở rộng dần, mỗi lần đo phải ghi kèm phiên bản dataset và tập lớp đã dùng, nếu không thì hai lần đo không so được với nhau.
+**Tập dữ liệu.** 60 frame có ground truth và ít nhất 4 sequence (mỗi sequence ≥ 20 frame, trong đó ít nhất một sequence có đoạn xe dừng). Các frame đơn chia 30 cho nhánh có công cụ, 30 cho nhánh thủ công, phân bổ ngẫu nhiên và cân bằng số object. Vì dataset và danh sách lớp mở rộng dần, mỗi lần đo ghi kèm phiên bản dataset và tập lớp đã dùng.
 
-**Thí nghiệm A/B.** Mỗi thành viên làm cả hai nhánh, xen kẽ thứ tự để triệt tiêu hiệu ứng quen tay. Ghi lại:
+**Thí nghiệm A/B trên frame đơn.** Mỗi thành viên làm cả hai nhánh, xen kẽ thứ tự để triệt tiêu hiệu ứng quen tay. Ghi thời gian thao tác (M1) và IoU nhãn cuối so với ground truth (M5) ở từng nhánh, để kiểm chứng nhanh hơn không đồng nghĩa ẩu hơn.
 
-- Thời gian hoàn thành mỗi frame ở từng nhánh → chỉ số M1.  
-- IoU của nhãn cuối so với ground truth ở từng nhánh → chỉ số M5, để kiểm chứng rằng nhanh hơn không đồng nghĩa ẩu hơn.
+**Thí nghiệm trên sequence.** Cùng một sequence làm theo hai cách: chỉ có auto-label và tracking, và có thêm gộp frame + lan truyền. So M1 cộng dồn cả sequence, M10 (object phải chạm mỗi frame), M11 (tỷ lệ gộp và IoU nhãn kế thừa) và M13 (GPU-giờ tiết kiệm).
 
-**Đo chất lượng nhãn tự động.** Chạy auto-label trên toàn bộ 60 frame, so với ground truth: mAP ở các ngưỡng IoU 0.5 và 0.7, riêng cho 2D và 3D, báo cáo theo từng lớp. Lớp `pedestrian` gần như chắc chắn kém hơn `car`; báo cáo tách ra thay vì gộp một số duy nhất.
+**Chất lượng nhãn tự động.** Chạy auto-label trên toàn bộ 60 frame, so với ground truth: mAP ở IoU 0.5 và 0.7, riêng 2D và 3D, theo từng lớp. Lớp `pedestrian` gần như chắc chắn kém hơn `car`; báo cáo tách ra thay vì gộp một số. M4 tách theo nguồn model / propagated / inherited.
 
-**Tỷ lệ nhãn phải sửa (M4).** Tính từ log chỉnh sửa: một object tính là "phải sửa" nếu bị xóa, đổi lớp, hoặc hình học đổi làm IoU với bản gốc của mô hình xuống dưới 0.9. Cần chốt ngưỡng này trước khi chạy, đừng chọn sau khi thấy kết quả.
+**Hiệu quả luồng duyệt (M8, M9).** Hai số này phải đọc cùng nhau: tự động duyệt 100% thì M8 đẹp nhất và cũng vô dụng nhất. Chạy với ngưỡng thận trọng, đo M9 trên mẫu ngẫu nhiên, rồi nới dần τ\_flag và ngưỡng các dấu hiệu cho tới khi M9 chạm mức nhóm chấp nhận được. Báo cáo cuối kỳ vẽ M8 và M9 qua ít nhất ba mức ngưỡng — đó là đường đánh đổi giữa công sức và chất lượng.
 
-**Kiểm thử kỹ thuật.** Unit test cho bộ chuyển đổi toạ độ và bộ xuất định dạng (đọc lại bằng devkit), test tính mAP trên một ví dụ tự tính tay, và một lượt kiểm thử luồng đầu cuối trước buổi demo.
+**Cờ và VLM (M12).** Trên các sequence đánh giá, lưu kết quả reviewer cho từng cờ; tính precision riêng cho cờ confidence và cờ VLM. Với VLM, thêm một lượt đối chiếu trực tiếp: trên các vùng cắt có ground truth, VLM bất đồng lớp bao nhiêu lần và bao nhiêu lần trong đó nhãn đang gán thật sự sai. Kết luận bật hay tắt VLM mặc định dựa trên số này.
+
+**Hiệu chỉnh đo năng suất (M14).** Fit hệ số T̂ trên dữ liệu tuần 1–2. Kiểm chứng bằng cách so T̂ với thời gian thật trên dữ liệu tuần 3–4 mà mô hình chưa thấy: sai số trung bình lớn thì thêm biến (ví dụ số object 3D riêng, số object bị che) trước khi dùng P để kết luận. Chốt τ\_P, τ\_Q2D, τ\_Q3D, τ\_E cuối tuần 2 và không đổi trong suốt thí nghiệm, nếu không thì kết luận giữa các tuần không so được.
+
+**Kiểm thử kỹ thuật.** Unit test cho bộ chuyển đổi tọa độ và bộ xuất định dạng (đọc lại bằng devkit), test mAP trên ví dụ tự tính tay, test c\_prop và P trên dữ liệu giả, và một lượt kiểm thử đầu cuối trước buổi demo.
 
 ## Kịch bản demo và danh sách màn hình
 
-Mọi tài liệu, wireframe và buổi bảo vệ dùng chung một kịch bản dưới đây, chạy trên một sequence đã chuẩn bị trước.
+Mọi tài liệu, wireframe và buổi bảo vệ dùng chung kịch bản dưới đây, chạy trên sequence đã chuẩn bị trước.
 
-\[Khởi động\]
-
-&nbsp;&nbsp;Annotator mở frame đầu tiên của sequence. Ảnh đã ẩn danh mặt và biển số; point cloud hiển thị bên cạnh.
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓
-
-\[Auto-label một frame\]
-
-&nbsp;&nbsp;Bấm chạy auto-label. Sau vài giây, 2D box \+ mask và 3D box hiện ra; đồng hồ đo thời gian bắt đầu chạy.
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓
-
-\[Sửa và đồng bộ\]
-
-&nbsp;&nbsp;Hạ ngưỡng confidence để bỏ box rác. Chọn một xe ở khung ảnh, 3D box tương ứng sáng lên.
-
-&nbsp;&nbsp;Chỉnh lại yaw của một 3D box lệch, xóa một object thừa.
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓
-
-\[Duyệt\]
-
-&nbsp;&nbsp;Gửi frame đi duyệt. Reviewer mở lên, thấy dấu vết chỉnh sửa, reject kèm lý do.
-
-&nbsp;&nbsp;Annotator sửa lại, gửi lại, reviewer approve.
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓
-
-\[Chạy batch cả sequence\]
-
-&nbsp;&nbsp;ML engineer chạy auto-label cho toàn bộ sequence. Thanh tiến độ chạy theo từng frame.
-
-&nbsp;&nbsp;Ngắt phiên GPU giữa chừng, mở lại, job chạy tiếp từ frame dở.
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓
-
-\[Tracking và nội suy\]
-
-&nbsp;&nbsp;Mở frame 10 và frame 20: cùng một xe giữ nguyên object\_id.
-
-&nbsp;&nbsp;Sửa frame đầu và frame cuối của một đoạn, các frame giữa được nội suy và đánh dấu riêng.
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓
-
-\[Hàng đợi theo độ khó\]
-
-&nbsp;&nbsp;Mở hàng đợi: frame khó được đẩy lên đầu, xem được lý do vì sao bị xếp khó.
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓
-
-\[Xuất và báo cáo\]
-
-&nbsp;&nbsp;Xuất nhãn đã duyệt theo chuẩn nuScenes/KITTI, đọc lại bằng devkit ngay trên màn hình.
-
-&nbsp;&nbsp;Mở trang báo cáo: mAP/IoU, thời gian mỗi frame so với baseline thủ công, tỷ lệ nhãn phải sửa, frame/giờ.
+```
+[Khởi động]
+  Annotator mở một sequence. Ảnh đã ẩn danh mặt và biển số; point cloud hiển thị bên cạnh.
+  Dải sequence cho thấy đoạn xe đứng đèn đỏ đã được gộp thành một cụm.
+      ↓
+[Auto-label và sửa keyframe]
+  Bấm auto-label frame đầu: 2D box + mask và 3D box hiện ra sau vài giây trên 3090.
+  Hạ ngưỡng confidence bỏ box rác; chọn một xe ở khung ảnh, 3D box tương ứng sáng lên; chỉnh yaw một box lệch.
+      ↓
+[Lan truyền]
+  Bấm lan truyền: các frame sau có nhãn sẵn, object_id giữ nguyên.
+  Sửa một xe ở frame giữa: các frame sau cập nhật, frame đã sửa trước đó không bị đè.
+  Một xe bị che: lan truyền dừng đúng chỗ, đường c_prop trên dải sequence tụt xuống.
+      ↓
+[Submit và kiểm soát chất lượng]
+  Submit cả sequence. Đổi sang tài khoản reviewer: mở frame là nhảy tới object được tô sáng
+  (confidence thấp, VLM bất đồng lớp). Sửa một object, reject một frame kèm lý do.
+      ↓
+[Batch trên A100]
+  ML engineer chạy auto-label cả một sequence dài trên worker A100; thanh tiến độ theo frame,
+  frame trùng được bỏ qua. Ngắt phiên Colab giữa chừng: job chạy tiếp trên 3090 từ frame dở.
+      ↓
+[Hàng đợi theo độ khó]
+  Mở hàng đợi: frame khó được đẩy lên đầu, xem được lý do vì sao bị xếp khó.
+      ↓
+[Năng suất]
+  Mở trang năng suất: mỗi người một kết luận đạt / chưa đạt ngưỡng, kèm P, Q2D, Q3D, E.
+  Một người nhanh nhưng Q3D thấp hiện rõ là chưa đạt và vì sao.
+      ↓
+[Xuất và báo cáo]
+  Xuất nhãn đã duyệt theo chuẩn nuScenes/KITTI, đọc lại bằng devkit ngay trên màn hình.
+  Mở trang báo cáo: mAP/IoU, thời gian mỗi frame so với baseline thủ công, M8–M9, GPU-giờ tiết kiệm.
+```
 
 ### Hai luồng sử dụng bắt buộc
 
-- **Annotator:** mở frame → chạy auto-label → lọc theo confidence → sửa 2D → sửa 3D → kiểm tra đồng bộ hai khung → gửi duyệt.  
-- **Reviewer:** mở hàng đợi → chọn frame chờ duyệt → xem dấu vết chỉnh sửa → sửa nếu cần → approve hoặc reject kèm lý do → xuất nhãn.
+- **Annotator:** mở sequence → auto-label keyframe → lọc theo confidence → sửa 2D và 3D → lan truyền → lướt dải sequence và sửa frame lệch → submit → xem năng suất của mình.
+- **Reviewer:** mở hàng đợi → mở frame → nhảy qua các object tô sáng → giữ, sửa hoặc xóa → approve hoặc reject kèm lý do → xuất nhãn.
 
 ### Danh sách màn hình
 
 | Mã | Màn hình | Thành phần chính | FR ánh xạ |
-| :---- | :---- | :---- | :---- |
-| M1 | Danh sách frame / hàng đợi | Bảng frame, trạng thái, người giữ, điểm độ khó, bộ lọc | FR-02, FR-26 |
-| M2 | Màn hình gán nhãn | Khung ảnh và khung point cloud cạnh nhau, thanh confidence, danh sách object, nút auto-label | FR-01, FR-04 → FR-08 |
-| M3 | Bảng điều khiển 3D box | Ô nhập x, y, z, w, l, h, yaw; nút chuyển chế độ BEV | FR-11, FR-12 |
-| M4 | Màn hình duyệt | Nhãn kèm dấu nguồn model/human, nút approve và reject, ô lý do | FR-15, FR-16 |
-| M5 | Job batch | Tiến độ theo frame, trạng thái phiên GPU, nút chạy tiếp | FR-23, FR-25 |
-| M6 | Trang báo cáo | mAP/IoU theo lớp, thời gian mỗi frame, tỷ lệ nhãn phải sửa, frame/giờ theo người | FR-19, FR-27 |
-| M7 | Màn hình export | Chọn định dạng, số frame đủ điều kiện, lịch sử các lần xuất | FR-17, FR-18, FR-20 |
+| --- | --- | --- | --- |
+| S1 | Danh sách frame / hàng đợi | Bảng frame và sequence, trạng thái, người giữ, điểm độ khó, bộ lọc | FR-02, FR-38 |
+| S2 | Màn hình gán nhãn | Khung ảnh và khung point cloud cạnh nhau, thanh confidence, danh sách object, nút auto-label và lan truyền | FR-01, FR-06 → FR-08, FR-11, FR-16 → FR-19 |
+| S3 | Bảng điều khiển 3D box | Ô nhập x, y, z, w, l, h, yaw; nút chuyển chế độ BEV | FR-20, FR-21 |
+| S4 | Dải sequence | Thumbnail theo thời gian, keyframe, cụm frame, đường c\_prop, nút tách cụm | FR-04, FR-05, FR-12, FR-13, FR-24 |
+| S5 | Review theo object | Object tô sáng, nút giữ / sửa / xóa, approve / reject, lý do hiện sau khi bấm xong | FR-26, FR-29 → FR-34 |
+| S6 | Duyệt theo lô | Lưới thumbnail + BEV, approve nhiều frame một lần | FR-35 |
+| S7 | Job batch | Tiến độ theo frame, worker đang chạy (3090 / A100), số frame bỏ qua nhờ gộp, nút chạy tiếp | FR-09, FR-15 |
+| S8 | Trang năng suất | Kết luận đạt / chưa đạt theo người và kỳ, P, Q2D, Q3D, E, chỉ số kéo xuống, lịch sử theo tuần | FR-39 → FR-42 |
+| S9 | Trang báo cáo | M1–M14, mAP/IoU theo lớp, đường M8–M9, giờ GPU | FR-46 |
+| S10 | Màn hình export | Chọn định dạng, số frame đủ điều kiện, lịch sử các lần xuất | FR-43 → FR-45 |
 
 ## Kế hoạch 6 tuần cho 4 người
 
-Phân vai đề xuất, mỗi người một trục chính nhưng đều tham gia gán nhãn ở tuần đánh giá:
+Mỗi người một trục chính nhưng đều tham gia gán nhãn ở các tuần đo:
 
 | Vai | Trách nhiệm chính |
-| :---- | :---- |
-| P1 — ML 2D | YOLO \+ SAM2, pipeline ảnh, ẩn danh mặt/biển số |
-| P2 — ML 3D | MMDetection3D/BEVFusion, xử lý point cloud, chiếu 2D↔3D |
-| P3 — Backend | FastAPI, CSDL, job queue, trạng thái duyệt, export, DVC |
-| P4 — Frontend | Next.js, editor 2D, viewer/editor 3D bằng three.js, trang báo cáo |
-
-&nbsp;
+| --- | --- |
+| P1 — ML 2D | YOLO + SAM2 (cả chế độ video), ẩn danh mặt/biển số, VLM kiểm lớp và kiểm sót |
+| P2 — ML 3D | Detector 3D, xử lý point cloud, chiếu 2D↔3D, tracking, lan truyền 3D, phát hiện frame gần trùng |
+| P3 — Backend | FastAPI, CSDL, hai hàng đợi và worker A100, luồng duyệt và bộ kiểm tra, đo năng suất, export, DVC |
+| P4 — Frontend | Next.js, editor 2D, viewer/editor 3D bằng three.js, dải sequence, review theo object, trang năng suất và báo cáo |
 
 | Tuần | Mục tiêu | Done khi |
-| :---- | :---- | :---- |
-| 1 | Chốt dataset khởi đầu, dựng khung dự án, dựng phiên GPU Colab/Kaggle, đo baseline thủ công | Docker compose chạy; notebook GPU gọi được từ backend; mỗi người gán thủ công 5 frame và có số thời gian gốc |
-| 2 | Auto-label 2D và 3D chạy được, API nạp/đọc frame, script tính mAP | JSON nhãn cho một frame; có số mAP đầu tiên trên tập nhỏ → chốt ngưỡng cho M1–M5 |
-| 3 | Giao diện hiển thị ảnh \+ point cloud và nhãn tự động | Mở frame trên web thấy cả hai khung với box vẽ sẵn |
-| 4 | Sửa nhãn 2D/3D, đồng bộ chọn object, luồng duyệt hai vai, export, ẩn danh | Sửa → duyệt → xuất được file nuScenes/KITTI đọc bằng devkit; hết mức cơ bản trừ trang báo cáo |
-| 5 | Trang báo cáo; bắt đầu mức nâng cao: batch cả sequence \+ tracking | Chạy batch một sequence ≥ 20 frame không cần trông; `object_id` giữ được qua các frame |
-| 6 | Nội suy box, active learning, tối ưu throughput, thống kê theo người; thí nghiệm A/B và báo cáo | Có số cho M1–M5; hàng đợi sắp theo độ khó; có số frame/giờ; demo đầu cuối chạy không lỗi |
+| --- | --- | --- |
+| 1 | Chốt dataset khởi đầu, dựng khung dự án, dựng model service trên 3090, đo baseline thủ công có đồng hồ thao tác | Docker compose chạy; 3090 trả được kết quả từ backend; mỗi người gán thủ công ≥ 5 frame và có số thời gian gốc; có ngân sách VRAM |
+| 2 | Auto-label 2D và 3D, API nạp/đọc frame, script tính mAP, phát hiện frame gần trùng, fit T̂ lần đầu | JSON nhãn cho một frame; số mAP đầu tiên; danh sách cụm cho một sequence; chốt ngưỡng M1–M5 và ngưỡng năng suất |
+| 3 | Giao diện hai khung + editor 2D, viewer 3D; batch cả sequence có checkpoint trên A100; spike VLM kiểm lớp; đồng hồ thao tác trong app | Mở frame thấy cả hai khung với box vẽ sẵn; batch sequence ≥ 20 frame chạy tiếp được sau khi ngắt A100; có precision sơ bộ của VLM |
+| 4 | Editor 3D, đồng bộ 2D–3D, luồng submit/duyệt hai vai, export, ẩn danh, tracking, lan truyền 3D, gộp frame nối vào pipeline | Sửa → duyệt → xuất file nuScenes/KITTI đọc được bằng devkit; object\_id giữ qua các frame; gán keyframe là có 3D box lan truyền |
+| 5 | Lan truyền 2D bằng SAM2 video + sửa giữa chừng + dải sequence; bộ kiểm tra sau submit, cờ confidence, mẫu ngẫu nhiên, điểm tin cậy; VLM kiểm lớp nối vào cờ; frame vàng và kết luận năng suất; tối ưu throughput; trang báo cáo | Luồng đầu cuối trên một sequence chạy thông; có kết luận năng suất đầu tiên cho mỗi người |
+| 6 | Review theo object, duyệt theo lô, active learning, VLM kiểm sót, so sánh hai annotator; thí nghiệm A/B và thí nghiệm sequence; báo cáo và demo | Có số M1–M14; đường M8–M9 qua ba mức ngưỡng; kết luận bật/tắt VLM; demo đầu cuối chạy không lỗi |
 
-Lịch này dồn toàn bộ mức cơ bản vào bốn tuần đầu để dành hai tuần cuối cho mức nâng cao, nên mốc kiểm soát quan trọng nhất là cuối tuần 4: nếu luồng sửa → duyệt → xuất chưa chạy thông, mức nâng cao phải cắt bớt chứ không phải mức cơ bản. Hai cách cắt đã chấp nhận trước: bỏ brush sửa mask (FR-10) và so sánh hai annotator (FR-22); sau đó mới tới tối ưu throughput và active learning. Tuần 6 không nhận tính năng nằm ngoài danh sách trên.
+Mốc kiểm soát quan trọng nhất là cuối tuần 4: nếu luồng sửa → duyệt → xuất chưa chạy thông, tuần 5–6 phải dồn sức hoàn thành luồng đó trước. Toàn bộ phạm vi đều là cam kết; nếu trễ, thứ tự lùi việc đã thống nhất trước (lùi từ trên xuống): VLM kiểm sót (FR-31) → so sánh hai annotator (FR-37) → brush sửa mask (FR-19) → duyệt theo lô (FR-35). Lan truyền, gộp frame, cờ, đo năng suất, batch và tracking giữ đến cùng. Tuần 6 không nhận tính năng mới ngoài danh sách trên.
 
 ## Rủi ro và giả định
 
 | Rủi ro | Mức | Dấu hiệu sớm | Giảm thiểu |
-| :---- | :---- | :---- | :---- |
-| Làm đủ bốn mục nâng cao trong hai tuần cuối | Cao | Hết tuần 4 mức cơ bản chưa chạy thông đầu cuối | Thứ tự cắt đã chốt trước: throughput, rồi active learning; batch và tracking là hai mục giữ lại đến cùng |
-| Phiên Colab/Kaggle bị ngắt giữa job batch | Cao | Job dài quá vài chục phút không xong | Checkpoint sau mỗi frame, job tiếp tục được từ frame dở; chạy trước và cache kết quả cho tập đánh giá |
-| Hết hạn mức GPU miễn phí đúng tuần demo | Cao | Colab báo giới hạn trong tuần 5 | Nhiều tài khoản luân phiên; lưu sẵn nhãn đã sinh cho các frame demo để không phụ thuộc GPU lúc trình bày |
+| --- | --- | --- | --- |
+| Phạm vi rộng cho 6 tuần | Cao | Hết tuần 3 chưa có batch sequence và danh sách cụm frame | Kéo phần không phụ thuộc giao diện (gộp frame, spike VLM, fit T̂) lên sớm; thứ tự lùi việc đã chốt trước |
+| 3090 quá tải khi vừa phục vụ annotator vừa chạy batch | Cao | Auto-label một frame vượt 5 giây khi có job batch | Hàng đợi interactive tách riêng, chỉ 3090; batch sang A100 hoặc chạy ngoài giờ gán nhãn |
+| Không đủ VRAM trên 3090 để giữ cả detector, SAM2 và VLM | Trung bình | OOM khi nạp VLM | VLM lượng tử hóa 4-bit và nạp theo nhu cầu; hoặc chỉ chạy VLM trên A100 |
+| Phiên Colab A100 bị ngắt giữa job | Trung bình | Job dài không xong | Checkpoint sau mỗi frame; job tiếp tục trên 3090 |
+| Chi phí thuê A100 vượt dự tính | Trung bình | Giờ A100 tăng nhanh trong tuần 3 | A100 chỉ bật theo lịch cho batch và đánh giá; gộp frame giảm số frame phải chạy; theo dõi giờ A100 trên báo cáo |
 | Editor 3D tốn nhiều thời gian hơn dự tính | Cao | Hết tuần 3 chưa xoay được point cloud mượt | Làm BEV 2D trước, 3D tự do sau; chỉnh yaw bằng ô nhập số |
-| Cài MMDetection3D/BEVFusion hỏng do xung đột CUDA | Cao | Tuần 2 chưa chạy được inference | Khóa phiên bản torch/CUDA trong notebook mẫu ngay tuần 1; dự phòng PointPillars nhẹ hơn |
-| Thêm lớp mới giữa chừng làm hỏng nhãn cũ | Trung bình | Nhãn cũ đổi lớp hoặc biến mất sau khi sửa taxonomy | Taxonomy trong CSDL, lớp có id riêng; migration phải có test trên nhãn đã duyệt |
-| mAP 3D quá thấp khiến nhãn tự động vô dụng | Trung bình | mAP rất thấp trên lớp car | Đổi checkpoint pretrained đúng dataset đang dùng; hạ ngưỡng confidence để ưu tiên recall |
-| Sai quy ước toạ độ khi chiếu 2D↔3D | Trung bình | Box chiếu lệch hẳn khỏi vật thể | Unit test với ground truth: chiếu GT 3D box phải trùng GT 2D box |
-| Thí nghiệm A/B bị dồn vào tuần cuối | Trung bình | Chưa chốt giao thức đo ở tuần 4 | Script tính mAP viết từ tuần 2; chia frame cho hai nhánh ngay khi luồng duyệt chạy |
+| Cài MMDetection3D/BEVFusion hỏng do xung đột CUDA | Cao | Tuần 2 chưa chạy được inference | Khóa phiên bản torch/CUDA trên 3090 ngay tuần 1; dùng cùng image cho A100; dự phòng PointPillars nhẹ hơn |
+| SAM2 video tràn VRAM với sequence dài | Trung bình | OOM khi lan truyền quá khoảng 50 frame | Lan truyền theo cửa sổ trượt, giải phóng frame cũ; sequence dài chạy trên A100 |
+| VLM báo nhầm nhiều khiến reviewer phớt lờ cờ | Trung bình | Precision cờ VLM thấp ngay từ spike tuần 3 | Tắt được bằng cấu hình; không đạt ngưỡng thì trình bày như kết quả âm, không bật mặc định |
+| Nhãn lan truyền đúng về hình nhưng annotator lướt qua không xem | Trung bình | M10 giảm mạnh trong khi M9 tăng | Dấu hiệu 5 bắt nhãn confidence thấp; mẫu ngẫu nhiên vẫn phủ cả nhãn lan truyền confidence cao |
+| Thêm lớp mới giữa chừng làm hỏng nhãn cũ | Trung bình | Nhãn cũ đổi lớp hoặc biến mất sau khi sửa taxonomy | Taxonomy trong CSDL, lớp có id riêng; migration có test trên nhãn đã duyệt |
+| mAP 3D quá thấp khiến nhãn tự động vô dụng | Trung bình | mAP rất thấp trên lớp car | Đổi checkpoint pretrained đúng dataset; hạ ngưỡng confidence để ưu tiên recall |
+| Sai quy ước tọa độ khi chiếu 2D↔3D | Trung bình | Box chiếu lệch hẳn khỏi vật thể | Unit test: chiếu GT 3D box phải trùng GT 2D box |
+| Cold start của luồng duyệt và điểm tin cậy | Cao | Mỗi người mới có vài frame được duyệt | Gom dữ liệu duyệt từ tuần 4; giai đoạn đầu để ngưỡng thận trọng, gần như kiểm tra hết |
+| Vòng lặp tự củng cố: tin cậy cao → ít kiểm tra → không phát hiện lúc làm ẩu | Cao | M8 tăng đều trong khi M4 và M9 không ai theo dõi | Mẫu ngẫu nhiên không bao giờ tắt, kể cả với người điểm tin cậy cao nhất |
+| T̂ ước lượng sai làm kết luận năng suất sai | Trung bình | Sai số T̂ trên dữ liệu chưa thấy lớn | Kiểm chứng T̂ trên dữ liệu tuần 3–4; thêm biến trước khi dùng P để kết luận |
+| Kết luận năng suất bị hiểu thành xếp hạng hay phạt | Trung bình | Thành viên né frame khó hoặc làm vội | P đã chuẩn hóa theo khối lượng việc; chỉ người đó và ML Engineer xem; kết luận luôn đi kèm chất lượng |
+| Nhóm 4 người, mẫu quá nhỏ cho thống kê | Trung bình | Điểm tin cậy và P nhảy lên xuống theo từng frame | Trình bày như cơ chế chạy được, không tuyên bố ý nghĩa thống kê; nêu rõ giới hạn trong báo cáo |
+| Thí nghiệm bị dồn vào tuần cuối | Trung bình | Chưa chốt giao thức đo ở tuần 4 | Script mAP từ tuần 2; chia frame cho các nhánh ngay khi luồng duyệt chạy |
 
-Giả định đang dựa vào, nếu sai thì kế hoạch phải điều chỉnh: có checkpoint pretrained phù hợp cho dataset đã chọn; mức GPU miễn phí của Colab/Kaggle đủ cho việc chạy batch ở tuần 5–6; cả 4 thành viên dành được thời gian gán nhãn trong tuần đánh giá; việc mở rộng dataset và danh sách lớp diễn ra từng đợt nhỏ chứ không dồn vào cuối kỳ.
+Giả định đang dựa vào, nếu sai thì kế hoạch phải điều chỉnh: có checkpoint pretrained phù hợp cho dataset đã chọn; RTX 3090 sẵn sàng cả ngày trong suốt 6 tuần; nhóm có ngân sách thuê A100 cho batch và đánh giá ở tuần 3–6; cả 4 thành viên dành được thời gian gán nhãn trong các tuần đo; việc mở rộng dataset và danh sách lớp diễn ra từng đợt nhỏ chứ không dồn vào cuối kỳ.
 
 ## Hướng mở rộng sau kỳ này
 
-Cả mức cơ bản và mức nâng cao đều nằm trong 6 tuần, nên phần này chỉ ghi lại những hướng đi tiếp nếu đề tài được làm tiếp, không thuộc cam kết kỳ này:
+Những hướng đi tiếp nếu đề tài được làm tiếp, không thuộc cam kết kỳ này:
 
-1. **Huấn luyện lại mô hình từ nhãn đã duyệt.** Đóng vòng lặp active learning: nhãn người sửa quay lại làm dữ liệu train, mô hình tốt lên thì tỷ lệ nhãn phải sửa giảm.  
-2. **Nhiều camera mỗi frame.** nuScenes có sáu camera; hỗ trợ đủ vòng cho phép kiểm tra chéo 3D box từ nhiều góc nhìn.  
-3. **3D semantic segmentation.** Gán nhãn từng điểm trong point cloud, không chỉ 3D box.  
-4. **Nhiều người cùng sửa một frame** và hạ tầng GPU riêng thay cho phiên Colab/Kaggle.
+1. **Huấn luyện lại mô hình từ nhãn đã duyệt.** Đóng vòng lặp active learning: nhãn người sửa quay lại làm dữ liệu train, mô hình tốt lên thì tỷ lệ nhãn phải sửa giảm.
+2. **Nhiều camera mỗi frame.** nuScenes có sáu camera; hỗ trợ đủ vòng cho phép kiểm tra chéo 3D box từ nhiều góc nhìn.
+3. **3D semantic segmentation.** Gán nhãn từng điểm trong point cloud, không chỉ 3D box.
+4. **Nhiều người cùng sửa một frame** theo thời gian thực.
+5. **VLM sinh nhãn đề xuất** cho các lớp mới mà detector chưa biết, thay vì chỉ kiểm tra.
 
 ## Checklist nghiệm thu
 
-Dùng để tự chấm trước buổi bảo vệ. Một mục chỉ được tích khi có thể đem ra cho người khác xem, không phải khi "gần xong".
+Dùng để tự chấm trước buổi bảo vệ. Một mục chỉ được tích khi có thể đem ra cho người khác xem, không phải khi gần xong.
 
-**Mức cơ bản**
+**Gán nhãn frame đơn**
 
-- [ ] Nạp được một frame ảnh \+ LiDAR \+ calibration và hiển thị cả hai khung  
-- [ ] Auto-label sinh được 2D box, segmentation mask và 3D box  
-- [ ] Sửa được nhãn ở cả hai không gian, có undo và lưu nháp  
-- [ ] Chọn object ở một khung thì khung kia sáng theo  
-- [ ] Đủ hai vai trò với luồng approve và reject kèm lý do  
-- [ ] Backend chặn approve frame do chính người đó sửa  
-- [ ] Export ra nuScenes hoặc KITTI, đọc lại được bằng devkit  
-- [ ] Export không chứa frame chưa duyệt  
-- [ ] Ảnh hiển thị đã ẩn danh mặt và biển số từ phía server  
-- [ ] Trang báo cáo hiện mAP/IoU so ground truth, thời gian mỗi frame và tỷ lệ nhãn phải sửa
+- [ ] Nạp được một frame ảnh + LiDAR + calibration và hiển thị cả hai khung
+- [ ] Auto-label sinh được 2D box, segmentation mask và 3D box trong tối đa 5 giây trên 3090
+- [ ] Sửa được nhãn ở cả hai không gian, có undo và lưu nháp
+- [ ] Chọn object ở một khung thì khung kia sáng theo
+- [ ] Ảnh hiển thị đã ẩn danh mặt và biển số từ phía server
 
-**Mức nâng cao**
+**Xử lý video**
 
-- [ ] Chạy batch được cả một sequence, có tiến độ theo frame  
-- [ ] Job chạy tiếp được sau khi phiên GPU bị ngắt  
-- [ ] `object_id` giữ ổn định qua ít nhất 10 frame liên tiếp  
-- [ ] Nội suy box giữa hai frame người đã sửa, nhãn nội suy được đánh dấu riêng  
-- [ ] Hàng đợi sắp theo điểm độ khó và xem được lý do  
-- [ ] Báo cáo có số frame/giờ theo người và frame/giờ inference mỗi phiên GPU
+- [ ] Chạy batch được cả một sequence trên A100, có tiến độ theo frame, chạy tiếp được sau khi ngắt phiên
+- [ ] object\_id giữ ổn định qua ít nhất 10 frame liên tiếp
+- [ ] Gán frame đầu là có nhãn lan truyền cho các frame sau; sửa giữa chừng không ghi đè công của người
+- [ ] Frame gần trùng được gộp; không gộp khi có vật thể khác di chuyển; export đủ nhãn cho mọi frame
+- [ ] Nội suy giữa hai keyframe, nhãn nội suy được đánh dấu nguồn máy
+- [ ] Có số frame/giờ inference trước và sau tối ưu throughput
 
-**Tài liệu và chứng cứ**
+**Duyệt và kiểm soát chất lượng**
 
-- [ ] Có số baseline thủ công đo ở tuần 1  
-- [ ] Ngưỡng cho M1–M5 đã chốt và ghi ngược vào bảng chỉ số  
-- [ ] Có kết quả thí nghiệm A/B giữa nhánh auto-label và nhánh thủ công  
-- [ ] Mỗi lần đo ghi kèm phiên bản dataset, tập lớp và checkpoint mô hình  
-- [ ] Unit test cho bộ chuyển đổi toạ độ và bộ xuất định dạng  
-- [ ] Toàn hệ thống dựng được bằng một lệnh `docker compose up`  
+- [ ] Đủ hai vai trò với luồng approve và reject kèm lý do
+- [ ] Backend chặn tự duyệt, reviewer được gán luân phiên
+- [ ] Chỉ nhãn máy chưa ai chạm mới bị cờ vì confidence; reviewer nhảy thẳng tới object tô sáng
+- [ ] VLM tạo cờ bất đồng lớp mà không tự sửa nhãn; có kết luận bật/tắt dựa trên M12
+- [ ] Mẫu kiểm tra ngẫu nhiên chạy mù, có số M8 và M9
+- [ ] Có đường đánh đổi M8–M9 qua ít nhất ba mức ngưỡng
+- [ ] Hàng đợi sắp theo điểm độ khó và xem được lý do
+
+**Năng suất annotator**
+
+- [ ] Đồng hồ chỉ tính thời gian thao tác thật
+- [ ] Frame vàng được chèn mù và không xuất hiện trong export
+- [ ] Mỗi người có kết luận đạt / chưa đạt ngưỡng mỗi kỳ, kèm P, Q2D, Q3D, E và chỉ số kéo xuống
+- [ ] T̂ đã được kiểm chứng trên dữ liệu chưa thấy
+
+**Xuất, báo cáo và chứng cứ**
+
+- [ ] Export ra nuScenes hoặc KITTI, đọc lại được bằng devkit, không chứa frame chưa duyệt
+- [ ] Trang báo cáo hiện đủ M1–M14 và xuất CSV
+- [ ] Có số baseline thủ công đo ở tuần 1
+- [ ] Ngưỡng các chỉ số và ngưỡng năng suất đã chốt và ghi ngược vào PRD
+- [ ] Có kết quả thí nghiệm A/B và thí nghiệm trên sequence
+- [ ] Mỗi lần đo ghi kèm phiên bản dataset, tập lớp và checkpoint mô hình
+- [ ] Unit test cho bộ chuyển đổi tọa độ và bộ xuất định dạng
+- [ ] Toàn hệ thống dựng được bằng một lệnh `docker compose up`
 - [ ] Kịch bản demo chạy trọn một lượt không lỗi trước ngày bảo vệ
-
-&nbsp;
