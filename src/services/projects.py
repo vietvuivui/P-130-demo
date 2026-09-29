@@ -268,7 +268,10 @@ class ProjectManager:
             try:
                 with _PROCESS_LOCK:  # dùng chung khoá GPU với video tải lên ở chế độ cũ
                     result = getattr(self, f"_do_{name}")(p, config)
-                status, msg = ("skipped", result) if isinstance(result, str) else ("done", None)
+                if isinstance(result, tuple):  # ("done", cảnh báo): xong nhưng có điều người dùng cần biết
+                    status, msg = result
+                else:
+                    status, msg = ("skipped", result) if isinstance(result, str) else ("done", None)
                 self._set(p, name, status=status, progress=1.0, message=msg, finished_at=now_iso())
             except Exception as e:
                 log.exception("Dự án %s, bước %s lỗi", pid, name)
@@ -322,7 +325,8 @@ class ProjectManager:
         prog = self._progress(p, "ingest")
         if p.kind == "video":
             vid = next(f for f in sorted(src.rglob("*")) if f.suffix.lower() in ingest.VIDEO_EXT)
-            rec = video_service.import_video(store, config, vid, vid.name, config.detection.detectors)
+            rec = video_service.import_video(store, config, vid, vid.name, config.detection.detectors,
+                                             max_frames=p.options.max_frames)  # fmt: skip
             p.stats.update(video_id=rec.video_id, frames=len(rec.timeline), has_lidar=False,
                            keyframes=sum(1 for e in rec.timeline if e.sample_token))  # fmt: skip
         elif p.kind == "images":
@@ -423,13 +427,15 @@ class ProjectManager:
         n_runs = len(self.models3d or [1, 2, 3, 4]) * (4 if p.options.tta else 1)
         logs = self.dir(p.id) / "logs"
         logs.mkdir(exist_ok=True)
-        done_runs, tail = 0, []
+        done_runs, tail, warn = 0, [], None
         with open(logs / "predict3d.log", "w", encoding="utf-8") as lf:
             proc = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                     encoding="utf-8", errors="replace", env=dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1"))  # fmt: skip
             for line in proc.stdout:
                 lf.write(line)
                 tail = (tail + [line.rstrip()])[-15:]
+                if line.startswith("Cảnh báo:"):
+                    warn = line.strip()
                 m = re.search(r"Epoch\(test\)\s*\[\s*(\d+)/(\d+)\]", line)
                 if m:
                     frac = (done_runs + int(m.group(1)) / int(m.group(2))) / n_runs
@@ -439,7 +445,7 @@ class ProjectManager:
             code = proc.wait()
         if code != 0 or not out.exists():
             raise RuntimeError("run3d.py predict lỗi:\n" + "\n".join(tail[-8:]))
-        return None
+        return ("done", warn) if warn else None
 
     # ---- bước 4: kiểm chứng 3D bằng camera, tạo frame 3D cho UI
     def _do_verify3d(self, p: Project, config: AutoLabelConfig):

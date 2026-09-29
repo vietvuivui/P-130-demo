@@ -78,7 +78,9 @@ def new_video_id(name: str) -> str:
     return f"vid-{slug}-{uuid.uuid4().hex[:6]}"
 
 
-def extract_frames(src: Path, store: WorkspaceStore, video: VideoRecord, max_seconds: float) -> VideoRecord:
+def extract_frames(
+    src: Path, store: WorkspaceStore, video: VideoRecord, max_seconds: float, max_frames: int | None = None
+) -> VideoRecord:
     """Cắt frame bằng OpenCV, ghi vào workspace, điền timeline/kích thước/thời lượng cho record."""
     import cv2
 
@@ -96,7 +98,7 @@ def extract_frames(src: Path, store: WorkspaceStore, video: VideoRecord, max_sec
     try:
         while True:
             ok, frame = cap.read()
-            if not ok or idx / src_fps > max_seconds:
+            if not ok or idx / src_fps > max_seconds or (max_frames and len(timeline) >= max_frames):
                 break
             if idx % step == 0:
                 n = len(timeline)
@@ -123,9 +125,10 @@ def extract_frames(src: Path, store: WorkspaceStore, video: VideoRecord, max_sec
 
 
 def import_video(
-    store: WorkspaceStore, config: AutoLabelConfig, src: Path, name: str, detectors: list[str]
-) -> VideoRecord:
-    """Tạo record + cắt frame. Việc detect/QA (nặng) chạy riêng bằng process_video."""
+    store: WorkspaceStore, config: AutoLabelConfig, src: Path, name: str, detectors: list[str],
+    max_frames: int | None = None,
+) -> VideoRecord:  # fmt: skip
+    """Tạo record + cắt frame. Việc detect/QA (nặng) chạy riêng bằng process_video. max_frames: chỉ cắt N frame đầu."""
     cfg = config.video
     video = VideoRecord(
         video_id=new_video_id(name),
@@ -137,7 +140,7 @@ def import_video(
         message="Đang cắt frame",
     )
     try:
-        extract_frames(src, store, video, cfg.max_seconds)
+        extract_frames(src, store, video, cfg.max_seconds, max_frames)
     except Exception:
         shutil.rmtree(store.video_dir(video.video_id), ignore_errors=True)  # không để lại frame dở dang
         raise

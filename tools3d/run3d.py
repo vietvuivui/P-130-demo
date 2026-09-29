@@ -302,10 +302,20 @@ def build_infos(nusc, tokens: set, version: str, dataroot: Path, test: bool, max
     subset = _SampleSubset(nusc, [s for s in nusc.sample if s["scene_token"] in tokens])
     _, infos = conv._fill_trainval_infos(subset, set(), tokens, test, max_sweeps=max_sweeps)
     # mmdet3d tách tên file sweep theo os.sep: trên Windows phải chuẩn hoá "\\"
+    short = 0
     for info in infos:
         info["lidar_path"] = osp.normpath(info["lidar_path"])
         for sw in info["sweeps"]:
             sw["data_path"] = osp.normpath(sw["data_path"])
+        # Dữ liệu tải lên có thể thiếu file sweep (vd. zip chỉ có keyframe): chỉ giữ các lần quét liền trước còn file,
+        # mô hình vẫn chạy được với ít sweep hơn (kém chính xác hơn một chút) thay vì lỗi thiếu file
+        keep = []
+        for sw in info["sweeps"]:
+            if not osp.exists(sw["data_path"]):
+                break
+            keep.append(sw)
+        short += max_sweeps > 0 and not keep  # keyframe không có lần quét trước nào (dữ liệu chỉ có keyframe)
+        info["sweeps"] = keep
         for cam in info["cams"].values():
             cam["data_path"] = osp.normpath(cam["data_path"])
     v1 = WORK / "infos" / "v1" / "nuscenes_infos_val.pkl"
@@ -313,6 +323,11 @@ def build_infos(nusc, tokens: set, version: str, dataroot: Path, test: bool, max
     mmengine.dump(dict(infos=infos, metadata=dict(version=version)), str(v1))
     upd.NuScenes = lambda *a, **k: nusc  # bản gốc nạp lại bảng từ ./data/nuscenes cố định
     upd.update_nuscenes_infos(str(v1), str(WORK / "infos"))
+    if short:
+        print(
+            f"Cảnh báo: {short}/{len(infos)} keyframe không có sweep LiDAR (dữ liệu chỉ có keyframe): mô hình chỉ thấy 1 lần "
+            "quét thay vì 10, độ chính xác 3D giảm rõ (scene-0035, CenterPoint pillar: mAP 0.43 với 4 sweep, 0.29 khi không có)"
+        )
     return len(infos)
 
 
