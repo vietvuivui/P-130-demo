@@ -112,6 +112,25 @@ chọn); `Object3D` thêm `original_box`; log 3D thêm `source`, `final_box`; me
 
 **Còn dở / việc tiếp:** box người vẽ chưa qua QA Agent (coi là đã duyệt); chưa lan truyền box 3D sang keyframe sau.
 
+## 2026-09-28 · Việt · nhánh `viet`
+
+**Làm gì:** Notebook Colab chạy liền một mạch: PointPillars (MMDetection3D, 10 sweep) tạo box 3D trên `mini_val` và chấm
+mAP/NDS bằng `DetectionEval`, rồi YOLOE-26 (open-vocabulary, đặt đủ 10 lớp nuScenes bằng prompt) kiểm chứng từng box
+trên camera nhiều thông tin nhất. Mỗi box nhận một kết luận (DUNG / DUNG VAT, BOX LECH / SAI LOP / NGHI BAO NHAM /
+CAMERA KHONG XAC NHAN / CHUA DU THONG TIN) kèm nhận xét; nhãn gốc chỉ in kèm để đối chiếu.
+
+**File chính:** Mới: `demo/model.ipynb`, `scripts/verify_objects.py` (bộ kiểm chứng; notebook ghi lại nguyên văn file
+này ở Cell 8, nên chạy local hay Colab đều dùng chung code).
+
+**Ảnh hưởng tới người khác:** Không. Không đụng `src/`, schema, config hay API.
+
+**Cách kiểm tra:** Colab GPU T4, có `v1.0-mini.tgz` trong Drive: chạy `demo/model.ipynb` từ Cell 1 đến 15. Local:
+`NUSC_DATAROOT=<thu muc nuScenes> python scripts/verify_objects.py --yoloe yoloe-26s-seg.pt` (không có `--results` thì
+dùng box mô phỏng). Không sửa `src/`/`tests/` nên chưa chạy `pytest`.
+
+**Còn dở / việc tiếp:** Chỉnh `PROMPTS` / `CLASS_CONF` theo bảng các cặp lệch lớp (Cell 13); `mini_val` chỉ có 2 scene
+nên các tỷ lệ chưa đủ để kết luận thống kê.
+
 ## 2026-09-28 (7) · Kiên · nhánh `feat/yoloe-review-sim`
 
 **Làm gì:** Thêm phần 3D vào sản phẩm. UI có chế độ 🧊 3D (khung 3D three.js + BEV + ảnh camera chiếu box, duyệt
