@@ -15,6 +15,22 @@ from src.models.schemas import Detection
 from src.services.detectors.base import Detector, pick_device
 
 
+def simplify_polygon(poly, eps: float = 1.5, max_points: int = 80) -> list[float] | None:
+    """Đa giác mask của Ultralytics (N, 2) -> danh sách phẳng [x1, y1, ...] rút gọn (Douglas-Peucker), để lưu gọn."""
+    if poly is None or len(poly) < 3:
+        return None
+    import cv2
+
+    pts = np.asarray(poly, np.float32).reshape(-1, 1, 2)
+    approx = cv2.approxPolyDP(pts, eps, True)
+    while len(approx) > max_points:
+        eps *= 1.5
+        approx = cv2.approxPolyDP(pts, eps, True)
+    if len(approx) < 3:
+        return None
+    return [round(float(v), 1) for v in approx.reshape(-1)]
+
+
 class YoloeDetector(Detector):
     name = "yoloe"
 
@@ -48,12 +64,14 @@ class YoloeDetector(Detector):
         out = []
         for r in results:
             dets = []
-            for xyxy, conf, cls_idx in zip(
-                r.boxes.xyxy.tolist(), r.boxes.conf.tolist(), r.boxes.cls.tolist(), strict=True
+            polys = r.masks.xy if (self.cfg.masks and r.masks is not None) else [None] * len(r.boxes)
+            for xyxy, conf, cls_idx, poly in zip(
+                r.boxes.xyxy.tolist(), r.boxes.conf.tolist(), r.boxes.cls.tolist(), polys, strict=True
             ):
                 score = round(float(conf), 4)
                 dets.append(
                     Detection(
+                        mask=simplify_polygon(poly),
                         bbox=[round(v, 1) for v in xyxy],
                         label=self.fixed_labels[int(cls_idx)]
                         if self.fixed_labels
@@ -79,5 +97,7 @@ class YoloeDetector(Detector):
             for d in fdets:
                 x1, y1, x2, y2 = d.bbox
                 d.bbox = [round(w - x2, 1), y1, round(w - x1, 1), y2]
+                if d.mask:
+                    d.mask = [round(w - v, 1) if i % 2 == 0 else v for i, v in enumerate(d.mask)]
             dets.extend(fdets)
         return out

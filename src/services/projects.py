@@ -275,7 +275,10 @@ class ProjectManager:
                 self._set(p, name, status=status, progress=1.0, message=msg, finished_at=now_iso())
             except Exception as e:
                 log.exception("Dự án %s, bước %s lỗi", pid, name)
-                self._set(p, name, status="error", message=f"{type(e).__name__}: {e}", finished_at=now_iso())
+                from src.services.detectors import MissingPackagesError
+
+                msg = str(e) if isinstance(e, MissingPackagesError) else f"{type(e).__name__}: {e}"
+                self._set(p, name, status="error", message=msg, finished_at=now_iso())
                 p.status, p.message = "error", f"{STEP_LABEL[name]}: {e}"
                 self.save(p)
                 return p
@@ -372,6 +375,11 @@ class ProjectManager:
     # ---- bước 2: nhãn 2D
     def _do_label2d(self, p: Project, config: AutoLabelConfig):
         from src.services import video as video_service
+        from src.services.detectors import MissingPackagesError, missing_core, missing_packages
+
+        missing = missing_packages(config.detection.detectors) + missing_core()
+        if missing:  # kiểm tra trước khi đụng tới dữ liệu, để thông báo rõ và "Chạy lại" sau khi cài là xong
+            raise MissingPackagesError(missing)
 
         store = self.store(p.id)
         prog = self._progress(p, "label2d")
@@ -449,6 +457,11 @@ class ProjectManager:
 
     # ---- bước 4: kiểm chứng 3D bằng camera, tạo frame 3D cho UI
     def _do_verify3d(self, p: Project, config: AutoLabelConfig):
+        from src.services.detectors import MissingPackagesError, missing_core, missing_packages
+
+        missing = missing_packages(config.detection.detectors) + missing_core()
+        if missing:
+            raise MissingPackagesError(missing)
         from src.services.label3d import auto_min_score, run_label3d
         from src.services.nuscenes_data import NuScenesMini
 

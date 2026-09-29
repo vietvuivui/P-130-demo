@@ -74,6 +74,25 @@ def create_project(
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+@projects_router.get("/env")
+def environment():
+    """Máy chủ có đủ thư viện cho model 2D và môi trường 3D không (trang Dự án hiện cảnh báo nếu thiếu)."""
+    import sys
+
+    from src.services.detectors import missing_core, missing_packages
+
+    m = get_manager()
+    detectors = get_autolabel_config(get_settings().autolabel_config).detection.detectors
+    py3d = m.mm3d()
+    return {
+        "python": sys.executable,
+        "detectors": detectors,
+        "missing_2d": missing_packages(detectors),
+        "missing_core": missing_core(),
+        "mm3d_python": str(py3d) if py3d else None,
+    }
+
+
 @projects_router.get("/{pid}", response_model=Project)
 def get_project(pid: str):
     return _get(pid)
@@ -112,11 +131,27 @@ def project_log(pid: str, step: str, lines: int = Query(80, ge=1, le=2000)):
 
 @projects_router.post("/{pid}/export")
 def export_project(pid: str, fmt: str = Query("nuscenes", alias="format"), include_pending: bool = False):
-    """format=nuscenes: nhãn 3D thành dataset nuScenes (zip). format=coco: nhãn 2D (COCO + JSONL)."""
+    """format=nuscenes: nhãn 3D thành dataset nuScenes (zip). kitti: nhãn 3D dạng KITTI object. coco: nhãn 2D."""
     p = _get(pid)
     m = get_manager()
     store = m.store(pid)
     exports = m.dir(pid) / "exports"
+    if fmt == "kitti":
+        if not p.stats.get("has_lidar"):
+            raise HTTPException(409, {"code": "NO_3D", "message": "Dự án chỉ có ảnh / video (2D): dùng xuất COCO"})
+        from src.services.export_kitti import export_kitti
+        from src.services.privacy import image_loader
+        from src.services.review import now_iso
+
+        root, version = m.dataset(pid)
+        name = f"kitti-{now_iso().replace(':', '').replace('-', '')[:15]}.zip"
+        cfg = get_autolabel_config(get_settings().autolabel_config)
+        try:
+            info = export_kitti(store, root, version, MODEL3D, exports / name, include_pending=include_pending,
+                                image_loader=image_loader(store, cfg.privacy))  # fmt: skip
+        except ValueError as e:
+            raise HTTPException(409, {"code": "NOTHING_TO_EXPORT", "message": str(e)}) from e
+        return dict(info, url=f"/api/v1/projects/{pid}/exports/{name}")
     if fmt == "nuscenes":
         if not p.stats.get("has_lidar"):
             raise HTTPException(409, {"code": "NO_3D", "message": "Dự án chỉ có ảnh / video (2D): dùng xuất COCO"})
@@ -142,7 +177,7 @@ def export_project(pid: str, fmt: str = Query("nuscenes", alias="format"), inclu
         exports.mkdir(parents=True, exist_ok=True)
         shutil.make_archive(str(exports / name[:-4]), "zip", src_dir)
         return dict(file=name, frames=res.n_frames, objects=res.n_objects, url=f"/api/v1/projects/{pid}/exports/{name}")
-    raise HTTPException(422, {"code": "FORMAT", "message": "format phải là nuscenes hoặc coco"})
+    raise HTTPException(422, {"code": "FORMAT", "message": "format phải là nuscenes, kitti hoặc coco"})
 
 
 @projects_router.get("/{pid}/exports")

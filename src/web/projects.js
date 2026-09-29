@@ -145,6 +145,7 @@ function cardHtml(p) {
       <a class="btn btn-primary btn-sm ${ready || p.steps.some((s) => s.name === 'label2d' && s.status === 'done') ? '' : 'disabled'}" href="${u(firstMode)}">Duyệt 2D</a>
       ${has3d ? `<a class="btn btn-primary btn-sm" href="${u('3d')}">Duyệt 3D</a>` : ''}
       <button class="btn btn-ghost btn-sm" data-act="export-nuscenes" ${ready && has3d ? '' : 'disabled'} title="${has3d ? 'Box 3D đã duyệt, định dạng nuScenes' : 'Cần dữ liệu có LiDAR và bước dự đoán 3D đã chạy'}">Xuất nuScenes</button>
+      <button class="btn btn-ghost btn-sm" data-act="export-kitti" ${ready && has3d ? '' : 'disabled'} title="Box 3D đã duyệt, định dạng KITTI object (camera trước)">Xuất KITTI</button>
       <button class="btn btn-ghost btn-sm" data-act="export-coco" ${ready ? '' : 'disabled'} title="Nhãn 2D đã duyệt (COCO + YOLO)">Xuất COCO</button>
       <label class="toggle pj-pending" title="Gồm cả frame chưa duyệt (nhãn máy)"><input type="checkbox" data-pending> gồm frame chưa duyệt</label>
       <span class="pj-spacer"></span>
@@ -229,8 +230,9 @@ $('pj-items').addEventListener('click', async (e) => {
       btn.disabled = true;
       btn.textContent = 'Đang xuất…';
       const r = await api(`/${encodeURIComponent(pid)}/export?format=${fmt}&include_pending=${pending}`, { method: 'POST' });
-      const n = r.annotations != null ? `${r.annotations} box 3D, ${r.instances} đối tượng` : `${r.frames} frame, ${r.objects} object`;
-      toast(`Đã xuất ${fmt === 'coco' ? 'COCO' : 'nuScenes'}: ${n}`);
+      const n = r.annotations != null ? `${r.annotations} box 3D, ${r.instances} đối tượng`
+        : r.labels != null ? `${r.frames} frame, ${r.labels} box trong ảnh ${r.camera}` : `${r.frames} frame, ${r.objects} object`;
+      toast(`Đã xuất ${{ coco: 'COCO', kitti: 'KITTI', nuscenes: 'nuScenes' }[fmt]}: ${n}`);
       await loadExports(pid);
       render();
       const a = document.createElement('a');
@@ -246,4 +248,31 @@ $('pj-items').addEventListener('click', async (e) => {
   }
 });
 
+// Máy chủ thiếu thư viện model 2D / môi trường 3D: nói rõ trước khi người dùng tải dữ liệu lên
+async function checkEnv() {
+  try {
+    const env = await api('/env');
+    const box = $('pj-env');
+    const parts = [];
+    if (env.missing_core?.length) {
+      parts.push(`<b>Thiếu thư viện:</b> Python đang chạy server (<code>${esc(env.python)}</code>) chưa có
+        <code>${env.missing_core.map(esc).join(', ')}</code>. Chạy <code>python -m pip install -r requirements.txt</code>
+        rồi khởi động lại server.`);
+    }
+    if (env.missing_2d.length) {
+      parts.push(`<b>Không chạy được model 2D:</b> Python đang chạy server (<code>${esc(env.python)}</code>) thiếu
+        <code>${env.missing_2d.map(esc).join(', ')}</code>. Cài bằng <code>pip install -r requirements-ml.txt</code>
+        rồi khởi động lại server, hoặc chạy server bằng Python đã cài sẵn:
+        <code>&lt;python đó&gt; -m uvicorn src.main:app</code>. Sau đó bấm <b>Chạy lại</b> ở dự án bị lỗi.`);
+    }
+    if (!env.mm3d_python) {
+      parts.push('<b>Chưa có môi trường 3D</b> (<code>.venv-mm3d</code>, xem tools3d/README.md): dữ liệu có LiDAR chỉ được gán nhãn 2D.');
+    }
+    box.innerHTML = parts.map((x) => `<p>${x}</p>`).join('');
+    box.classList.toggle('hidden', !parts.length);
+    box.classList.toggle('warn-only', !env.missing_2d.length && !env.missing_core?.length);
+  } catch { /* máy chủ cũ không có /env */ }
+}
+
+checkEnv();
 load();

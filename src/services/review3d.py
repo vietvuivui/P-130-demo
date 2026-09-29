@@ -175,6 +175,7 @@ def metrics3d(frames: list[Frame3DRecord]) -> dict:
     return {
         "frames": len(frames),
         "approved": sum(f.status == "approved" for f in frames),
+        "rejected": sum(f.status == "rejected" for f in frames),
         "objects": sum(o.source == "model" for f in frames for o in f.objects),
         "added": sum(o.source == "human" and o.review.status == "approved" for f in frames for o in f.objects),
         "edited": sum(o.review.action == "EDIT_BOX" for f in frames for o in f.objects),

@@ -8,6 +8,7 @@ const API = `${BASE}/3d`;
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const LEVELS = ['high', 'medium', 'low'];
+const STATUS_TEXT = { auto: 'Chưa mở', editing: 'Đang sửa', approved: 'Đã duyệt', rejected: 'Bị trả lại' };
 const LEVEL_NAME = { low: 'Low', medium: 'Medium', high: 'High' };
 const COLOR = { low: 0x0ca30c, medium: 0xfab219, high: 0xd03b3b, approved: 0x3987e5, gt: 0xcbd5e1 };
 const CSS_COLOR = { low: '#0ca30c', medium: '#fab219', high: '#d03b3b', approved: '#3987e5' };
@@ -28,7 +29,7 @@ const HINT = 'Kéo chuột trái: xoay · lăn chuột: zoom · chuột phải: 
 
 const T = {
   active: false, models: [], model: null, queue: [], sort: 'risk', frame: null, points: null, gt: [],
-  selected: null, cam: 'CAM_FRONT', camImg: {}, showGt: false, showLow: true, color: 'height', bev: false,
+  selected: null, cam: 'CAM_FRONT', camImg: {}, showGt: false, showLow: true, minScore: 0, color: 'height', bev: false,
   timerStart: null, classes: [], showBevImg: true, showPoints: true, groundZ: -1.84,
   tool: 'select', edit: null, // edit: {mode: 'add' | 'edit', oid, label, box: {center, size, yaw}}
 };
@@ -193,6 +194,7 @@ function buildBoxes() {
     if (o.review.status === 'deleted' || o.object_id === T.edit?.oid) continue;
     const lv = levelOf(o);
     if (!T.showLow && lv === 'low' && o.review.status === 'pending' && o.object_id !== T.selected) continue;
+    if (o.source !== 'human' && o.score < T.minScore && o.object_id !== T.selected) continue;
     const sel = o.object_id === T.selected;
     const line = wireframe(o.box, sel ? 0xffffff : COLOR[stateColor(o)], { opacity: sel ? 1 : 0.95 });
     V.boxGroup.add(line);
@@ -397,6 +399,7 @@ function drawCamera() {
     if (o.source !== 'human' && !o.verify?.bbox2d?.[T.cam]) continue;
     if (o.object_id === T.selected) { selObj = o; continue; }
     if (!T.showLow && levelOf(o) === 'low' && o.review.status === 'pending') continue;
+    if (o.source !== 'human' && o.score < T.minScore && o.object_id !== T.selected) continue;
     drawBox(o.box, CSS_COLOR[stateColor(o)], 1.5, false);
   }
   if (T.edit) {
@@ -429,6 +432,64 @@ function setCam(c) {
   T.cam = c;
   renderStrip();
   drawCamera();
+}
+
+// ---------------------------------------------------------------- trả lại frame (FR-15), hoàn tác (FR-09)
+const framePath = (f) => `/frames/${encodeURIComponent(f.model)}/${encodeURIComponent(f.frame_id)}`;
+
+function renderRejectBanner() {
+  const f = T.frame;
+  const show = f && f.reject_reason && f.status !== 'approved';
+  $('m3-reject-banner').classList.toggle('hidden', !show);
+  if (show) {
+    const when = (f.rejected_at || '').replace('T', ' ').replace('+00:00', ' UTC');
+    $('m3-reject-banner').innerHTML = `<b>Bị trả lại</b> bởi ${esc(f.rejected_by || '?')} · ${esc(when)}<br>${esc(f.reject_reason)}`;
+  }
+}
+
+let historyToken = 0;
+async function refreshHistory() {
+  const f = T.frame;
+  const token = ++historyToken;
+  if (!f) { $('m3-btn-undo').disabled = $('m3-btn-redo').disabled = true; return; }
+  try {
+    const h = await api(`${framePath(f)}/history`);
+    if (token !== historyToken) return;
+    const locked = T.frame?.status === 'approved';
+    $('m3-btn-undo').disabled = locked || !h.undo;
+    $('m3-btn-redo').disabled = locked || !h.redo;
+  } catch { /* máy chủ cũ */ }
+}
+
+async function undoRedo(dir) {
+  const f = T.frame;
+  if (!f || f.status === 'approved' || T.edit) return;
+  try {
+    T.frame = await api(`${framePath(f)}/${dir}`, { method: 'POST', body: { reviewer: reviewer() } });
+    if (!T.frame.objects.some((o) => o.object_id === T.selected)) T.selected = null;
+    toast(dir === 'undo' ? 'Đã hoàn tác' : 'Đã làm lại');
+    await refreshSummary();
+    renderAll();
+  } catch (e) { toast(e.message, true); }
+}
+
+function openReject() {
+  if (!T.frame) return;
+  $('m3-reject-box').classList.remove('hidden');
+  $('m3-reject-reason').focus();
+}
+
+async function sendReject() {
+  const reason = $('m3-reject-reason').value.trim();
+  if (reason.length < 3) { toast('Ghi lý do trả lại (ít nhất 3 ký tự)', true); return; }
+  try {
+    T.frame = await api(`${framePath(T.frame)}/reject`, { method: 'POST', body: { reason, reviewer: reviewer() } });
+    $('m3-reject-reason').value = '';
+    $('m3-reject-box').classList.add('hidden');
+    toast(`Đã trả lại ${T.frame.frame_id}`);
+    await refreshSummary();
+    renderAll();
+  } catch (e) { toast(e.message, true); }
 }
 
 
@@ -746,7 +807,7 @@ async function loadQueue() {
 
 function sortedQueue() {
   const q = [...T.queue];
-  if (T.sort === 'risk') q.sort((a, b) => (a.status === 'approved') - (b.status === 'approved') || b.counts.high - a.counts.high || b.counts.medium - a.counts.medium);
+  if (T.sort === 'risk') q.sort((a, b) => (a.status === 'approved') - (b.status === 'approved') || (b.status === 'rejected') - (a.status === 'rejected') || b.counts.high - a.counts.high || b.counts.medium - a.counts.medium);
   else q.sort((a, b) => a.frame_id.localeCompare(b.frame_id));
   return q;
 }
@@ -755,7 +816,7 @@ function renderQueue() {
   $('m3-queue').innerHTML = sortedQueue().map((f) => `
     <li class="queue-item ${f.frame_id === T.frame?.frame_id ? 'active' : ''}" data-id="${esc(f.frame_id)}">
       <div class="qi-top"><span class="qi-id">${esc(f.frame_id)}</span>
-        <span class="status-pill ${f.status}">${f.status === 'approved' ? 'Đã duyệt' : f.status === 'editing' ? 'Đang sửa' : 'Chưa mở'}</span></div>
+        <span class="status-pill ${f.status}">${STATUS_TEXT[f.status] || f.status}</span></div>
       <div class="qi-meta">
         ${LEVELS.map((lv) => `<span class="lv"><span class="dot ${lv}"></span>${f.counts[lv]}</span>`).join('')}
         <span>· ${f.n_objects} box</span>${f.pending ? `<span>· ${f.pending} chờ</span>` : ''}
@@ -800,7 +861,7 @@ function orderObjects(objs) {
 function renderAll() {
   const f = T.frame;
   $('m3-frame-id').textContent = f ? `${f.frame_id}` : '—';
-  $('m3-status').textContent = f ? { auto: 'Chưa mở', editing: 'Đang sửa', approved: 'Đã duyệt' }[f.status] : '';
+  $('m3-status').textContent = f ? STATUS_TEXT[f.status] : '';
   $('m3-status').className = `status-pill ${f?.status || ''}`;
   buildBoxes();
   renderReview();
@@ -808,6 +869,8 @@ function renderAll() {
   renderQueue();
   renderStrip();
   drawCamera();
+  renderRejectBanner();
+  refreshHistory();
 }
 
 function card(o) {
@@ -976,6 +1039,14 @@ async function loadMetrics3d() {
   $('m3-verdict-table').innerHTML = `<thead><tr><th>Kết luận</th><th class="num">Tổng</th><th class="num">Đã duyệt</th><th class="num">Bị sửa</th><th class="num">Tỉ lệ sửa</th></tr></thead><tbody>${
     Object.keys(VERDICT_VI).map((v) => { const d = m.by_verdict[v] || { reviewed: 0, fixed: 0 };
       return `<tr><td>${VERDICT_VI[v]}</td><td class="num">${m.verdicts[v] || 0}</td><td class="num">${d.reviewed}</td><td class="num">${d.fixed}</td><td class="num">${d.reviewed ? pct(d.fixed / d.reviewed) : '—'}</td></tr>`; }).join('')}</tbody>`;
+  window.AL?.renderProductivity(m.productivity, 'm3-', `${API}/report.csv?model=${encodeURIComponent(T.model)}`);
+}
+
+async function exportKitti() {
+  try {
+    const r = await api(`/export-kitti?model=${encodeURIComponent(T.model)}`, { method: 'POST' });
+    $('m3-export-result').innerHTML = `<p>Đã xuất KITTI: ${r.frames} keyframe, ${r.labels} box nằm trong ảnh ${esc(r.camera)} · <a href="${esc(r.url)}" download>tải ${esc(r.file)}</a></p>`;
+  } catch (e) { $('m3-export-result').innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
 }
 
 async function export3d() {
@@ -1001,6 +1072,14 @@ function bind() {
   });
   $('m3-show-gt').addEventListener('change', (e) => { T.showGt = e.target.checked; buildBoxes(); drawCamera(); });
   $('m3-show-low').addEventListener('change', (e) => { T.showLow = e.target.checked; buildBoxes(); drawCamera(); });
+  $('m3-min-score').addEventListener('input', (e) => {
+    T.minScore = Number(e.target.value);
+    $('m3-min-score-val').textContent = T.minScore.toFixed(2);
+    const objs = (T.frame?.objects || []).filter((o) => o.review.status !== 'deleted');
+    const shown = objs.filter((o) => o.source === 'human' || o.score >= T.minScore).length;
+    $('m3-min-score-count').textContent = T.minScore > 0 ? ` · ${shown}/${objs.length} box` : '';
+    buildBoxes(); drawCamera();
+  });
   $('m3-color').addEventListener('change', (e) => { T.color = e.target.value; storage.set('color', T.color); buildPoints(); });
   $('m3-view-3d').addEventListener('click', () => setView(false));
   $('m3-view-bev').addEventListener('click', () => setView(true));
@@ -1011,7 +1090,14 @@ function bind() {
   });
   $('m3-approve-low').addEventListener('click', approveLow);
   $('m3-approve-frame').addEventListener('click', approveFrame);
+  $('m3-btn-undo').addEventListener('click', () => undoRedo('undo'));
+  $('m3-btn-redo').addEventListener('click', () => undoRedo('redo'));
+  $('m3-btn-reject').addEventListener('click', openReject);
+  $('m3-reject-send').addEventListener('click', sendReject);
+  $('m3-reject-cancel').addEventListener('click', () => $('m3-reject-box').classList.add('hidden'));
+  $('m3-reject-reason').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendReject(); });
   $('m3-export').addEventListener('click', export3d);
+  $('m3-export-kitti').addEventListener('click', exportKitti);
   const panel = document.querySelector('#tab-review3d .review-panel');
   panel.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-act]');
@@ -1047,11 +1133,17 @@ function bind() {
       return;
     }
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if ((e.ctrlKey || e.metaKey) && (k === 'z' || k === 'y')) {
+      e.preventDefault();
+      undoRedo(k === 'y' || e.shiftKey ? 'redo' : 'undo');
+      return;
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     const map = {
       ArrowDown: () => stepObject(1), ArrowUp: () => stepObject(-1),
       k: () => T.selected && act('KEEP', T.selected), d: () => T.selected && act('DELETE', T.selected),
       c: () => document.querySelector(`#tab-review3d .obj-card[data-oid="${CSS.escape(T.selected || '')}"] [data-class]`)?.focus(),
-      a: approveLow, Enter: approveFrame, n: () => stepFrame(1), p: () => stepFrame(-1),
+      a: approveLow, Enter: approveFrame, n: () => stepFrame(1), p: () => stepFrame(-1), r: openReject,
       g: () => { $('m3-show-gt').checked = !$('m3-show-gt').checked; $('m3-show-gt').dispatchEvent(new Event('change')); },
       v: () => setView(!T.bev),
       b: toggleDraw, e: () => T.selected && startEdit(T.selected),

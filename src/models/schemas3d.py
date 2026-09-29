@@ -16,7 +16,7 @@ Action3D = Literal["KEEP", "DELETE", "CHANGE_CLASS", "EDIT_BOX", "ADD_BOX", "BAT
 
 
 class Box3D(BaseModel):
-    """Box 3D trong hệ toạ độ LiDAR của keyframe: x trước, y trái, z lên (m); size = [w, l, h] như nuScenes."""
+    """Box 3D trong hệ toạ độ cảm biến LIDAR_TOP của keyframe (nuScenes: x phải, y trước, z lên, m); size = [w, l, h]."""
 
     center: list[float] = Field(..., min_length=3, max_length=3)
     size: list[float] = Field(..., min_length=3, max_length=3)
@@ -78,13 +78,18 @@ class Frame3DRecord(BaseModel):
     lidar_sd_token: str
     global_from_lidar: list[list[float]]
     cameras: dict[str, Camera3D] = Field(default_factory=dict)
-    status: Literal["auto", "editing", "approved"] = "auto"
+    status: Literal["auto", "editing", "approved", "rejected"] = "auto"
     frame_risk: float = 0.0
     objects: list[Object3D] = Field(default_factory=list)
     created_at: str | None = None
     approved_at: str | None = None
     approved_by: str | None = None
     review_time_s: float | None = None
+    reject_reason: str | None = None
+    rejected_by: str | None = None
+    rejected_at: str | None = None
+    autolabel_s: float | None = None
+    autolabel_run: str | None = None
 
 
 class Frame3DSummary(BaseModel):

@@ -35,10 +35,14 @@ class AutoLabelPipeline:
         self.store = store
         self.config = config
         self.ensemble = DetectorEnsemble(config, store.root / "cache" / "detections", detectors)
+        self.run_id: str | None = None  # phiên auto-label (FR-27), đặt khi run() bắt đầu
 
     def run(self, scenes: list[str] | None = None, limit: int | None = None, overwrite: bool = False,
             progress=None) -> list[str]:  # fmt: skip
+        from src.services.productivity import new_run_id
+
         keyframes = self.data.keyframes(scenes)[:limit]
+        self.run_id = new_run_id("run2d")
         done = []
         for n, (scene, index, token) in enumerate(keyframes, start=1):
             t0 = time.perf_counter()
@@ -66,6 +70,7 @@ class AutoLabelPipeline:
         if existing and (existing.status != "auto" or not overwrite):
             return None
 
+        t0 = time.perf_counter()
         uv, depth = (
             self.data.lidar_in_image(frame, self.config.qa.lidar.min_depth_m) if frame.lidar_sd_token else (None, None)
         )
@@ -84,6 +89,7 @@ class AutoLabelPipeline:
             uv=uv,
             depth=depth,
         )
+        record.autolabel_s, record.autolabel_run = round(time.perf_counter() - t0, 3), self.run_id
         self.store.save_frame(record)
         self._save_aux(frame, uv, depth)
         return record
@@ -138,6 +144,7 @@ def label_keyframe(
             score=d.score,
             models=d.models,
             alternatives=d.alternatives,
+            mask=d.mask,
         )
         for i, d in enumerate(key_dets)
     ]

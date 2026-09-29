@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -213,7 +214,10 @@ def run_label3d(
     progress=None,
 ) -> int:
     """Tạo frame 3D cho mọi keyframe có dự đoán. Frame đã có (người có thể đã duyệt) giữ nguyên trừ khi overwrite."""
+    from src.services.productivity import new_run_id
+
     ensemble = DetectorEnsemble(verify_config(config), store.root / "cache" / "detections")
+    run_id = new_run_id(f"verify3d-{model}")
     done = 0
     keys = [k for k in data.keyframes(scenes) if k[2] in predictions]
     for n, (scene, index, token) in enumerate(keys):
@@ -222,7 +226,9 @@ def run_label3d(
             progress(n + 1, len(keys))
         if not overwrite and store.load_frame3d(model, fid) is not None:
             continue
+        t0 = time.perf_counter()
         record, pts, gt = build_frame(data, ensemble, config, model, scene, index, token, predictions[token], min_score)
+        record.autolabel_s, record.autolabel_run = round(time.perf_counter() - t0, 3), run_id
         store.save_frame3d(record)
         kf_pts = load_points(data, record.lidar_sd_token, 0)
         save_points(store, fid, kf_pts if len(kf_pts) else pts, config.verify3d.max_points_ui)

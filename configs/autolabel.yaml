@@ -200,3 +200,16 @@ video:
   max_seconds: 120
   max_upload_mb: 500
   max_sweep_gap_s: 0.25   # frame lân cận xa hơn ngần này (s) không dùng cho check temporal
+
+# Làm mờ mặt người + biển số trên mọi ảnh gửi tới trình duyệt và ảnh trong file xuất KITTI (FR-03).
+# Biển số: detector chuyên dụng (open-image-models, trong requirements-ml.txt); mặt: YOLOE "human face" + vùng đầu
+# của người đủ lớn. Thiếu thư viện thì ảnh gửi nguyên (log cảnh báo một lần). Ảnh đã làm mờ được cache ở workspace/anon/.
+privacy:
+  enabled: true
+  plate_conf: 0.25
+  plate_tiles: true
+  face_prompts: [human face]
+  face_conf: 0.25
+  person_conf: 0.3
+  min_person_px: 40
+  pad: 0.2

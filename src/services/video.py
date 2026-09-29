@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import threading
+import time
 import uuid
 from collections import defaultdict
 from pathlib import Path
@@ -228,6 +229,9 @@ def _process_video(store: WorkspaceStore, ensemble: DetectorEnsemble, config: Au
     video = store.load_video(video_id)
     if video is None:
         return
+    from src.services.productivity import new_run_id
+
+    run_id = new_run_id("video")
     try:
         keys = [i for i, e in enumerate(video.timeline) if e.sample_token]
         # Camera không có calibration: intrinsic danh nghĩa (tiêu cự = chiều rộng ảnh); không có LiDAR nên
@@ -247,6 +251,7 @@ def _process_video(store: WorkspaceStore, ensemble: DetectorEnsemble, config: Au
                     if 0 <= pos + o < len(video.timeline)
                     and abs(video.timeline[pos + o].timestamp - t0) <= config.video.max_sweep_gap_s * 1e6
                 }
+                t_start = time.perf_counter()
                 record = label_keyframe(
                     ensemble,
                     config,
@@ -260,6 +265,7 @@ def _process_video(store: WorkspaceStore, ensemble: DetectorEnsemble, config: Au
                     image_file=store.resolve,
                     intrinsic=intrinsic,
                 )
+                record.autolabel_s, record.autolabel_run = round(time.perf_counter() - t_start, 3), run_id
                 store.save_frame(record)
             video.progress = round((k + 1) / len(keys), 3)
             _save_progress(store, video)

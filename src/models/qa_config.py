@@ -27,6 +27,8 @@ class YoloeCfg(BaseModel):
     imgsz: int = 1280
     # Chạy thêm ảnh lật ngang rồi gộp (augment=True của Ultralytics không có tác dụng với YOLOE): ~2x thời gian
     tta_flip: bool = False
+    # Lưu mask segmentation sơ bộ của model -seg (đa giác đã đơn giản hoá), FR-04
+    masks: bool = True
 
 
 class Yolo26Cfg(BaseModel):
@@ -176,6 +178,25 @@ class Verify3DCfg(BaseModel):
     max_points_ui: int = 60000
 
 
+class PrivacyCfg(BaseModel):
+    """Làm mờ mặt người và biển số trước khi ảnh tới trình duyệt / file xuất (FR-03), src/services/privacy.py."""
+
+    enabled: bool = True
+    # Biển số: detector chuyên dụng (open-image-models, YOLOv9 ONNX, tự tải ~8 MB), chạy cả ảnh và 4 ô cắt để bắt
+    # biển số nhỏ ở xa
+    plate_model: str = "yolo-v9-t-640-license-plate-end2end"
+    plate_conf: float = 0.25
+    plate_tiles: bool = True
+    # Mặt người: YOLOE (prompt "human face") + vùng đầu của mỗi người đủ lớn (đầu = 18% trên của box người):
+    # ưu tiên không sót mặt hơn là làm mờ thừa
+    face_prompts: list[str] = ["human face"]
+    face_conf: float = 0.25
+    person_conf: float = 0.3
+    min_person_px: int = 40  # người thấp hơn thế: mặt quá nhỏ để nhận ra, không cần làm mờ
+    pad: float = 0.2  # nới vùng làm mờ ra mỗi phía theo tỉ lệ kích thước
+    imgsz: int = 1280
+
+
 class AutoLabelConfig(BaseModel):
     camera: str = "CAM_FRONT"
     sweep_offsets: list[int] = [-2, -1, 1, 2]
@@ -186,6 +207,7 @@ class AutoLabelConfig(BaseModel):
     propagation: PropagationCfg = PropagationCfg()
     video: VideoCfg = VideoCfg()
     verify3d: Verify3DCfg = Verify3DCfg()
+    privacy: PrivacyCfg = PrivacyCfg()
 
     def prompt_to_class(self) -> dict[str, str]:
         """Map mỗi prompt văn bản về lớp nội bộ."""

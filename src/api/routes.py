@@ -18,12 +18,13 @@ from src.models.schemas import (
     FrameSummary,
     PropagateRequest,
     PropagateResponse,
+    RejectRequest,
     ReviewActionRequest,
     ReviewerRequest,
     VideoDetail,
     VideoSummary,
 )
-from src.services import review
+from src.services import history, review
 from src.services import video as video_service
 from src.services.detectors import DetectorEnsemble
 from src.services.exporter import EXPORT_FILES, NothingToExportError, export_dataset
@@ -166,14 +167,15 @@ def ui_config(config: AutoLabelConfig = Depends(get_config)):
 
 @router.get("/frames", response_model=list[FrameSummary])
 def list_frames(
-    status: Literal["auto", "editing", "approved"] | None = None,
+    status: Literal["auto", "editing", "approved", "rejected"] | None = None,
     sort: Literal["risk", "order"] = "risk",
     store: WorkspaceStore = Depends(get_store),
 ):
     """Hàng đợi frame. sort=risk xếp frame khó lên đầu (active learning)."""
     frames = [review.summarize(f) for f in store.list_frames() if status is None or f.status == status]
     if sort == "risk":
-        frames.sort(key=lambda s: (s.status == "approved", -s.frame_risk))
+        # frame bị reviewer trả lại lên đầu, frame đã duyệt xuống cuối
+        frames.sort(key=lambda s: (s.status == "approved", s.status != "rejected", -s.frame_risk))
     else:
         frames.sort(key=lambda s: (s.scene, s.index))
     return frames
@@ -190,6 +192,7 @@ def get_image(
     offset: int = Query(0, ge=-5, le=5),
     store: WorkspaceStore = Depends(get_store),
     dataroot: Path = Depends(get_dataroot),
+    config: AutoLabelConfig = Depends(get_config),
 ):
     frame = _load(store, frame_id)
     try:
@@ -198,6 +201,9 @@ def get_image(
         raise _error(404, "SWEEP_NOT_FOUND", f"Frame không có sweep offset {offset}") from e
     if not path.exists():
         raise _error(404, "IMAGE_NOT_FOUND", "Không tìm thấy file ảnh trong dataroot")
+    from src.services.privacy import anonymized_path
+
+    path = anonymized_path(store.root, path, config.privacy)  # làm mờ mặt / biển số trước khi gửi (FR-03)
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
 
 
@@ -270,6 +276,7 @@ def review_action(
     config: AutoLabelConfig = Depends(get_config),
 ):
     frame = _load(store, frame_id)
+    before = frame.model_dump_json()
     reviewer = req.reviewer or get_settings().reviewer_name
     try:
         entry = review.apply_action(frame, req, reviewer, config)
@@ -277,30 +284,90 @@ def review_action(
         raise _error(422, "INVALID_ACTION", str(e)) from e
     store.save_frame(frame)
     store.append_corrections([entry])
+    history.record(store, history.kind_2d(), frame_id, before)
     return frame
 
 
 @router.post("/frames/{frame_id}/approve-low-risk", response_model=FrameRecord)
 def approve_low_risk(frame_id: str, req: ReviewerRequest, store: WorkspaceStore = Depends(get_store)):
     frame = _load(store, frame_id)
+    before = frame.model_dump_json()
     try:
         entries = review.approve_low_risk(frame, req.reviewer or get_settings().reviewer_name)
     except review.ReviewError as e:
         raise _error(409, "FRAME_APPROVED", str(e)) from e
     store.save_frame(frame)
     store.append_corrections(entries)
+    if entries:
+        history.record(store, history.kind_2d(), frame_id, before)
     return frame
 
 
 @router.post("/frames/{frame_id}/approve", response_model=FrameRecord)
 def approve_frame(frame_id: str, req: ReviewerRequest, store: WorkspaceStore = Depends(get_store)):
     frame = _load(store, frame_id)
+    reviewer = req.reviewer or get_settings().reviewer_name
     try:
-        review.approve_frame(frame, req.reviewer or get_settings().reviewer_name, req.review_time_s)
+        review.approve_frame(frame, reviewer, req.review_time_s)
     except review.ReviewError as e:
         raise _error(409, "PENDING_OBJECTS", str(e)) from e
     store.save_frame(frame)
+    store.append_event(dict(type="approve", mode="2d", frame_id=frame_id, reviewer=reviewer,
+                            review_time_s=req.review_time_s, n_objects=len(frame.objects)))  # fmt: skip
     return frame
+
+
+@router.post("/frames/{frame_id}/reject", response_model=FrameRecord)
+def reject_frame(frame_id: str, req: RejectRequest, store: WorkspaceStore = Depends(get_store)):
+    """Reviewer trả lại frame, bắt buộc có lý do (FR-15)."""
+    frame = _load(store, frame_id)
+    reviewer = req.reviewer or get_settings().reviewer_name
+    try:
+        review.reject_frame(frame, reviewer, req.reason)
+    except review.ReviewError as e:
+        raise _error(422, "REASON_REQUIRED", str(e)) from e
+    store.save_frame(frame)
+    store.append_event(dict(type="reject", mode="2d", frame_id=frame_id, reviewer=reviewer, reason=frame.reject_reason))
+    return frame
+
+
+def undo_redo(store: WorkspaceStore, kind: str, frame, direction: str, reviewer: str, model_cls, save, log) -> object:
+    """Undo / redo dùng chung cho 2D (FrameRecord) và 3D (Frame3DRecord)."""
+    if frame.status == "approved":
+        raise _error(409, "FRAME_APPROVED", "Frame đã approve, mở lại trước khi hoàn tác")
+    try:
+        target = history.step(store, kind, frame.frame_id, frame.model_dump_json(), direction)
+    except history.HistoryError as e:
+        raise _error(409, "NOTHING_TO_" + direction.upper(), str(e)) from e
+    restored = model_cls.model_validate_json(target)
+    if restored.status == "approved":  # bản cũ được lưu lúc đang sửa; không bao giờ tự approve lại
+        restored.status = "editing"
+    save(restored)
+    log([o for o in history.changed_objects(frame, restored)], restored, direction.upper(), reviewer)
+    store.append_event(dict(type=direction, mode="3d" if kind != history.kind_2d() else "2d",
+                            frame_id=frame.frame_id, reviewer=reviewer))  # fmt: skip
+    return restored
+
+
+@router.post("/frames/{frame_id}/undo", response_model=FrameRecord)
+@router.post("/frames/{frame_id}/redo", response_model=FrameRecord)
+def undo_frame(frame_id: str, req: ReviewerRequest, request: Request, store: WorkspaceStore = Depends(get_store)):
+    frame = _load(store, frame_id)
+    reviewer = req.reviewer or get_settings().reviewer_name
+
+    def log(objs, restored, action, who):
+        store.append_corrections(
+            [dict(review._log_entry(restored, o, action, who), timestamp=review.now_iso()) for o in objs]
+        )
+
+    direction = "redo" if request.url.path.endswith("/redo") else "undo"
+    return undo_redo(store, history.kind_2d(), frame, direction, reviewer, FrameRecord, store.save_frame, log)
+
+
+@router.get("/frames/{frame_id}/history")
+def frame_history(frame_id: str, store: WorkspaceStore = Depends(get_store)):
+    _load(store, frame_id)
+    return history.counts(store, history.kind_2d(), frame_id)
 
 
 @router.post("/frames/{frame_id}/propagate", response_model=PropagateResponse)
@@ -383,6 +450,7 @@ def reopen_frame(frame_id: str, store: WorkspaceStore = Depends(get_store)):
     frame = _load(store, frame_id)
     review.reopen_frame(frame)
     store.save_frame(frame)
+    store.append_event(dict(type="reopen", mode="2d", frame_id=frame_id, reviewer=get_settings().reviewer_name))
     return frame
 
 
@@ -395,7 +463,34 @@ def corrections(
 
 @router.get("/metrics")
 def metrics(store: WorkspaceStore = Depends(get_store)):
-    return review.compute_metrics(store.list_frames())
+    from src.services import productivity
+
+    frames = store.list_frames()
+    m = review.compute_metrics(frames)
+    m["productivity"] = {
+        "reviewers": productivity.reviewer_stats(frames, store.events(), store.corrections(), "2d"),
+        "inference": productivity.inference_stats(frames),
+    }
+    return m
+
+
+@router.get("/report.csv")
+def report_csv(kind: Literal["frames", "summary"] = "frames", store: WorkspaceStore = Depends(get_store)):
+    """Báo cáo CSV (FR-19): kind=frames bảng từng frame, kind=summary số liệu tổng hợp (gồm năng suất)."""
+    from fastapi.responses import Response
+
+    from src.services import productivity
+
+    body = (
+        productivity.frames_csv(store.list_frames(), "2d")
+        if kind == "frames"
+        else productivity.summary_csv(metrics(store))
+    )
+    return Response(
+        "\ufeff" + body,  # BOM: Excel mở đúng tiếng Việt
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="autolabel2d_{kind}.csv"'},
+    )
 
 
 @router.post("/export", response_model=ExportResponse)

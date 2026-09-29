@@ -107,6 +107,7 @@ input[type=text], select { font: inherit; padding: 6px 8px; border: 1px solid va
 .dot.high { background: var(--high); }
 .status-pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); font-weight: 600; }
 .status-pill.approved { background: var(--low-soft); border-color: var(--low); color: var(--low); }
+.status-pill.rejected { background: var(--high-soft); border-color: var(--high); color: var(--high); }
 .status-pill.editing { background: var(--medium-soft); border-color: var(--medium); color: #9a6700; }
 
 .workspace { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 12px; gap: 10px; }
@@ -329,6 +330,11 @@ body.mode3d #tab-metrics .page > :not(#metrics3d) { display: none; }
 @media (max-width: 900px) { .stage-row { flex-direction: column; } .bev2d-wrap { flex: none; height: 360px; min-width: 0; } }
 
 /* ===== Trang dự án ===== */
+.pj-env { max-width: 1280px; margin: 16px auto 0; padding: 10px 14px; border-radius: var(--radius); background: var(--high-soft); color: var(--text); border: 1px solid var(--high); font-size: 13px; }
+.pj-env.warn-only { background: var(--medium-soft); border-color: var(--medium); }
+.pj-env p { margin: 4px 0; overflow-wrap: anywhere; }
+.pj-env code { font-size: 12px; }
+@media (max-width: 1320px) { .pj-env { margin: 16px 20px 0; } }
 body.projects-page { height: auto; min-height: 100vh; overflow: auto; }
 .project-link { color: var(--text-2); text-decoration: none; font-size: 13px; white-space: nowrap; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
 .project-link:hover { background: var(--accent-soft); color: var(--accent); }
@@ -394,3 +400,24 @@ body.in-project .brand-sub { display: none; }
   .pj-new { position: static; }
   .projects-page .brand-sub { display: none; }
 }
+
+/* ===== Trả lại frame (FR-15) + hoàn tác (FR-09) ===== */
+.foot-actions { display: inline-flex; gap: 6px; align-items: center; }
+.reject-banner { margin: 10px 12px 0; padding: 8px 10px; border-radius: 8px; background: var(--high-soft); border: 1px solid var(--high); font-size: 13px; overflow-wrap: anywhere; }
+.reject-banner b { color: var(--high); }
+.reject-box { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.reject-box textarea { font: inherit; font-size: 13px; padding: 7px 9px; border: 1px solid var(--high); border-radius: 8px; background: var(--surface); color: var(--text); resize: vertical; }
+.reject-actions { display: flex; justify-content: flex-end; gap: 6px; }
+
+/* ===== Năng suất (FR-27) ===== */
+.prod-card { margin-top: 16px; }
+.card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.card-actions { display: inline-flex; gap: 6px; }
+.card-actions a.btn { text-decoration: none; }
+.prod-card .table-wrap + .table-wrap { margin-top: 12px; }
+.prod-sessions { font-size: 12px; color: var(--muted); }
+
+/* ===== Ngưỡng score (FR-06) + mask ===== */
+.score-filter input[type=range] { width: 90px; accent-color: var(--accent); }
+.score-filter .mono { font-family: var(--mono); font-size: 12px; min-width: 32px; }
+.score-filter .muted { font-size: 12px; }

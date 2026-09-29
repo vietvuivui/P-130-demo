@@ -14,9 +14,19 @@ ROOT = Path(__file__).resolve().parents[1]
 INTRINSIC = [[1266.4, 0.0, 816.3], [0.0, 1266.4, 491.5], [0.0, 0.0, 1.0]]
 
 
+@pytest.fixture(autouse=True)
+def _no_privacy_models(monkeypatch):
+    """Test không nạp model làm mờ (YOLOE, detector biển số); test_privacy.py truyền detector giả riêng."""
+    from src.services import privacy
+
+    monkeypatch.setattr(privacy, "detect_regions", lambda img, cfg: [])
+
+
 @pytest.fixture
 def config() -> AutoLabelConfig:
-    return load_autolabel_config(ROOT / "configs" / "autolabel.yaml")
+    cfg = load_autolabel_config(ROOT / "configs" / "autolabel.yaml")
+    cfg.privacy.enabled = False  # không nạp model làm mờ trong test API; test riêng ở test_privacy.py
+    return cfg
 
 
 def make_object(

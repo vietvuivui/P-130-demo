@@ -6,15 +6,15 @@ import json
 from pathlib import Path
 
 import numpy as np
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import FileResponse, Response
 
-from src.api.routes import _error, get_config, get_dataroot, get_store
+from src.api.routes import _error, data_source, get_config, get_dataroot, get_store, undo_redo
 from src.config import get_settings
 from src.models.qa_config import AutoLabelConfig
-from src.models.schemas import ReviewerRequest
+from src.models.schemas import RejectRequest, ReviewerRequest
 from src.models.schemas3d import Action3DRequest, Frame3DRecord, Frame3DSummary
-from src.services import bev, review3d
+from src.services import bev, history, review, review3d
 from src.services.label3d import summarize3d
 from src.services.store import WorkspaceStore
 
@@ -79,7 +79,7 @@ def gt(model: str, frame_id: str, store: WorkspaceStore = Depends(get_store)):
 
 @router3d.get("/frames/{model}/{frame_id}/image/{camera}")
 def image(model: str, frame_id: str, camera: str, store: WorkspaceStore = Depends(get_store),
-          dataroot: Path = Depends(get_dataroot)):  # fmt: skip
+          dataroot: Path = Depends(get_dataroot), config: AutoLabelConfig = Depends(get_config)):  # fmt: skip
     frame = _load(store, model, frame_id)
     cam = frame.cameras.get(camera)
     if cam is None:
@@ -87,6 +87,9 @@ def image(model: str, frame_id: str, camera: str, store: WorkspaceStore = Depend
     path = dataroot / cam.path
     if not path.is_file():
         raise _error(404, "IMAGE_NOT_FOUND", f"Không thấy ảnh {cam.path} (kiểm tra NUSCENES_DATAROOT)")
+    from src.services.privacy import anonymized_path
+
+    path = anonymized_path(store.root, path, config.privacy)  # làm mờ mặt / biển số (FR-03)
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
 
 
@@ -118,36 +121,79 @@ def bev_image(model: str, frame_id: str, range_m: float = Query(40.0, alias="ran
 def action(model: str, frame_id: str, req: Action3DRequest, store: WorkspaceStore = Depends(get_store),
            config: AutoLabelConfig = Depends(get_config)):  # fmt: skip
     frame = _load(store, model, frame_id)
+    before = frame.model_dump_json()
     try:
         entry = review3d.apply_action(frame, req, req.reviewer or get_settings().reviewer_name, list(config.classes))
     except review3d.Review3DError as e:
         raise _error(422, "INVALID_ACTION", str(e)) from e
     store.save_frame3d(frame)
     review3d.append_log(store, [entry])
+    history.record(store, history.kind_3d(model), frame_id, before)
     return frame
 
 
 @router3d.post("/frames/{model}/{frame_id}/approve-low-risk", response_model=Frame3DRecord)
 def approve_low(model: str, frame_id: str, req: ReviewerRequest, store: WorkspaceStore = Depends(get_store)):
     frame = _load(store, model, frame_id)
+    before = frame.model_dump_json()
     try:
         entries = review3d.approve_low_risk(frame, req.reviewer or get_settings().reviewer_name)
     except review3d.Review3DError as e:
         raise _error(409, "FRAME_APPROVED", str(e)) from e
     store.save_frame3d(frame)
     review3d.append_log(store, entries)
+    if entries:
+        history.record(store, history.kind_3d(model), frame_id, before)
     return frame
 
 
 @router3d.post("/frames/{model}/{frame_id}/approve", response_model=Frame3DRecord)
 def approve(model: str, frame_id: str, req: ReviewerRequest, store: WorkspaceStore = Depends(get_store)):
     frame = _load(store, model, frame_id)
+    reviewer = req.reviewer or get_settings().reviewer_name
     try:
-        review3d.approve_frame(frame, req.reviewer or get_settings().reviewer_name, req.review_time_s)
+        review3d.approve_frame(frame, reviewer, req.review_time_s)
     except review3d.Review3DError as e:
         raise _error(409, "PENDING_OBJECTS", str(e)) from e
     store.save_frame3d(frame)
+    store.append_event(dict(type="approve", mode="3d", model=model, frame_id=frame_id, reviewer=reviewer,
+                            review_time_s=req.review_time_s, n_objects=len(frame.objects)))  # fmt: skip
     return frame
+
+
+@router3d.post("/frames/{model}/{frame_id}/reject", response_model=Frame3DRecord)
+def reject(model: str, frame_id: str, req: RejectRequest, store: WorkspaceStore = Depends(get_store)):
+    frame = _load(store, model, frame_id)
+    reviewer = req.reviewer or get_settings().reviewer_name
+    try:
+        review.reject_frame(frame, reviewer, req.reason)
+    except review.ReviewError as e:
+        raise _error(422, "REASON_REQUIRED", str(e)) from e
+    store.save_frame3d(frame)
+    store.append_event(dict(type="reject", mode="3d", model=model, frame_id=frame_id, reviewer=reviewer,
+                            reason=frame.reject_reason))  # fmt: skip
+    return frame
+
+
+@router3d.post("/frames/{model}/{frame_id}/undo", response_model=Frame3DRecord)
+@router3d.post("/frames/{model}/{frame_id}/redo", response_model=Frame3DRecord)
+def undo(model: str, frame_id: str, req: ReviewerRequest, request: Request, store: WorkspaceStore = Depends(get_store)):
+    frame = _load(store, model, frame_id)
+    reviewer = req.reviewer or get_settings().reviewer_name
+
+    def log(objs, restored, action, who):
+        review3d.append_log(
+            store, [dict(review3d._entry(restored, o, action, who), timestamp=review.now_iso()) for o in objs]
+        )
+
+    direction = "redo" if request.url.path.endswith("/redo") else "undo"
+    return undo_redo(store, history.kind_3d(model), frame, direction, reviewer, Frame3DRecord, store.save_frame3d, log)
+
+
+@router3d.get("/frames/{model}/{frame_id}/history")
+def frame_history(model: str, frame_id: str, store: WorkspaceStore = Depends(get_store)):
+    _load(store, model, frame_id)
+    return history.counts(store, history.kind_3d(model), frame_id)
 
 
 @router3d.post("/frames/{model}/{frame_id}/reopen", response_model=Frame3DRecord)
@@ -155,12 +201,40 @@ def reopen(model: str, frame_id: str, store: WorkspaceStore = Depends(get_store)
     frame = _load(store, model, frame_id)
     review3d.reopen(frame)
     store.save_frame3d(frame)
+    store.append_event(dict(type="reopen", mode="3d", model=model, frame_id=frame_id,
+                            reviewer=get_settings().reviewer_name))  # fmt: skip
     return frame
+
+
+@router3d.get("/report.csv")
+def report_csv(
+    model: str, kind: str = Query("frames", pattern="^(frames|summary)$"), store: WorkspaceStore = Depends(get_store)
+):
+    from src.services import productivity
+
+    body = (
+        productivity.frames_csv(store.list_frames3d(model), "3d")
+        if kind == "frames"
+        else productivity.summary_csv(metrics(model, store))
+    )
+    return Response(
+        "\ufeff" + body, media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="autolabel3d_{model}_{kind}.csv"'},
+    )  # fmt: skip
 
 
 @router3d.get("/metrics")
 def metrics(model: str, store: WorkspaceStore = Depends(get_store)):
-    return review3d.metrics3d(store.list_frames3d(model))
+    from src.services import productivity
+
+    frames = store.list_frames3d(model)
+    m = review3d.metrics3d(frames)
+    events = [e for e in store.events() if e.get("model") in (None, model)]
+    m["productivity"] = {
+        "reviewers": productivity.reviewer_stats(frames, events, review3d.read_log(store, model), "3d"),
+        "inference": productivity.inference_stats(frames),
+    }
+    return m
 
 
 @router3d.get("/corrections")
@@ -177,6 +251,35 @@ def export(model: str, store: WorkspaceStore = Depends(get_store)):
         return review3d.export3d(store, model, out)
     except review3d.Review3DError as e:
         raise _error(409, "NOTHING_TO_EXPORT", str(e)) from e
+
+
+@router3d.post("/export-kitti")
+def export_kitti(model: str, request: Request, camera: str = "CAM_FRONT", include_pending: bool = False,
+                 store: WorkspaceStore = Depends(get_store), dataroot=Depends(get_dataroot),
+                 config: AutoLabelConfig = Depends(get_config)):  # fmt: skip
+    """Box 3D đã duyệt -> định dạng KITTI object (zip), FR-17."""
+    from src.services import export_kitti as ek
+    from src.services.label3d import now_iso
+    from src.services.privacy import image_loader
+
+    name = f"kitti-{model}-{now_iso().replace(':', '').replace('-', '')[:15]}.zip"
+    try:
+        info = ek.export_kitti(store, Path(dataroot), data_source(request)[1], model, store.exports_dir / name,
+                               camera=camera, include_pending=include_pending,
+                               image_loader=image_loader(store, config.privacy))  # fmt: skip
+    except ValueError as e:
+        raise _error(409, "NOTHING_TO_EXPORT", str(e)) from e
+    return dict(info, url=f"{request.url.path.rsplit('/export-kitti', 1)[0]}/exports/{name}")
+
+
+@router3d.get("/exports/{name}")
+def download_export(name: str, store: WorkspaceStore = Depends(get_store)):
+    if not name.endswith(".zip") or "/" in name or "\\" in name or name.startswith("."):
+        raise _error(404, "FILE_NOT_FOUND", name)
+    path = store.exports_dir / name
+    if not path.exists():
+        raise _error(404, "FILE_NOT_FOUND", name)
+    return FileResponse(path, filename=name, media_type="application/zip")
 
 
 def _det3d_summary() -> dict:

@@ -51,7 +51,10 @@ def export_nuscenes(store: WorkspaceStore, dataroot: Path, version: str, model: 
     sample_ts = {
         s["token"]: s["timestamp"] for s in json.loads((table_dir / "sample.json").read_text(encoding="utf-8"))
     }
-    frames = [f for f in store.list_frames3d(model) if include_pending or f.status == "approved"]
+    # frame reviewer đã trả lại (rejected) không bao giờ được xuất, kể cả khi lấy cả nhãn chưa duyệt
+    frames = [
+        f for f in store.list_frames3d(model) if f.status == "approved" or (include_pending and f.status != "rejected")
+    ]
     if not frames:
         raise ValueError("Chưa có keyframe 3D nào được approve" if not include_pending else "Chưa có frame 3D nào")
 

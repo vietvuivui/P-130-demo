@@ -30,6 +30,59 @@ Quy tắc:
 
 ---
 
+## 2026-09-29 (4) · Kiên · nhánh `kien`
+
+**Làm gì:** Làm các yêu cầu còn thiếu của PRD không phụ thuộc giao diện:
+
+- **FR-15:** reject kèm lý do bắt buộc (2D + 3D).
+- **FR-09:** undo / redo (Ctrl+Z / Ctrl+Y).
+- **FR-19:** báo cáo CSV.
+- **FR-27:** năng suất theo người / phiên, và throughput auto-label theo phiên chạy.
+- **FR-17:** xuất KITTI. Đã kiểm tra đọc lại bằng `KittiDB`: tâm box lệch ≤ 5 cm (làm tròn 2 chữ số theo chuẩn KITTI),
+  hướng ≤ 0.002 rad.
+- **FR-04:** mask sơ bộ từ YOLOE-seg, tô trên UI và xuất COCO `segmentation`.
+- **FR-03:** làm mờ mặt / biển số trước khi gửi ảnh.
+- **FR-06:** thanh trượt ngưỡng score.
+
+Ngoài ra:
+
+- Trang Dự án kiểm tra trước thư viện còn thiếu và báo rõ Python nào đang chạy server.
+- Thêm `scripts/tasks.ps1` gom các việc chạy trên terminal.
+
+**File chính:**
+
+- mới: `src/services/history.py`, `productivity.py`, `export_kitti.py`, `privacy.py`, `scripts/tasks.ps1`;
+- sửa: `src/api/routes.py`, `routes3d.py`, `projects_routes.py`, `src/services/review.py`, `store.py`,
+  `pipeline.py`, `video.py`, `label3d.py`, `detectors/{__init__,yoloe,fusion}.py`, `exporter.py`,
+  `src/web/{index.html,app.js,app3d.js,projects.js,styles.css}`.
+
+**Ảnh hưởng tới người khác:**
+
+- `FrameRecord` / `Frame3DRecord`:
+  - `status` thêm `"rejected"`;
+  - thêm `reject_reason`, `rejected_by`, `rejected_at`, `autolabel_s`, `autolabel_run`.
+- `Detection` / `LabelObject` thêm `mask`.
+- Config thêm `privacy` và `detection.yoloe.masks`. Khoá cache detection giữ nguyên.
+- `requirements-ml.txt` thêm `open-image-models`.
+- `/api/v1/metrics` thêm `productivity`; `frames` thêm `rejected`.
+- API mới: `reject`, `undo`, `redo`, `history`, `report.csv`, `3d/export-kitti`, `3d/exports/{file}`,
+  `projects/env`, `projects/{id}/export?format=kitti`.
+- Workspace thêm `events.jsonl`, `history/`, `anon/`.
+
+**Cách kiểm tra:**
+
+- `pytest` (121 passed).
+- `scripts\tasks.ps1 check`.
+- UI 2D: `K` / `D`, Ctrl+Z, nút **Trả lại**.
+- Tab Metrics: bảng năng suất và nút CSV.
+- 3D: **Xuất KITTI**.
+
+**Còn dở / việc tiếp:**
+
+- FR-21 đăng nhập / phân vai: chờ chốt giao diện với Danh.
+- FR-07 / FR-08: nối box 2D ↔ 3D.
+- FR-10 brush sửa mask, FR-25 nội suy 3D, FR-20 DVC.
+
 ## 2026-09-29 (3) · Kiên · nhánh `kien`
 
 **Làm gì:**

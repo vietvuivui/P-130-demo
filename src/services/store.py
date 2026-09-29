@@ -165,6 +165,41 @@ class WorkspaceStore:
                 for e in entries:
                     f.write(json.dumps(e, ensure_ascii=False) + "\n")
 
+    # ---- sự kiện cấp frame (approve / reject / reopen / undo / redo): lịch sử duyệt và năng suất (FR-16, FR-27) ----
+
+    @property
+    def events_file(self) -> Path:
+        return self.root / "events.jsonl"
+
+    def append_event(self, event: dict) -> None:
+        from datetime import UTC, datetime
+
+        event = {"ts": datetime.now(UTC).isoformat(timespec="seconds"), **event}
+        with self._lock:
+            self.root.mkdir(parents=True, exist_ok=True)
+            with open(self.events_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(event, ensure_ascii=False) + "\n")
+
+    def events(self) -> list[dict]:
+        if not self.events_file.exists():
+            return []
+        with open(self.events_file, encoding="utf-8") as f:
+            return [json.loads(line) for line in f if line.strip()]
+
+    # ---- lịch sử undo / redo của từng frame (FR-09) ----
+
+    def history_path(self, kind: str, frame_id: str) -> Path:
+        return self.root / "history" / self.check_id(kind) / f"{self.check_id(frame_id)}.json"
+
+    def load_history(self, kind: str, frame_id: str) -> dict:
+        path = self.history_path(kind, frame_id)
+        if not path.exists():
+            return {"undo": [], "redo": []}
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def save_history(self, kind: str, frame_id: str, history: dict) -> None:
+        self._write_json(self.history_path(kind, frame_id), history)
+
     def corrections(self, frame_id: str | None = None) -> list[dict]:
         if not self.corrections_file.exists():
             return []

@@ -267,13 +267,35 @@ Hai cột cuối là kết quả QA Agent 3D trên 3 scene demo, dùng ngưỡng
 | GET | `/api/v1/videos` | Video: scene nuScenes + mp4 đã tải lên (tiến độ, số frame đã duyệt / lan truyền) |
 | GET | `/api/v1/videos/{id}` | Timeline của một video: danh sách frame kèm thời điểm và trạng thái |
 | POST | `/api/v1/videos/upload` | Tải lên mp4 (multipart `file`); cắt frame ngay, auto-label chạy nền |
-| POST | `/api/v1/export` | Xuất dataset các frame đã approve |
+| POST | `/api/v1/frames/{id}/reject` | Reviewer trả lại frame, bắt buộc có lý do (`reason`) |
+| POST | `/api/v1/frames/{id}/undo`, `/redo`; GET `/history` | Hoàn tác / làm lại thao tác trên frame (Ctrl+Z / Ctrl+Y) |
+| GET | `/api/v1/report.csv?kind=frames\|summary` | Báo cáo CSV: từng frame / số liệu tổng hợp (gồm năng suất) |
+| POST | `/api/v1/export` | Xuất dataset các frame đã approve (COCO có `segmentation` từ mask sơ bộ) |
 | GET | `/api/v1/3d/models`, `/3d/frames?model=` | Mô hình 3D có frame; hàng đợi frame 3D |
 | GET | `/api/v1/3d/frames/{m}/{f}` (+ `/points`, `/gt`, `/image/{camera}`) | Frame 3D, point cloud float32 xyzi, GT, ảnh |
 | POST | `/api/v1/3d/frames/{m}/{f}/actions`, `/approve-low-risk`, `/approve`, `/reopen` | Duyệt box 3D: `KEEP` / `DELETE` / `CHANGE_CLASS` / `EDIT_BOX` / `ADD_BOX` |
 | GET | `/api/v1/3d/frames/{m}/{f}/bev?range=40&res=0.1` | Ảnh BEV ghép 6 camera (PNG RGBA), header `X-Ground-Z` |
 | GET | `/api/v1/3d/metrics?model=`, `/3d/corrections`, `/3d/compare` | Số liệu duyệt 3D, log, bảng so sánh mô hình |
 | POST | `/api/v1/3d/export?model=` | Xuất box 3D đã duyệt (định dạng nuScenes detection) |
+| POST | `/api/v1/3d/export-kitti?model=` | Xuất box 3D đã duyệt dạng KITTI object (ảnh, velodyne, calib, label_2), tải ở `/3d/exports/{file}` |
+| POST | `/api/v1/3d/frames/{m}/{f}/reject`, `/undo`, `/redo` | Trả lại / hoàn tác như 2D; `GET /3d/report.csv?model=` |
+
+## Duyệt, báo cáo, quyền riêng tư
+
+| Yêu cầu (PRD) | Làm thế nào |
+|---|---|
+| FR-03 làm mờ mặt / biển số | Mọi ảnh gửi tới trình duyệt và ảnh trong file KITTI đều qua `src/services/privacy.py`: biển số bằng detector chuyên dụng (open-image-models, chạy cả ảnh + 4 ô), mặt bằng YOLOE "human face" + vùng đầu của người đủ lớn. Cache ở `workspace/anon/`, ảnh gốc giữ nguyên cho model. Tắt: `privacy.enabled: false` |
+| FR-04 mask sơ bộ | Mask của YOLOE-seg lưu thành đa giác trong mỗi object, tô mờ trên ảnh (ô **Mask**), xuất vào `segmentation` của COCO (bỏ khi người sửa box). Ảnh detect trước bản này chưa có mask: xoá `cache/detections/yoloe-*` rồi chạy lại nếu cần |
+| FR-06 ngưỡng confidence | Thanh trượt **Score ≥** ở UI 2D và 3D, số box hiển thị đổi ngay |
+| FR-09 undo / redo | Nút ↶ ↷, Ctrl+Z / Ctrl+Y; mỗi frame giữ 50 bước (`workspace/history/`), log ghi `UNDO` / `REDO` |
+| FR-15 reject kèm lý do | Nút **Trả lại** (phím `R`), lý do bắt buộc; frame lên đầu hàng đợi, không được xuất cho tới khi duyệt lại |
+| FR-16 lịch sử | `corrections.jsonl` (từng object) + `events.jsonl` (approve / reject / reopen / undo / redo của từng frame) |
+| FR-17 xuất KITTI | Nút **Xuất KITTI** (tab Metrics ở chế độ 3D, trang Dự án); đọc lại được bằng `KittiDB` của nuscenes-devkit |
+| FR-19 báo cáo CSV | Tab Metrics: **CSV từng frame**, **CSV tổng hợp** (Excel mở đúng tiếng Việt) |
+| FR-27 năng suất | Tab Metrics: frame/giờ theo người và theo phiên (cách nhau > 30 phút là phiên mới); auto-label frame/giờ theo phiên chạy |
+
+Các việc chạy trên terminal gom trong `scripts\tasks.ps1` (PowerShell): `check`, `install`, `serve`, `test`, `demozip`,
+`eval3d`, `label3d`, `eval2d`, `push`. Ví dụ: `powershell -ExecutionPolicy Bypass -File scripts\tasks.ps1 check`.
 
 ## Cấu trúc
 
@@ -319,7 +341,9 @@ tests/                     pytest, dữ liệu tổng hợp (không cần GPU/da
 
 - nuScenes mini chỉ 10 scene → số liệu mang tính minh hoạ quy trình.
 - GT 2D là hộp bao của box 3D chiếu xuống, rộng hơn box sát vật thể → AP@0.7 thấp là bình thường.
-- Chưa có: ẩn danh mặt/biển số (EgoBlur), mask SAM2, VLM verifier, đăng nhập/phân vai (web dự án chạy một máy chủ, không đăng nhập).
+- Chưa có: mask SAM2 / sửa mask bằng brush, VLM verifier, đăng nhập/phân vai (web dự án chạy một máy chủ, không đăng nhập).
+- Làm mờ dùng detector mở (không phải EgoBlur): biển số xa / nghiêng và mặt nghiêng có thể sót; ảnh BEV ghép từ ảnh gốc
+  chưa làm mờ. Lần đầu mở một ảnh chậm thêm vì phải detect (sau đó lấy từ cache).
 - Florence-2 không trả confidence nên box của nó nhận score cố định trong config.
 - 3D chỉ dùng trọng số có sẵn (chưa fine-tune); FCOS3D/PGD/BEVFusion cần GPU, BEVFusion còn phải biên dịch op CUDA.
   Mô hình 3D học trên LiDAR 32 tia của nuScenes: với LiDAR khác (KITTI 64 tia, cường độ khác thang) độ chính xác giảm.

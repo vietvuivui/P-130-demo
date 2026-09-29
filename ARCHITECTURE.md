@@ -162,8 +162,16 @@ lan truyền, so với GT cùng `instance_token` ở các keyframe sau (tỉ l�
 | Định dạng trung gian | Mọi dữ liệu có LiDAR đổi sang bảng nuScenes | Loader, mô hình 3D, kiểm chứng, xuất đều đã viết cho nuScenes; thêm định dạng mới chỉ cần một converter |
 | Demo không GPU | Video tổng hợp + detector theo màu (`detectors/demo.py`) | Chạy được trên máy bất kỳ, có sẵn các tình huống lỗi để trình diễn QA và lan truyền |
 
+## Duyệt: trả lại, hoàn tác, lịch sử, năng suất
+
+- Mỗi thao tác sửa nhãn đẩy bản frame trước đó vào `workspace/history/<2d|3d-model>/<frame>.json` (50 bước); undo / redo
+  đổi chỗ bản hiện tại với bản trong ngăn, ghi log `UNDO` / `REDO`. Frame đã approve phải mở lại trước khi hoàn tác.
+- Reject (lý do bắt buộc) đặt `status = "rejected"`: không xuất được, lên đầu hàng đợi; sửa lại thì về `editing` nhưng giữ lý do.
+- `events.jsonl` ghi approve / reject / reopen / undo / redo; năng suất (FR-27) tính từ frame đã approve (người, thời gian
+  duyệt) và `autolabel_s` / `autolabel_run` mà pipeline ghi cho từng frame.
+
 ## Chưa làm
 
-- Ẩn danh mặt/biển số (FR-03): EgoBlur cần tải weights có license, chưa tích hợp.
+- Ẩn danh mặt/biển số (FR-03) đã có bằng detector mở (`privacy.py`); EgoBlur (chính xác hơn) cần weights có license, chưa tích hợp. Ảnh BEV chưa làm mờ.
 - Mask SAM2, VLM verifier, isotonic calibration (tuần 4 trong PLAN).
 - Đăng nhập/phân vai (FR-21): hiện chỉ ghi tên người duyệt vào log; web dự án dành cho một máy chủ, một nhóm.
