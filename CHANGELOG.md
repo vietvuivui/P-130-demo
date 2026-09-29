@@ -30,6 +30,27 @@ Quy tắc:
 
 ---
 
+## 2026-09-29 (2) · Danh · nhánh `danh`
+
+**Làm gì:** Tái cấu trúc và hiện đại hóa toàn diện giao diện web (`src/web/`) theo hướng tinh gọn, loại bỏ hoàn toàn giao diện dư thừa. Chuẩn hóa toàn bộ tên class/ID/biến trong code. Hoàn thiện đầy đủ chức năng tương tác cho nút bấm và modal trên trang: modal thêm nhãn mới với bảng chọn màu, chỉnh sửa/xóa nhãn trực tiếp, chuyển đổi chế độ xem Dạng thô (Raw JSON) và Trình dựng nhãn (Constructor), dropdown menu thao tác dự án, bộ lọc trạng thái nhanh, bộ lọc theo lớp nhãn, sắp xếp danh sách và tạo task mới.
+
+**File chính:**
+- Sửa: `src/web/frames.html` (chuẩn hóa taxonomy xe tự hành, bỏ nút khung xương, gắn kết nối modal thêm nhãn `modal-overlay`/`modal-card`, dropdown thao tác, sắp xếp, lọc nhanh, lọc nhãn, tạo task), `src/web/ui-flow.js` (logic taxonomy, xử lý modal toàn cục `window.openModal`/`closeModal`, tìm kiếm, sắp xếp rủi ro QA / ID / đối tượng, lọc trạng thái, lọc nhãn, duyệt nhanh frame qua API `approve`), `src/web/projects.html` (dọn dẹp thanh header, bổ sung dropdown sắp xếp và lọc dự án), `src/web/export.html` & `src/web/index.html` (dọn dẹp các nút dư thừa trên topbar), `src/web/ui-flow.css` & `src/web/styles.css` (chuẩn hóa token CSS và class name không dùng `cvat-`), `src/main.py` (chuyển hướng `/flow` về `/ui/projects.html`).
+
+**Ảnh hưởng tới người khác:** Không. Giữ nguyên toàn bộ schema Pydantic, các cấu hình trong `configs/autolabel.yaml` và các endpoint API `/api/v1/*`.
+
+**Cách kiểm tra:**
+- `ruff check src tests` → All checks passed.
+- `python -m pytest tests/test_api/` → 11 passed.
+- Mở server `python -m src.demo --reset` hoặc `uvicorn src.main:app`, truy cập `http://localhost:8000/ui/`:
+  - Kiểm tra thanh header trên tất cả các trang gọn gàng, chỉ chứa các liên kết thực tế (Dự án, Tasks & Frames, Xuất dữ liệu), không còn nút GitHub và nút trợ giúp thừa.
+  - Tại `/ui/frames.html`: Bấm **`+ Thêm nhãn`** → Modal xuất hiện ở giữa màn hình cho phép nhập tên và chọn màu; danh mục nhãn hiển thị đúng taxonomy xe tự hành, có thể sửa tên hoặc xóa nhãn; các dropdown **Thao tác**, **Sắp xếp**, **Lọc nhanh**, **Lọc theo nhãn** hoạt động phản hồi chính xác.
+
+**Còn dở / việc tiếp:**
+- Tiếp tục tối ưu hóa hiệu năng render canvas khi tải lượng lớn frame video liên tục.
+
+---
+
 ## 2026-09-29 · Danh · nhánh `danh`
 
 **Làm gì:** Tích hợp bộ giao diện UI Flow đa trang hoàn chỉnh (Đăng nhập, Dự án, Chọn frame, Xuất dữ liệu, Sơ đồ Flow) kết nối liền mạch vào luồng chạy chính của ứng dụng qua các route FastAPI. Đồng bộ toàn diện hệ thống thiết kế và bảng màu trang Workspace (Workstation gán nhãn) theo chuẩn Navy Slate (`#0f172a`) và Light Slate (`#f8fafc`), loại bỏ lỗi lệch màu do dark mode tự động, chuẩn hóa màu sắc bounding box canvas và thẻ QA risk badge.

@@ -3,117 +3,99 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Đăng nhập — AutoLabel 3D / 2D</title>
+  <title>Đăng nhập — AutoLabel</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
   <link rel="stylesheet" href="ui-flow.css">
+  <style>
+    .login-page {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background-color: var(--bg);
+      padding: 24px;
+    }
+    .login-card {
+      width: 100%;
+      max-width: 380px;
+      background: #ffffff;
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 32px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    }
+    .login-header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .login-logo {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: #1f1f1f;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .login-sub {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .input-wrap {
+      position: relative;
+    }
+    .input-wrap i.pw-toggle {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+  </style>
 </head>
 <body>
 
-  <!-- 7-Step Interactive Stepper Navigation -->
-  <nav class="flow-stepper-bar" aria-label="UI Flow Steps">
-    <a href="login.html" class="flow-step-item active">
-      <span class="step-num">1</span>
-      <span>Đăng nhập</span>
-    </a>
-    <span class="flow-step-arrow">→</span>
-
-    <a href="projects.html" class="flow-step-item">
-      <span class="step-num">2</span>
-      <span>Dự án</span>
-    </a>
-    <span class="flow-step-arrow">→</span>
-
-    <a href="frames.html" class="flow-step-item">
-      <span class="step-num">3</span>
-      <span>Chọn frame</span>
-    </a>
-    <span class="flow-step-arrow">→</span>
-
-    <a href="index.html" class="flow-step-item">
-      <span class="step-num">4</span>
-      <span>Gán nhãn (Workstation)</span>
-    </a>
-    <span class="flow-step-arrow">→</span>
-
-    <a href="export.html" class="flow-step-item">
-      <span class="step-num">7</span>
-      <span>Xuất dữ liệu</span>
-    </a>
-
-    <div style="margin-left: auto;">
-      <a href="flow.html" class="btn-outline" style="padding: 4px 10px; font-size: 11px;">
-        <i class="ri-node-tree"></i> Xem toàn cảnh Flow
-      </a>
-    </div>
-  </nav>
-
-  <!-- Login Main Container -->
-  <div class="login-screen-wrap">
-    <div class="login-box">
-      <div class="login-logo">
-        <div class="icon-box">
-          <i class="ri-box-3-fill"></i>
+  <div class="login-page">
+    <div class="login-card">
+      <div class="login-header">
+        <div class="login-logo">
+          <i class="ri-box-3-fill" style="color: var(--primary);"></i>
+          <span>AutoLabel</span>
         </div>
-        <h1>AutoLabel 3D</h1>
-        <p>AI hỗ trợ gán nhãn ảnh & LiDAR (2D/3D) · Review by Exception</p>
+        <div class="login-sub">Hệ thống gán nhãn thị giác máy tính &amp; LiDAR</div>
       </div>
 
       <form id="loginForm">
-        <div class="form-group">
-          <label class="form-label" for="loginEmail">Email người dùng</label>
-          <div class="input-with-icon">
-            <i class="ri-mail-line"></i>
-            <input type="email" id="loginEmail" value="huy@example.com" placeholder="Email của bạn" required>
-          </div>
+        <div class="form-item">
+          <label class="form-label" for="loginEmail">Email / Tên tài khoản</label>
+          <input type="text" id="loginEmail" class="form-control" value="annotator@autolabel.ai" required>
         </div>
 
-        <div class="form-group">
+        <div class="form-item">
           <label class="form-label" for="loginPassword">Mật khẩu</label>
-          <div class="input-with-icon">
-            <i class="ri-lock-line"></i>
-            <input type="password" id="loginPassword" value="password123" placeholder="Mật khẩu" required>
-            <i class="ri-eye-off-line pw-toggle-btn" id="togglePasswordBtn" title="Hiện/ẩn mật khẩu"></i>
+          <div class="input-wrap">
+            <input type="password" id="loginPassword" class="form-control" value="password123" required>
+            <i class="ri-eye-off-line pw-toggle" id="togglePasswordBtn" title="Hiện/Ẩn mật khẩu"></i>
           </div>
         </div>
 
-        <div class="flex justify-between align-center mb-4 text-xs">
-          <label class="flex align-center gap-1 cursor-pointer">
-            <input type="checkbox" id="rememberMe" checked>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; font-size: 13px;">
+          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-secondary);">
+            <input type="checkbox" checked>
             <span>Ghi nhớ đăng nhập</span>
           </label>
-          <a href="javascript:void(0)" onclick="openModal('forgotPwModal')" class="text-blue fw-600">Quên mật khẩu?</a>
+          <a href="javascript:void(0)" onclick="showToast('Vui lòng liên hệ quản trị viên để cấp lại mật khẩu', 'info')" style="color: var(--primary);">Quên mật khẩu?</a>
         </div>
 
-        <button type="submit" class="btn-primary w-100" style="padding: 12px; font-size: 14px;">
-          <span>Đăng nhập vào hệ thống</span>
-          <i class="ri-arrow-right-line"></i>
+        <button type="submit" class="btn-primary" style="width: 100%; height: 38px; font-size: 14px;">
+          Đăng nhập
         </button>
       </form>
-
-      <div class="mt-4 pt-3 text-center border-t text-xs text-gray" style="border-top: 1px solid var(--border);">
-        <span>Phiên bản AutoLabel Platform v1.0 · nuScenes Mini QA</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Forgot Password Modal -->
-  <div id="forgotPwModal" class="modal-overlay" style="display: none;">
-    <div class="modal-card">
-      <h3 class="mb-2">Đặt lại mật khẩu</h3>
-      <p class="text-gray text-sm mb-4">Nhập email của bạn để nhận liên kết khôi phục mật khẩu truy cập.</p>
-      <div class="form-group mb-4">
-        <label class="form-label">Email tài khoản</label>
-        <div class="input-with-icon">
-          <i class="ri-mail-line"></i>
-          <input type="email" id="resetEmail" value="huy@example.com" placeholder="email@example.com">
-        </div>
-      </div>
-      <div class="flex gap-2">
-        <button type="button" class="btn-outline flex-grow" onclick="closeModal('forgotPwModal')">Hủy</button>
-        <button type="button" class="btn-primary flex-grow" onclick="showToast('Đã gửi mã xác nhận tới email của bạn', 'success'); closeModal('forgotPwModal');">Gửi liên kết</button>
-      </div>
     </div>
   </div>
 

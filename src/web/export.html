@@ -1,183 +1,93 @@
 <!DOCTYPE html>
 <html lang="vi">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Xuất dữ liệu — AutoLabel 3D / 2D</title>
+  <title>Xuất dữ liệu — AutoLabel</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
   <link rel="stylesheet" href="ui-flow.css">
 </head>
+
 <body>
 
-  <!-- 7-Step Interactive Stepper Navigation -->
-  <nav class="flow-stepper-bar" aria-label="UI Flow Steps">
-    <a href="login.html" class="flow-step-item">
-      <span class="step-num">1</span>
-      <span>Đăng nhập</span>
-    </a>
-    <span class="flow-step-arrow">→</span>
-
-    <a href="projects.html" class="flow-step-item">
-      <span class="step-num">2</span>
-      <span>Dự án</span>
-    </a>
-    <span class="flow-step-arrow">→</span>
-
-    <a href="frames.html" class="flow-step-item">
-      <span class="step-num">3</span>
-      <span>Chọn frame</span>
-    </a>
-    <span class="flow-step-arrow">→</span>
-
-    <a href="index.html" class="flow-step-item">
-      <span class="step-num">4</span>
-      <span>Gán nhãn (Workstation)</span>
-    </a>
-    <span class="flow-step-arrow">→</span>
-
-    <a href="export.html" class="flow-step-item active">
-      <span class="step-num">7</span>
-      <span>Xuất dữ liệu</span>
-    </a>
-
-    <div style="margin-left: auto;">
-      <a href="flow.html" class="btn-outline" style="padding: 4px 10px; font-size: 11px;">
-        <i class="ri-node-tree"></i> Xem toàn cảnh Flow
+  <!-- Top Navigation Bar -->
+  <header class="header">
+    <div class="header-left">
+      <a href="projects.html" class="logo">
+        <i class="ri-box-3-fill logo-icon"></i>
+        <span>AutoLabel</span>
       </a>
+      <nav class="nav">
+        <a href="projects.html" class="nav-item">Dự án</a>
+        <a href="frames.html" class="nav-item">Tasks &amp; Frames</a>
+        <a href="export.html" class="nav-item active">Xuất dữ liệu</a>
+      </nav>
     </div>
-  </nav>
 
-  <!-- App Layout -->
-  <div class="app-layout">
-    <!-- Sidebar -->
-    <aside class="sidebar">
-      <div class="sidebar-brand">
-        <div class="logo-icon"><i class="ri-box-3-fill"></i></div>
-        <span>AutoLabel 3D</span>
+    <div class="header-right">
+      <div class="user-profile" onclick="window.location.href='login.html'" title="Tài khoản người dùng">
+        <i class="ri-user-line avatar-icon"></i>
+        <span class="user-name">Người dùng</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="page-wrap" style="max-width: 800px;">
+    <div class="project-header-card" style="margin-top: 12px;">
+      <div class="modal-header" style="font-size: 18px; margin-bottom: 4px;">Xuất tập dữ liệu gán nhãn</div>
+      <div class="modal-sub">Xuất các frame và bounding box đã qua kiểm duyệt sang định dạng chuẩn (COCO, KITTI, YOLO,
+        nuScenes).</div>
+
+      <div class="form-item">
+        <label class="form-label">Định dạng xuất dữ liệu</label>
+        <select id="exportFormatSelect" class="form-control">
+          <option value="KITTI">KITTI 3D / 2D bounding boxes</option>
+          <option value="COCO" selected>COCO 1.0 (2D Boxes + Phân lớp)</option>
+          <option value="nuScenes">nuScenes JSON format</option>
+          <option value="YOLO">YOLOv8 txt annotations</option>
+        </select>
       </div>
 
-      <nav class="sidebar-nav">
-        <a href="projects.html">
-          <i class="ri-folder-2-line"></i>
-          <span>Dự án</span>
-        </a>
-        <a href="javascript:void(0)" onclick="showToast('Quản lý tập dữ liệu thô', 'info')">
-          <i class="ri-database-2-line"></i>
-          <span>Dữ liệu thô</span>
-        </a>
-        <a href="index.html">
-          <i class="ri-price-tag-3-line"></i>
-          <span>Workspace Gán nhãn</span>
-        </a>
-        <a href="export.html" class="active">
+      <div class="form-item">
+        <label class="form-label">Bao gồm frame chưa duyệt</label>
+        <select class="form-control">
+          <option value="no" selected>Không (Chỉ xuất các frame đã Approve)</option>
+          <option value="yes">Có (Xuất toàn bộ kèm điểm rủi ro QA)</option>
+        </select>
+      </div>
+
+      <div style="margin-top: 24px; display: flex; gap: 12px;">
+        <button id="btnDoExport" class="btn-primary" style="padding: 0 20px; height: 36px;">
           <i class="ri-download-cloud-2-line"></i>
           <span>Xuất dữ liệu</span>
+        </button>
+        <a href="projects.html" class="btn-default" style="display: inline-flex; align-items: center; height: 36px;">
+          Quay lại Dự án
         </a>
-        <a href="flow.html">
-          <i class="ri-node-tree"></i>
-          <span>Toàn cảnh UI Flow</span>
-        </a>
-      </nav>
-
-      <div class="sidebar-footer">
-        <div class="user-profile">
-          <div class="user-avatar">NH</div>
-          <div class="user-meta">
-            <span class="user-name">Phạm Quang Huy</span>
-            <span class="user-role">Reviewer &amp; Annotator</span>
-          </div>
-        </div>
       </div>
-    </aside>
+    </div>
 
-    <!-- Main Content -->
-    <main class="main-content">
-      <div class="page-container" style="max-width: 800px;">
-        <div class="page-header">
-          <div>
-            <h1>Xuất dữ liệu đã gán nhãn</h1>
-            <p class="text-gray text-sm mt-1">Bước 7: Đóng gói và tải về dữ liệu nhãn đã qua kiểm duyệt cho mô hình Perception</p>
-          </div>
-          <a href="index.html" class="btn-outline">
-            <i class="ri-arrow-left-line"></i> Quay lại Workspace
-          </a>
-        </div>
-
-        <div class="table-card p-5" style="background: #ffffff;">
-          <div class="form-group mb-4">
-            <label class="form-label" style="font-size: 13px;">Định dạng xuất dữ liệu</label>
-            <select id="exportFormatSelect" class="form-control" style="padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); width: 100%; font-size: 14px;">
-              <option value="KITTI (3D + 2D)">KITTI (3D Bounding Box + 2D Camera Bbox + Calib matrix)</option>
-              <option value="nuScenes v1.0">nuScenes v1.0 (JSON annotations + Tokens + Sensor Sync)</option>
-              <option value="COCO Format">COCO Format (2D Bounding Box JSON + Categories)</option>
-              <option value="YOLOv8 3D Format">YOLOv8 Format (Normalized Bounding Boxes txt)</option>
-              <option value="Waymo Open Dataset">Waymo Open Dataset (Camera 2D + LiDAR 3D Labels)</option>
-            </select>
-          </div>
-
-          <div class="form-group mb-4">
-            <label class="form-label" style="font-size: 13px;">Tùy chọn đóng gói</label>
-            <div class="flex flex-col gap-2 mt-2">
-              <label class="flex align-center gap-2 cursor-pointer text-sm">
-                <input type="checkbox" checked id="optCalib">
-                <span>Bao gồm ma trận hiệu chuẩn (Camera Extrinsic / Intrinsic Calibration)</span>
-              </label>
-              <label class="flex align-center gap-2 cursor-pointer text-sm">
-                <input type="checkbox" checked id="optApprovedOnly">
-                <span>Chỉ xuất các frame đã được con người duyệt (Status: approved)</span>
-              </label>
-              <label class="flex align-center gap-2 cursor-pointer text-sm">
-                <input type="checkbox" checked id="optCorrectionLog">
-                <span>Kèm theo lịch sử hiệu chỉnh (Correction Log JSONL) &amp; Báo cáo chất lượng QA Agent</span>
-              </label>
-            </div>
-          </div>
-
-          <div class="mb-3 text-xs text-gray" id="statApprovedNotice">
-            Đang kiểm tra số lượng frame đã duyệt từ hệ thống...
-          </div>
-
-          <button id="btnDoExport" class="btn-primary w-100" style="padding: 13px; font-size: 14px;">
-            <i class="ri-download-cloud-2-line"></i>
-            <span>Xuất dữ liệu</span>
-          </button>
-
-          <!-- Export Success State Card -->
-          <div id="exportSuccessCard" class="mt-4 p-4 rounded-lg" style="display: none; background: var(--green-soft); border: 1px solid #a7f3d0; text-align: left;">
-            <div style="text-align: center; margin-bottom: 12px;">
-              <div style="width: 48px; height: 48px; border-radius: 50%; background: var(--green); color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 8px;">
-                <i class="ri-check-line"></i>
-              </div>
-              <h3 class="fw-700 text-green mb-1" style="color: #065f46;">Xuất dữ liệu thành công!</h3>
-              <p class="text-xs" style="color: #047857;">Mã xuất: <code id="exportIdDisplay" style="font-weight: 700;">—</code></p>
-            </div>
-
-            <div style="background: #ffffff; padding: 12px; border-radius: 8px; border: 1px solid #d1fae5; margin-bottom: 12px; font-size: 12px;">
-              <div class="flex justify-between py-1 border-b">
-                <span>Số frame đã đóng gói:</span>
-                <strong><span id="exportFramesCount">0</span> frame</strong>
-              </div>
-              <div class="flex justify-between py-1">
-                <span>Tổng số đối tượng (instances):</span>
-                <strong><span id="exportObjectsCount">0</span> box</strong>
-              </div>
-            </div>
-
-            <div style="margin-bottom: 12px;">
-              <label class="form-label" style="font-size: 12px; color: #065f46;">Các file dữ liệu đã xuất:</label>
-              <div id="exportFileList" style="background: #ffffff; border-radius: 8px; border: 1px solid #d1fae5; padding: 8px;">
-                <!-- Populated dynamically -->
-              </div>
-            </div>
-          </div>
-        </div>
+    <!-- Export Result Card -->
+    <div id="exportSuccessCard" class="project-header-card" style="display: none; margin-top: 20px;">
+      <div style="display: flex; align-items: center; gap: 8px; color: #52c41a; font-weight: 600; margin-bottom: 8px;">
+        <i class="ri-checkbox-circle-fill" style="font-size: 18px;"></i>
+        <span>Tập dữ liệu đã được khởi tạo thành công</span>
       </div>
-    </main>
-  </div>
+      <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+        Mã xuất: <strong id="exportIdDisplay" style="color: var(--text);">—</strong> · Số frame: <span
+          id="exportFramesCount">0</span> · Số đối tượng: <span id="exportObjectsCount">0</span>
+      </div>
+      <div id="exportFileList"></div>
+    </div>
+  </main>
 
   <div id="toastContainer" class="toast-container"></div>
   <script src="ui-flow.js"></script>
 </body>
+
 </html>

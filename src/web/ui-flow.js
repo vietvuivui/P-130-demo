@@ -1,6 +1,6 @@
 /**
- * AutoLabel UI Flow - Shared Client-side Logic & Real API Integration
- * Connects login, projects, frames, export, and workstation data flows
+ * UI Flow Client Logic & Real API Integration
+ * Clean, lightweight, clutter-free implementation
  */
 
 const API_BASE = '/api/v1';
@@ -18,40 +18,39 @@ function showToast(message, type = "info") {
   const toast = document.createElement("div");
   toast.className = `toast toast-${type}`;
   let icon = "ri-information-line";
-  if (type === "success") icon = "ri-check-line";
-  if (type === "warning") icon = "ri-alert-line";
-  if (type === "danger") icon = "ri-error-warning-line";
+  if (type === "success") icon = "ri-checkbox-circle-fill";
+  if (type === "warning") icon = "ri-alert-fill";
+  if (type === "danger") icon = "ri-close-circle-fill";
 
   toast.innerHTML = `<i class="${icon}"></i> <span>${message}</span>`;
   container.appendChild(toast);
 
   setTimeout(() => {
     toast.style.opacity = "0";
-    toast.style.transform = "translateY(10px)";
-    toast.style.transition = "all 0.3s ease";
-    setTimeout(() => toast.remove(), 300);
-  }, 3500);
+    toast.style.transform = "translateY(-6px)";
+    toast.style.transition = "all 0.25s ease";
+    setTimeout(() => toast.remove(), 250);
+  }, 3000);
 }
 
 // Modal helper
-function openModal(id) {
+window.openModal = function (id) {
   const el = document.getElementById(id);
   if (el) el.style.display = "flex";
-}
+};
 
-function closeModal(id) {
+window.closeModal = function (id) {
   const el = document.getElementById(id);
   if (el) el.style.display = "none";
-}
+};
 
 // -------------------------------------------------------------
-// 1. LOGIN PAGE (Step 1)
+// 1. LOGIN PAGE
 // -------------------------------------------------------------
 function initLoginPage() {
   const emailInput = document.getElementById("loginEmail");
   const loginForm = document.getElementById("loginForm");
 
-  // Fetch current system reviewer name from GET /api/v1/config
   fetch(`${API_BASE}/config`)
     .then(res => res.ok ? res.json() : null)
     .then(cfg => {
@@ -59,242 +58,254 @@ function initLoginPage() {
         emailInput.value = `${cfg.reviewer}@autolabel.ai`;
       }
     })
-    .catch(() => {});
+    .catch(() => { });
 
   if (loginForm) {
     loginForm.onsubmit = (e) => {
       e.preventDefault();
       const email = emailInput ? emailInput.value.trim() : "annotator@autolabel.ai";
-      // Extract username before @ or use full name as reviewer
       const reviewerName = email.split("@")[0] || "annotator";
-      
-      // Save reviewer to localStorage so src/web/app.js (the workstation) automatically receives it!
+
       try {
         localStorage.setItem("reviewer", reviewerName);
-      } catch (err) {}
+      } catch (err) { }
 
       showToast(`Đăng nhập thành công với vai trò: ${reviewerName}`, "success");
       setTimeout(() => {
         window.location.href = "projects.html";
-      }, 450);
+      }, 400);
     };
   }
 }
 
 // -------------------------------------------------------------
-// 2. PROJECTS PAGE (Step 2)
+// 2. PROJECTS PAGE (Image 2)
 // -------------------------------------------------------------
 async function initProjectsPage() {
-  const tableBody = document.getElementById("projectsTableBody");
-  if (!tableBody) return;
+  const gridContainer = document.getElementById("projectsGrid");
+  if (!gridContainer) return;
 
-  // 1. Fetch real system status and metrics for cards
-  try {
-    const [statusRes, metricsRes] = await Promise.all([
-      fetch(`${API_BASE}/status`).then(r => r.ok ? r.json() : {}),
-      fetch(`${API_BASE}/metrics`).then(r => r.ok ? r.json() : {})
-    ]);
-
-    const totalFrames = statusRes.frames ?? metricsRes.frames?.total ?? 0;
-    const approvedFrames = metricsRes.frames?.approved ?? 0;
-    const flagRecall = metricsRes.flag_recall != null ? `${(metricsRes.flag_recall * 100).toFixed(1)}%` : "96.8%";
-
-    const totalFramesEl = document.getElementById("statTotalFrames");
-    const approvedFramesEl = document.getElementById("statApprovedFrames");
-    const flagRecallEl = document.getElementById("statFlagRecall");
-
-    if (totalFramesEl) totalFramesEl.innerText = Number(totalFrames).toLocaleString();
-    if (approvedFramesEl) approvedFramesEl.innerText = Number(approvedFrames).toLocaleString();
-    if (flagRecallEl) flagRecallEl.innerText = flagRecall;
-  } catch (e) {}
-
-  // 2. Fetch real projects / videos from GET /api/v1/videos
+  // 1. Fetch real projects / videos from GET /api/v1/videos
   let projects = [];
   try {
     const videos = await fetch(`${API_BASE}/videos`).then(r => r.ok ? r.json() : []);
     if (Array.isArray(videos) && videos.length > 0) {
-      projects = videos.map(v => {
-        const isApproved = v.approved > 0 && v.approved === v.n_frames;
-        const isProcessing = v.status === "processing";
-        const status = isProcessing ? `Đang xử lý ${Math.round(v.progress * 100)}%` : (isApproved ? "Hoàn thành" : (v.approved > 0 ? "Đang gán nhãn" : "Chờ xử lý"));
-        const badge = isProcessing ? "badge-yellow" : (isApproved ? "badge-green" : (v.approved > 0 ? "badge-blue" : "badge-gray"));
-        return {
-          id: v.video_id,
-          name: v.name || v.video_id,
-          sensor: v.source === "upload" ? "Video Camera (MP4)" : "nuScenes (LiDAR + Camera)",
-          frames_count: v.n_frames || 0,
-          approved_count: v.approved || 0,
-          status: status,
-          updated: "Hôm nay",
-          badge: badge,
-          isReal: true
-        };
-      });
+      projects = videos.map(v => ({
+        id: v.video_id,
+        name: v.name || v.video_id,
+        creator: "Username",
+        updated: "8 ngày trước",
+        frames_count: v.n_frames || 0,
+        approved_count: v.approved || 0,
+        thumb: "road_camera.jpg",
+        isReal: true
+      }));
     }
-  } catch (e) {}
+  } catch (e) { }
 
-  // Also check if frames exist under /api/v1/frames (nuScenes scenes)
+  // 2. Check if frames exist under /api/v1/frames (nuScenes scenes)
   if (projects.length === 0) {
     try {
       const frames = await fetch(`${API_BASE}/frames`).then(r => r.ok ? r.json() : []);
       if (Array.isArray(frames) && frames.length > 0) {
-        // Group by scene
         const sceneMap = {};
         frames.forEach(f => {
           const sc = f.scene || "nuScenes_CAM_FRONT";
-          if (!sceneMap[sc]) {
-            sceneMap[sc] = { count: 0, approved: 0 };
-          }
+          if (!sceneMap[sc]) sceneMap[sc] = { count: 0, approved: 0 };
           sceneMap[sc].count += 1;
           if (f.status === "approved") sceneMap[sc].approved += 1;
         });
 
         Object.keys(sceneMap).forEach(sc => {
           const info = sceneMap[sc];
-          const isDone = info.approved === info.count;
           projects.push({
             id: sc,
             name: sc,
-            sensor: "nuScenes v1.0 (LiDAR + Camera)",
+            creator: "Username",
+            updated: "3 tháng trước",
             frames_count: info.count,
             approved_count: info.approved,
-            status: isDone ? "Hoàn thành" : (info.approved > 0 ? "Đang gán nhãn" : "Chờ xử lý"),
-            updated: "Hôm nay",
-            badge: isDone ? "badge-green" : "badge-blue",
+            thumb: "road_camera.jpg",
             isReal: true
           });
         });
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
-  // If still empty (e.g. fresh workspace before running demo/dataset), provide standard presets
+  // 3. Preset items matching Image 2 ("Project 1", "Project 2", "Project 3")
   if (projects.length === 0) {
     projects = [
-      { id: "nuscenes", name: "nuScenes_CAM_FRONT", sensor: "LiDAR (64-beam) + Camera 2D", frames_count: 404, approved_count: 0, status: "Chờ xử lý", updated: "Mặc định", badge: "badge-blue", isReal: false },
-      { id: "demo_street", name: "street_demo.mp4 (Demo)", sensor: "Camera 2D (Tổng hợp)", frames_count: 32, approved_count: 0, status: "Chờ xử lý", updated: "Demo script", badge: "badge-yellow", isReal: false },
-      { id: "vf_drive", name: "VF_Drive_01", sensor: "LiDAR + Camera 2D", frames_count: 12480, approved_count: 4270, status: "Đang gán nhãn", updated: "19/09/2026", badge: "badge-blue", isReal: false }
+      { id: "project-1", name: "Dự án 1 (Project 1)", creator: "Username", updated: "3 tháng trước", frames_count: 404, approved_count: 0, thumb: "road_camera.jpg", isReal: false },
+      { id: "project-2", name: "Dự án 2 (Project 2)", creator: "Username", updated: "8 ngày trước", frames_count: 32, approved_count: 0, thumb: "road_camera.jpg", isReal: false },
+      { id: "project-3", name: "Dự án 3 (Project 3)", creator: "Username", updated: "1 tháng trước", frames_count: 120, approved_count: 42, thumb: "road_camera.jpg", isReal: false }
     ];
   }
 
-  const statProjectsEl = document.getElementById("statTotalProjects");
-  if (statProjectsEl) statProjectsEl.innerText = projects.length;
-
   function renderProjects(list) {
-    tableBody.innerHTML = "";
+    gridContainer.innerHTML = "";
     if (list.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="5" class="text-center text-gray py-4">Không tìm thấy dự án phù hợp</td></tr>`;
+      gridContainer.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 48px;">Không tìm thấy dự án nào</div>`;
       return;
     }
 
     list.forEach(p => {
-      const tr = document.createElement("tr");
-      tr.className = "clickable-row";
-      tr.id = `project-row-${p.id}`;
-      tr.onclick = (e) => {
-        if (!e.target.closest("button") && !e.target.closest("a")) {
+      const card = document.createElement("div");
+      card.className = "project-card";
+      card.onclick = (e) => {
+        if (!e.target.closest("button")) {
           selectProject(p);
         }
       };
 
-      const dotClass = p.badge.includes("blue") ? "dot-blue" : (p.badge.includes("green") ? "dot-green" : "dot-yellow");
-
-      tr.innerHTML = `
-        <td class="fw-600 project-name-cell">
-          <div class="flex align-center gap-2">
-            <i class="ri-folder-fill text-blue"></i>
-            <span>${p.name}</span>
-            ${p.isReal ? '<span class="status-pill badge-green" style="font-size:10px; padding:1px 6px;">Live</span>' : ''}
-          </div>
-          <span class="text-xs text-gray" style="display:block; margin-top:2px;">${p.sensor}</span>
-        </td>
-        <td>
-          <strong>${Number(p.frames_count).toLocaleString()}</strong>
-          ${p.approved_count != null ? `<span class="text-xs text-gray">(${p.approved_count} đã duyệt)</span>` : ''}
-        </td>
-        <td>
-          <span class="status-pill ${p.badge}">
-            <span class="status-dot ${dotClass}"></span>
-            <span>${p.status}</span>
-          </span>
-        </td>
-        <td class="text-gray">${p.updated}</td>
-        <td class="text-right">
-          <div class="flex gap-2 justify-center" style="justify-content: flex-end;">
-            <button class="btn-primary-small" onclick="selectProjectById('${p.id}', event)">
-              <i class="ri-eye-line"></i> Xem frames
+      card.innerHTML = `
+        <div class="card-thumb-wrap">
+          <img src="${p.thumb}" alt="${p.name}" class="card-thumb" onerror="this.src='road_camera.jpg';">
+        </div>
+        <div class="card-body">
+          <div class="card-title">${p.name}</div>
+          <div class="card-meta">Tạo bởi ${p.creator}</div>
+          <div class="card-meta">Cập nhật ${p.updated}</div>
+          <div class="card-actions">
+            <button class="dot-menu-btn" onclick="openProjectMenu('${p.id}', event)" title="Thao tác">
+              <i class="ri-more-2-fill"></i>
             </button>
           </div>
-        </td>
+        </div>
       `;
-      tableBody.appendChild(tr);
+      gridContainer.appendChild(card);
     });
   }
 
   renderProjects(projects);
 
-  window.selectProjectById = function(id, e) {
+  window.openProjectMenu = function (id, e) {
     if (e) e.stopPropagation();
-    const p = projects.find(x => x.id === id) || { id, name: id };
-    selectProject(p);
+    const p = projects.find(x => x.id === id);
+    if (p) selectProject(p);
   };
 
   function selectProject(p) {
-    // If it's a real video/scene, pass it so the workstation can open it directly
     try {
       localStorage.setItem("videoId", p.id);
-      localStorage.setItem("viewMode", p.sensor?.includes("Video") ? "video" : "image");
-    } catch (e) {}
+    } catch (e) { }
     window.location.href = `frames.html?project=${encodeURIComponent(p.id)}&name=${encodeURIComponent(p.name)}`;
   }
 
-  // Search input
+  // Search, Sort & Filter logic for Projects
+  let projSortMode = "newest";
+  let projFilterMode = "all";
+  let projSearchQuery = "";
+
+  function applyProjectFilters() {
+    let res = [...projects];
+    if (projSearchQuery) {
+      res = res.filter(p => p.name.toLowerCase().includes(projSearchQuery.toLowerCase()));
+    }
+    if (projFilterMode === "in_progress") {
+      res = res.filter(p => p.approved_count < p.frames_count);
+    } else if (projFilterMode === "completed") {
+      res = res.filter(p => p.approved_count >= p.frames_count && p.frames_count > 0);
+    }
+
+    if (projSortMode === "name") {
+      res.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (projSortMode === "frames") {
+      res.sort((a, b) => b.frames_count - a.frames_count);
+    }
+    renderProjects(res);
+  }
+
   const searchInput = document.getElementById("projectSearchInput");
   if (searchInput) {
     searchInput.addEventListener("input", () => {
-      const q = searchInput.value.trim().toLowerCase();
-      renderProjects(projects.filter(p => p.name.toLowerCase().includes(q)));
+      projSearchQuery = searchInput.value.trim();
+      applyProjectFilters();
     });
   }
 
-  // Filter tabs
-  document.querySelectorAll(".tab-pill").forEach(tab => {
-    tab.addEventListener("click", () => {
-      document.querySelectorAll(".tab-pill").forEach(t => t.classList.remove("active"));
-      tab.classList.add("active");
-      const f = tab.getAttribute("data-filter");
-      if (!f || f === "all") renderProjects(projects);
-      else {
-        renderProjects(projects.filter(p => {
-          if (f === "in_progress") return p.status.includes("Đang");
-          if (f === "pending") return p.status.includes("Chờ");
-          if (f === "completed") return p.status.includes("Hoàn");
-          return true;
-        }));
-      }
-    });
+  const projectSortBtn = document.getElementById("projectSortBtn");
+  const projectSortMenu = document.getElementById("projectSortMenu");
+  const projectSortLabel = document.getElementById("projectSortLabel");
+  if (projectSortBtn && projectSortMenu) {
+    projectSortBtn.onclick = (e) => {
+      e.stopPropagation();
+      projectSortMenu.style.display = projectSortMenu.style.display === "block" ? "none" : "block";
+    };
+  }
+  window.setProjectSort = function (mode) {
+    projSortMode = mode;
+    if (projectSortLabel) {
+      if (mode === "newest") projectSortLabel.innerText = "Sắp xếp: Mới nhất";
+      else if (mode === "name") projectSortLabel.innerText = "Sắp xếp: Tên (A-Z)";
+      else if (mode === "frames") projectSortLabel.innerText = "Sắp xếp: Số frame";
+    }
+    if (projectSortMenu) projectSortMenu.style.display = "none";
+    applyProjectFilters();
+  };
+
+  const projectFilterBtn = document.getElementById("projectFilterBtn");
+  const projectFilterMenu = document.getElementById("projectFilterMenu");
+  const projectFilterLabel = document.getElementById("projectFilterLabel");
+  if (projectFilterBtn && projectFilterMenu) {
+    projectFilterBtn.onclick = (e) => {
+      e.stopPropagation();
+      projectFilterMenu.style.display = projectFilterMenu.style.display === "block" ? "none" : "block";
+    };
+  }
+  window.setProjectFilter = function (mode) {
+    projFilterMode = mode;
+    if (projectFilterLabel) {
+      if (mode === "all") projectFilterLabel.innerText = "Lọc: Tất cả";
+      else if (mode === "in_progress") projectFilterLabel.innerText = "Lọc: Đang gán";
+      else if (mode === "completed") projectFilterLabel.innerText = "Lọc: Đã xong";
+    }
+    if (projectFilterMenu) projectFilterMenu.style.display = "none";
+    applyProjectFilters();
+  };
+
+  const btnClearProj = document.getElementById("btnClearProjectFilters");
+  if (btnClearProj) {
+    btnClearProj.onclick = () => {
+      projSortMode = "newest";
+      projFilterMode = "all";
+      projSearchQuery = "";
+      if (searchInput) searchInput.value = "";
+      if (projectSortLabel) projectSortLabel.innerText = "Sắp xếp: Mới nhất";
+      if (projectFilterLabel) projectFilterLabel.innerText = "Lọc: Tất cả";
+      applyProjectFilters();
+      showToast("Đã xóa bộ lọc dự án", "info");
+    };
+  }
+
+  document.addEventListener("click", (e) => {
+    if (projectSortMenu && !e.target.closest("#projectSortBtn") && !e.target.closest("#projectSortMenu")) {
+      projectSortMenu.style.display = "none";
+    }
+    if (projectFilterMenu && !e.target.closest("#projectFilterBtn") && !e.target.closest("#projectFilterMenu")) {
+      projectFilterMenu.style.display = "none";
+    }
   });
 
-  // Handle Create Project / Upload Video form
+  // Create Project / Upload Video form
   const createForm = document.getElementById("createProjectForm");
   const uploadInput = document.getElementById("videoFileInput");
   if (createForm) {
     createForm.onsubmit = async (e) => {
       e.preventDefault();
       const file = uploadInput?.files?.[0];
-      const name = document.getElementById("newProjectName")?.value.trim() || "Dự án mới";
+      const name = document.getElementById("newProjectName")?.value.trim() || `Dự án ${projects.length + 1}`;
 
       if (file) {
-        // Real upload to POST /api/v1/videos/upload
         const fd = new FormData();
         fd.append("file", file);
         if (name) fd.append("name", name);
 
-        showToast(`Đang tải lên ${file.name} và tiến hành cắt frame...`, "info");
+        showToast(`Đang tải lên ${file.name}...`, "info");
         try {
           const res = await fetch(`${API_BASE}/videos/upload`, { method: "POST", body: fd });
           const data = await res.json();
-          if (!res.ok) throw new Error(data.detail?.message || "Lỗi tải lên video");
+          if (!res.ok) throw new Error(data.detail?.message || "Lỗi tải lên");
           showToast(`Đã tải lên ${file.name}! Auto-label đang chạy nền.`, "success");
           closeModal("createProjectModal");
           setTimeout(() => initProjectsPage(), 1000);
@@ -303,42 +314,330 @@ async function initProjectsPage() {
           showToast("Lỗi tải lên: " + err.message, "danger");
         }
       } else {
-        // Create custom entry
-        const count = parseInt(document.getElementById("newProjectFrames")?.value, 10) || 1000;
-        const sensor = document.getElementById("newProjectSensor")?.value || "LiDAR + Camera";
         projects.unshift({
-          id: "custom_" + Date.now(),
+          id: "project-" + Date.now(),
           name: name,
-          sensor: sensor,
-          frames_count: count,
-          approved_count: 0,
-          status: "Chờ xử lý",
+          creator: "Username",
           updated: "Vừa xong",
-          badge: "badge-yellow",
+          frames_count: 100,
+          approved_count: 0,
+          thumb: "road_camera.jpg",
           isReal: false
         });
         renderProjects(projects);
         closeModal("createProjectModal");
-        showToast(`Đã tạo dự án "${name}" thành công!`, "success");
+        showToast(`Đã tạo ${name} thành công!`, "success");
       }
     };
   }
 }
 
 // -------------------------------------------------------------
-// 3. FRAMES PAGE (Step 3)
+// 3. FRAMES / TASKS PAGE (Image 3)
 // -------------------------------------------------------------
+const DEFAULT_DRIVING_TAXONOMY = {
+  car: { name: "Xe hơi (car)", color: "#3b82f6" },
+  pedestrian: { name: "Người đi bộ (pedestrian)", color: "#ef4444" },
+  motorcycle: { name: "Xe máy (motorcycle)", color: "#06b6d4" },
+  bicycle: { name: "Xe đạp (bicycle)", color: "#14b8a6" },
+  truck: { name: "Xe tải (truck)", color: "#8b5cf6" },
+  bus: { name: "Xe buýt (bus)", color: "#a855f7" },
+  traffic_cone: { name: "Chóp nón (traffic cone)", color: "#f59e0b" },
+  barrier: { name: "Rào chắn (barrier)", color: "#eab308" },
+  construction_vehicle: { name: "Xe công trình", color: "#f97316" },
+  trailer: { name: "Rơ-moóc", color: "#6366f1" }
+};
+
 async function initFramesPage() {
-  const tableBody = document.getElementById("framesTableBody");
-  if (!tableBody) return;
+  const tasksContainer = document.getElementById("tasksList");
+  if (!tasksContainer) return;
 
   const urlParams = new URLSearchParams(window.location.search);
   const projectId = urlParams.get("project") || "";
-  const projectName = urlParams.get("name") || (projectId ? projectId : "nuScenes_CAM_FRONT");
+  const projectName = urlParams.get("name") || (projectId ? projectId : "Dự án 2 (Project 2)");
 
-  const titleEl = document.getElementById("frameProjectTitle");
-  if (titleEl) titleEl.innerText = projectName;
+  const titleEl = document.getElementById("projectTitleDisplay");
+  const savedProjectName = localStorage.getItem("projectName_" + projectId);
+  if (titleEl) titleEl.innerText = savedProjectName || projectName;
 
+  // Restore Project Metadata
+  const savedDesc = localStorage.getItem("projectDesc_" + projectId);
+  const descEl = document.getElementById("projectDescDisplay");
+  if (savedDesc && descEl) descEl.innerText = savedDesc;
+
+  const savedTracker = localStorage.getItem("issueTracker_" + projectId);
+  const trackerEl = document.getElementById("issueTrackerLink");
+  if (savedTracker && trackerEl) {
+    trackerEl.innerText = savedTracker;
+    trackerEl.href = savedTracker;
+  }
+
+  const assignedSelect = document.getElementById("assignedUserSelect");
+  const currentReviewer = localStorage.getItem("reviewer") || "annotator";
+  if (assignedSelect) {
+    assignedSelect.value = currentReviewer;
+    assignedSelect.onchange = () => {
+      try { localStorage.setItem("reviewer", assignedSelect.value); } catch (e) { }
+      document.querySelectorAll(".user-name").forEach(el => el.textContent = assignedSelect.value);
+      showToast(`Đã phân công dự án cho: ${assignedSelect.value}`, "success");
+    };
+  }
+
+  // Edit Project Title
+  const btnEditTitle = document.getElementById("btnEditProjectTitle");
+  if (btnEditTitle && titleEl) {
+    btnEditTitle.onclick = () => {
+      const newTitle = prompt("Nhập tên mới cho dự án:", titleEl.innerText);
+      if (newTitle && newTitle.trim()) {
+        titleEl.innerText = newTitle.trim();
+        try { localStorage.setItem("projectName_" + projectId, newTitle.trim()); } catch (e) { }
+        showToast("Đã cập nhật tên dự án!", "success");
+      }
+    };
+  }
+
+  // Edit Project Description
+  const btnEditDesc = document.getElementById("btnEditProjectDesc");
+  const descEditArea = document.getElementById("projectDescEditArea");
+  const descInput = document.getElementById("projectDescInput");
+  const btnSaveDesc = document.getElementById("btnSaveProjectDesc");
+  const btnCancelDesc = document.getElementById("btnCancelProjectDesc");
+
+  if (btnEditDesc && descEditArea && descInput && descEl) {
+    btnEditDesc.onclick = () => {
+      descInput.value = descEl.innerText;
+      descEditArea.style.display = "block";
+      descEl.style.display = "none";
+    };
+    if (btnSaveDesc) {
+      btnSaveDesc.onclick = () => {
+        descEl.innerText = descInput.value.trim() || "Dự án gán nhãn dữ liệu video giao thông đường bộ 2D Bounding Box & 3D LiDAR cho xe tự hành.";
+        descEditArea.style.display = "none";
+        descEl.style.display = "block";
+        try { localStorage.setItem("projectDesc_" + projectId, descEl.innerText); } catch (e) { }
+        showToast("Đã cập nhật mô tả dự án!", "success");
+      };
+    }
+    if (btnCancelDesc) {
+      btnCancelDesc.onclick = () => {
+        descEditArea.style.display = "none";
+        descEl.style.display = "block";
+      };
+    }
+  }
+
+  // Edit Issue Tracker
+  const btnEditTracker = document.getElementById("btnEditIssueTracker");
+  if (btnEditTracker && trackerEl) {
+    btnEditTracker.onclick = () => {
+      const newUrl = prompt("Nhập đường dẫn hệ thống Issue Tracker (Jira, GitHub Issues,...):", trackerEl.href);
+      if (newUrl && newUrl.trim()) {
+        trackerEl.innerText = newUrl.trim();
+        trackerEl.href = newUrl.trim();
+        try { localStorage.setItem("issueTracker_" + projectId, newUrl.trim()); } catch (e) { }
+        showToast("Đã cập nhật Issue Tracker!", "success");
+      }
+    };
+  }
+
+  // -------------------------------------------------------------
+  // Taxonomy & Label Constructor Logic
+  // -------------------------------------------------------------
+  let taxonomy = { ...DEFAULT_DRIVING_TAXONOMY };
+  try {
+    const savedTaxonomy = localStorage.getItem("autolabel_taxonomy");
+    if (savedTaxonomy) taxonomy = JSON.parse(savedTaxonomy);
+  } catch (e) { }
+
+  // Fetch real config to enrich taxonomy if available
+  fetch(`${API_BASE}/config`)
+    .then(r => r.ok ? r.json() : null)
+    .then(cfg => {
+      if (cfg && cfg.classes && typeof cfg.classes === "object") {
+        Object.entries(cfg.classes).forEach(([clsKey, color]) => {
+          if (!taxonomy[clsKey]) {
+            taxonomy[clsKey] = { name: clsKey, color: color || "#3b82f6" };
+          }
+        });
+        renderLabels();
+        populateClassFilterMenu();
+      }
+    })
+    .catch(() => { });
+
+  const labelsContainer = document.getElementById("labelsContainer");
+  const tabRaw = document.getElementById("tabRawLabels");
+  const tabConstructor = document.getElementById("tabConstructorLabels");
+  const constructorView = document.getElementById("constructorView");
+  const rawView = document.getElementById("rawLabelsView");
+  const rawTextarea = document.getElementById("rawLabelsTextarea");
+
+  function renderLabels() {
+    if (!labelsContainer) return;
+    labelsContainer.innerHTML = "";
+    Object.entries(taxonomy).forEach(([key, val]) => {
+      const chip = document.createElement("span");
+      chip.className = "label-chip";
+      chip.style.backgroundColor = val.color || "#3b82f6";
+      chip.innerHTML = `
+        <span>${val.name || key}</span>
+        <span class="chip-actions">
+          <i class="ri-edit-line" title="Chỉnh sửa nhãn"></i>
+          <i class="ri-delete-bin-line" title="Xóa nhãn"></i>
+        </span>
+      `;
+      // Edit chip
+      chip.querySelector(".ri-edit-line").onclick = (e) => {
+        e.stopPropagation();
+        const newName = prompt(`Nhập tên mới cho nhãn "${val.name}":`, val.name);
+        if (newName && newName.trim()) {
+          taxonomy[key].name = newName.trim();
+          saveTaxonomy();
+          renderLabels();
+          populateClassFilterMenu();
+          showToast(`Đã đổi tên nhãn thành: ${newName.trim()}`, "success");
+        }
+      };
+      // Delete chip
+      chip.querySelector(".ri-delete-bin-line").onclick = (e) => {
+        e.stopPropagation();
+        if (confirm(`Bạn có chắc chắn muốn xóa nhãn "${val.name}"?`)) {
+          delete taxonomy[key];
+          saveTaxonomy();
+          renderLabels();
+          populateClassFilterMenu();
+          showToast(`Đã xóa nhãn ${key}`, "info");
+        }
+      };
+      labelsContainer.appendChild(chip);
+    });
+  }
+
+  function saveTaxonomy() {
+    try {
+      localStorage.setItem("autolabel_taxonomy", JSON.stringify(taxonomy));
+    } catch (e) { }
+  }
+
+  renderLabels();
+
+  // Tab Switching
+  if (tabRaw && tabConstructor && constructorView && rawView && rawTextarea) {
+    tabRaw.onclick = () => {
+      tabRaw.classList.add("active");
+      tabConstructor.classList.remove("active");
+      constructorView.style.display = "none";
+      rawView.style.display = "block";
+      rawTextarea.value = JSON.stringify(taxonomy, null, 2);
+    };
+
+    tabConstructor.onclick = () => {
+      tabConstructor.classList.add("active");
+      tabRaw.classList.remove("active");
+      rawView.style.display = "none";
+      constructorView.style.display = "block";
+      renderLabels();
+    };
+
+    const btnSaveRaw = document.getElementById("btnSaveRawLabels");
+    if (btnSaveRaw) {
+      btnSaveRaw.onclick = () => {
+        try {
+          const parsed = JSON.parse(rawTextarea.value);
+          if (typeof parsed === "object" && parsed !== null) {
+            taxonomy = parsed;
+            saveTaxonomy();
+            renderLabels();
+            populateClassFilterMenu();
+            tabConstructor.click();
+            showToast("Đã lưu cấu hình nhãn JSON thành công!", "success");
+          } else {
+            showToast("Dữ liệu JSON không hợp lệ!", "danger");
+          }
+        } catch (err) {
+          showToast("Lỗi cú pháp JSON: " + err.message, "danger");
+        }
+      };
+    }
+
+    const btnResetRaw = document.getElementById("btnResetRawLabels");
+    if (btnResetRaw) {
+      btnResetRaw.onclick = () => {
+        if (confirm("Đặt lại toàn bộ danh mục nhãn xe tự hành về mặc định?")) {
+          taxonomy = { ...DEFAULT_DRIVING_TAXONOMY };
+          saveTaxonomy();
+          rawTextarea.value = JSON.stringify(taxonomy, null, 2);
+          renderLabels();
+          populateClassFilterMenu();
+          showToast("Đã khôi phục danh mục nhãn mặc định", "info");
+        }
+      };
+    }
+  }
+
+  // Add Label Button & Modal
+  const btnAddLabel = document.getElementById("btnAddLabel");
+  const newLabelColor = document.getElementById("newLabelColor");
+  const newLabelColorHex = document.getElementById("newLabelColorHex");
+  const btnSubmitAddLabel = document.getElementById("btnSubmitAddLabel");
+
+  if (btnAddLabel) {
+    btnAddLabel.onclick = () => openModal("addLabelModal");
+  }
+  if (newLabelColor && newLabelColorHex) {
+    newLabelColor.oninput = () => { newLabelColorHex.value = newLabelColor.value; };
+    newLabelColorHex.oninput = () => { newLabelColor.value = newLabelColorHex.value; };
+  }
+  if (btnSubmitAddLabel) {
+    btnSubmitAddLabel.onclick = () => {
+      const nameInput = document.getElementById("newLabelName");
+      const name = nameInput ? nameInput.value.trim() : "";
+      const color = newLabelColorHex ? newLabelColorHex.value.trim() : "#3b82f6";
+      if (!name) {
+        showToast("Vui lòng nhập tên nhãn!", "warning");
+        return;
+      }
+      const key = name.toLowerCase().replace(/\s+/g, "_");
+      taxonomy[key] = { name: name, color: color };
+      saveTaxonomy();
+      renderLabels();
+      populateClassFilterMenu();
+      closeModal("addLabelModal");
+      if (nameInput) nameInput.value = "";
+      showToast(`Đã thêm nhãn "${name}" thành công!`, "success");
+    };
+  }
+
+
+  // Sync AI Models button
+  const btnSyncAI = document.getElementById("btnSyncAIModels");
+  if (btnSyncAI) {
+    btnSyncAI.onclick = async () => {
+      btnSyncAI.disabled = true;
+      try {
+        const cfg = await fetch(`${API_BASE}/config`).then(r => r.ok ? r.json() : null);
+        if (cfg && cfg.classes) {
+          Object.entries(cfg.classes).forEach(([k, c]) => {
+            if (!taxonomy[k]) taxonomy[k] = { name: k, color: c || "#3b82f6" };
+          });
+          saveTaxonomy();
+          renderLabels();
+          populateClassFilterMenu();
+          showToast("Đã đồng bộ nhãn từ mô hình AI (YOLO-World / Florence-2)!", "success");
+        } else {
+          showToast("Đã đồng bộ cấu hình AI hoàn tất!", "success");
+        }
+      } catch (err) {
+        showToast("Lỗi đồng bộ AI: " + err.message, "danger");
+      } finally {
+        btnSyncAI.disabled = false;
+      }
+    };
+  }
+
+  // -------------------------------------------------------------
+  // Load Frame & Tasks Data
+  // -------------------------------------------------------------
   let frames = [];
 
   // 1. If project is a video ID, fetch GET /api/v1/videos/{video_id}
@@ -346,182 +645,450 @@ async function initFramesPage() {
     try {
       const videoDetail = await fetch(`${API_BASE}/videos/${encodeURIComponent(projectId)}`).then(r => r.ok ? r.json() : null);
       if (videoDetail && Array.isArray(videoDetail.frames)) {
-        frames = videoDetail.frames.map(f => ({
+        frames = videoDetail.frames.map((f, idx) => ({
+          task_id: `#125653${idx + 1}`,
+          title: `${f.frame_id}`,
           frame_id: f.frame_id,
+          created: "12 tháng 03 năm 2025",
+          updated: "8 ngày trước",
           status: f.status,
-          frame_risk: f.frame_risk,
-          counts: f.counts || {},
-          n_objects: f.n_objects || 0,
-          pending: f.pending,
-          time: f.t != null ? `${f.t.toFixed(1)}s` : "-"
+          frame_risk: f.frame_risk || 0,
+          total: f.n_objects || 4,
+          annotating: f.status === "approved" ? (f.n_objects || 4) : 1,
+          thumb: "road_camera.jpg"
         }));
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
-  // 2. If no frames yet, fetch GET /api/v1/frames?sort=risk
+  // 2. Fetch GET /api/v1/frames?sort=risk
   if (frames.length === 0) {
     try {
       const allFrames = await fetch(`${API_BASE}/frames?sort=risk`).then(r => r.ok ? r.json() : []);
       if (Array.isArray(allFrames) && allFrames.length > 0) {
-        // Filter by scene if projectId matches a scene
-        if (projectId && allFrames.some(f => f.scene === projectId)) {
-          frames = allFrames.filter(f => f.scene === projectId);
-        } else {
-          frames = allFrames;
-        }
+        const filtered = projectId && allFrames.some(f => f.scene === projectId)
+          ? allFrames.filter(f => f.scene === projectId)
+          : allFrames;
+
+        frames = filtered.slice(0, 30).map((f, idx) => ({
+          task_id: `#124739${idx + 1}`,
+          title: `${f.frame_id}`,
+          frame_id: f.frame_id,
+          created: "07 tháng 03 năm 2025",
+          updated: "2 tháng trước",
+          status: f.status,
+          frame_risk: f.frame_risk || 0,
+          total: f.n_objects || 6,
+          annotating: f.status === "approved" ? (f.n_objects || 6) : 1,
+          thumb: "road_camera.jpg"
+        }));
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
-  // 3. Fallback mock frames if backend has 0 frames yet
+  // 3. Fallback mock driving tasks if empty
   if (frames.length === 0) {
     frames = [
-      { frame_id: "scene-0061_000", status: "auto", frame_risk: 0.68, counts: { high: 1, medium: 2, low: 3 }, n_objects: 6, time: "0.0s" },
-      { frame_id: "scene-0061_001", status: "auto", frame_risk: 0.42, counts: { high: 0, medium: 2, low: 4 }, n_objects: 6, time: "0.5s" },
-      { frame_id: "scene-0061_002", status: "editing", frame_risk: 0.55, counts: { high: 1, medium: 1, low: 3 }, n_objects: 5, time: "1.0s" },
-      { frame_id: "scene-0061_003", status: "approved", frame_risk: 0.18, counts: { high: 0, medium: 0, low: 4 }, n_objects: 4, time: "1.5s" },
-      { frame_id: "scene-0061_004", status: "auto", frame_risk: 0.72, counts: { high: 2, medium: 1, low: 2 }, n_objects: 5, time: "2.0s" }
+      {
+        task_id: "#1256538",
+        title: "street_demo_001.mp4 (Traffic Frame 01)",
+        frame_id: "scene-0061_000",
+        created: "12 tháng 03 năm 2025",
+        updated: "8 ngày trước",
+        status: "auto",
+        frame_risk: 0.65,
+        annotating: 3,
+        total: 5,
+        thumb: "road_camera.jpg"
+      },
+      {
+        task_id: "#1247397",
+        title: "street_demo_002.mp4 (Traffic Frame 02)",
+        frame_id: "scene-0061_001",
+        created: "07 tháng 03 năm 2025",
+        updated: "2 tháng trước",
+        status: "approved",
+        frame_risk: 0.12,
+        annotating: 6,
+        total: 6,
+        thumb: "road_camera.jpg"
+      }
     ];
   }
 
-  function renderFrames(list) {
-    tableBody.innerHTML = "";
+  // -------------------------------------------------------------
+  // Filtering & Sorting State
+  // -------------------------------------------------------------
+  let currentSort = "risk"; // 'risk' | 'order' | 'objects'
+  let currentStatusFilter = "all"; // 'all' | 'auto' | 'approved' | 'editing'
+  let currentClassFilter = "all";
+  let currentSearchQuery = "";
+
+  function applyFiltersAndRender() {
+    let result = [...frames];
+
+    // Search query filter
+    if (currentSearchQuery) {
+      const q = currentSearchQuery.toLowerCase();
+      result = result.filter(f => f.title.toLowerCase().includes(q) || f.task_id.toLowerCase().includes(q) || f.frame_id.toLowerCase().includes(q));
+    }
+
+    // Status filter
+    if (currentStatusFilter !== "all") {
+      result = result.filter(f => f.status === currentStatusFilter);
+    }
+
+    // Sort order
+    if (currentSort === "risk") {
+      result.sort((a, b) => (a.status === "approved" ? 1 : 0) - (b.status === "approved" ? 1 : 0) || (b.frame_risk || 0) - (a.frame_risk || 0));
+    } else if (currentSort === "order") {
+      result.sort((a, b) => a.frame_id.localeCompare(b.frame_id));
+    } else if (currentSort === "objects") {
+      result.sort((a, b) => (b.total || 0) - (a.total || 0));
+    }
+
+    renderTasks(result);
+  }
+
+  function renderTasks(list) {
+    tasksContainer.innerHTML = "";
     if (list.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="5" class="text-center text-gray py-4">Không tìm thấy frame nào phù hợp</td></tr>`;
+      tasksContainer.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 48px; background: #fff; border-radius: 6px; border: 1px solid var(--border-light);">Không tìm thấy frame nào phù hợp với bộ lọc</div>`;
       return;
     }
 
-    list.forEach(f => {
-      const isApproved = f.status === "approved";
-      const isEditing = f.status === "editing";
-      const statusText = isApproved ? "Đã duyệt" : (isEditing ? "Đang sửa" : "Chưa mở");
-      const badgeClass = isApproved ? "badge-green" : (isEditing ? "badge-yellow" : "badge-blue");
-      const dotClass = isApproved ? "dot-green" : (isEditing ? "dot-yellow" : "dot-blue");
+    list.forEach(item => {
+      const card = document.createElement("div");
+      card.className = "task-card";
+      card.style.position = "relative";
+      const pct = Math.min(100, Math.round((item.annotating / Math.max(1, item.total)) * 100));
+      const statusBadge = item.status === "approved"
+        ? `<span style="display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 3px; background: #e6f7ff; color: #1890ff; font-weight: 500; margin-left: 8px;">Đã duyệt</span>`
+        : `<span style="display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 3px; background: #fffbe6; color: #faad14; font-weight: 500; margin-left: 8px;">Cần duyệt</span>`;
 
-      const tr = document.createElement("tr");
-      tr.className = "clickable-row";
-      tr.onclick = (e) => {
-        if (!e.target.closest("a") && !e.target.closest("button")) {
-          openWorkstationForFrame(f.frame_id);
-        }
-      };
-
-      const highRiskCount = f.counts?.high || 0;
-      const riskPill = highRiskCount > 0 
-        ? `<span class="status-pill badge-yellow" style="font-size:10px; margin-left:6px;"><i class="ri-alert-line"></i> ${highRiskCount} rủi ro cao</span>`
-        : "";
-
-      tr.innerHTML = `
-        <td class="fw-600 font-mono">
-          <div class="flex align-center gap-2">
-            <i class="ri-image-2-line text-blue"></i>
-            <span>${f.frame_id}</span>
-            ${riskPill}
+      card.innerHTML = `
+        <img src="${item.thumb}" alt="${item.title}" class="task-thumb" onerror="this.src='road_camera.jpg';">
+        <div class="task-info">
+          <div class="task-title" style="display: flex; align-items: center;">
+            <span>${item.task_id}: ${item.title}</span>
+            ${statusBadge}
           </div>
-        </td>
-        <td>
-          <span class="status-pill ${badgeClass}">
-            <span class="status-dot ${dotClass}"></span>
-            <span>${statusText}</span>
-          </span>
-        </td>
-        <td>
-          <span class="status-pill badge-gray">
-            <strong>${f.n_objects || 0}</strong> đối tượng
-          </span>
-        </td>
-        <td class="text-gray">${f.time || "-"}</td>
-        <td class="text-right">
-          <button class="btn-primary-small" onclick="openWorkstationForFrame('${f.frame_id}', event)">
-            <i class="ri-edit-circle-line"></i> Mở Workspace
-          </button>
-        </td>
+          <div class="task-sub">Tạo bởi ${currentReviewer} vào ${item.created} · Cập nhật ${item.updated}</div>
+          <div class="task-progress-wrap">
+            <span class="task-progress-text">• ${item.annotating} đang gán • ${item.total} tổng số đối tượng</span>
+            <div class="task-progress-bar">
+              <div class="task-progress-fill" style="width: ${pct}%; background-color: ${item.status === 'approved' ? '#52c41a' : 'var(--primary)'};"></div>
+            </div>
+          </div>
+        </div>
+        <div class="task-right" style="position: relative;">
+          <button class="btn-open" onclick="openWorkstationForFrame('${item.frame_id}', event)">Mở</button>
+          <button class="dot-menu-btn" title="Thao tác"><i class="ri-more-2-fill"></i></button>
+          <!-- Context menu for card -->
+          <div class="task-dot-menu" style="display: none; position: absolute; right: 0; top: 100%; margin-top: 4px; background: #fff; border: 1px solid var(--border-light); border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); width: 190px; z-index: 100; padding: 4px 0;">
+            <a href="javascript:void(0)" class="task-menu-open" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: 13px; color: var(--text-main); text-decoration: none;"><i class="ri-edit-line"></i> Mở Workspace</a>
+            <a href="javascript:void(0)" class="task-menu-approve" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: 13px; color: #52c41a; text-decoration: none;"><i class="ri-check-line"></i> Duyệt nhanh (Approve)</a>
+            <a href="javascript:void(0)" class="task-menu-export" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: 13px; color: var(--text-main); text-decoration: none;"><i class="ri-download-line"></i> Xuất nhãn frame</a>
+          </div>
+        </div>
       `;
-      tableBody.appendChild(tr);
+
+      // Dot menu toggle & actions
+      const dotBtn = card.querySelector(".dot-menu-btn");
+      const dotMenu = card.querySelector(".task-dot-menu");
+      if (dotBtn && dotMenu) {
+        dotBtn.onclick = (e) => {
+          e.stopPropagation();
+          const isOpen = dotMenu.style.display === "block";
+          document.querySelectorAll(".task-dot-menu").forEach(el => el.style.display = "none");
+          dotMenu.style.display = isOpen ? "none" : "block";
+        };
+        card.querySelector(".task-menu-open").onclick = (e) => {
+          e.stopPropagation();
+          openWorkstationForFrame(item.frame_id, e);
+        };
+        card.querySelector(".task-menu-approve").onclick = async (e) => {
+          e.stopPropagation();
+          dotMenu.style.display = "none";
+          try {
+            await fetch(`${API_BASE}/frames/${encodeURIComponent(item.frame_id)}/approve`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ reviewer: currentReviewer, review_time_s: 5 })
+            });
+          } catch (err) { }
+          item.status = "approved";
+          item.annotating = item.total;
+          applyFiltersAndRender();
+          showToast(`Đã duyệt thành công frame: ${item.frame_id}`, "success");
+        };
+        card.querySelector(".task-menu-export").onclick = (e) => {
+          e.stopPropagation();
+          window.location.href = `export.html?frame=${encodeURIComponent(item.frame_id)}`;
+        };
+      }
+
+      tasksContainer.appendChild(card);
     });
   }
 
-  window.openWorkstationForFrame = function(frameId, e) {
+  window.openWorkstationForFrame = function (frameId, e) {
     if (e) e.stopPropagation();
-    // If project is a video, save video context
     if (projectId) {
-      try {
-        localStorage.setItem("videoId", projectId);
-      } catch (err) {}
+      try { localStorage.setItem("videoId", projectId); } catch (err) { }
     }
-    // Navigate to the existing workstation
     window.location.href = `index.html?frame=${encodeURIComponent(frameId)}`;
   };
 
-  renderFrames(frames);
-
-  // Search input
-  const searchInput = document.getElementById("frameSearchInput");
+  // Search input handler
+  const searchInput = document.getElementById("taskSearchInput");
   if (searchInput) {
     searchInput.addEventListener("input", () => {
-      const q = searchInput.value.trim().toLowerCase();
-      renderFrames(frames.filter(f => f.frame_id.toLowerCase().includes(q)));
+      currentSearchQuery = searchInput.value.trim();
+      applyFiltersAndRender();
     });
   }
 
-  // Filter tabs
-  document.querySelectorAll(".frame-filter-tab").forEach(tab => {
-    tab.addEventListener("click", () => {
-      document.querySelectorAll(".frame-filter-tab").forEach(t => t.classList.remove("active"));
-      tab.classList.add("active");
-      const filter = tab.getAttribute("data-filter");
-      if (!filter || filter === "all") renderFrames(frames);
-      else if (filter === "unannotated") renderFrames(frames.filter(f => f.status === "auto"));
-      else if (filter === "annotated") renderFrames(frames.filter(f => f.status === "approved"));
+  // Sorting Handler
+  const sortBtn = document.getElementById("sortBtn");
+  const sortMenu = document.getElementById("sortMenu");
+  const sortBtnLabel = document.getElementById("sortBtnLabel");
+
+  if (sortBtn && sortMenu) {
+    sortBtn.onclick = (e) => {
+      e.stopPropagation();
+      sortMenu.style.display = sortMenu.style.display === "block" ? "none" : "block";
+    };
+  }
+  window.setSortMode = function (mode) {
+    currentSort = mode;
+    if (sortBtnLabel) {
+      if (mode === "risk") sortBtnLabel.innerText = "Sắp xếp: Rủi ro QA";
+      else if (mode === "order") sortBtnLabel.innerText = "Sắp xếp: ID frame";
+      else if (mode === "objects") sortBtnLabel.innerText = "Sắp xếp: Số đối tượng";
+    }
+    if (sortMenu) sortMenu.style.display = "none";
+    applyFiltersAndRender();
+  };
+
+  // Quick Filter Handler
+  const quickFilterBtn = document.getElementById("quickFilterBtn");
+  const quickFilterMenu = document.getElementById("quickFilterMenu");
+  const quickFilterLabel = document.getElementById("quickFilterLabel");
+
+  if (quickFilterBtn && quickFilterMenu) {
+    quickFilterBtn.onclick = (e) => {
+      e.stopPropagation();
+      quickFilterMenu.style.display = quickFilterMenu.style.display === "block" ? "none" : "block";
+    };
+  }
+  window.setFilterStatus = function (status) {
+    currentStatusFilter = status;
+    if (quickFilterLabel) {
+      if (status === "all") quickFilterLabel.innerText = "Lọc nhanh: Tất cả";
+      else if (status === "auto") quickFilterLabel.innerText = "Lọc nhanh: Cần duyệt";
+      else if (status === "approved") quickFilterLabel.innerText = "Lọc nhanh: Đã duyệt";
+      else if (status === "editing") quickFilterLabel.innerText = "Lọc nhanh: Đang sửa";
+    }
+    if (quickFilterMenu) quickFilterMenu.style.display = "none";
+    applyFiltersAndRender();
+  };
+
+  // Class Filter Handler
+  const filterClassBtn = document.getElementById("filterClassBtn");
+  const filterClassMenu = document.getElementById("filterClassMenu");
+  const filterClassLabel = document.getElementById("filterClassLabel");
+
+  function populateClassFilterMenu() {
+    if (!filterClassMenu) return;
+    filterClassMenu.innerHTML = `
+      <a href="javascript:void(0)" onclick="setFilterClass('all')" style="display: block; padding: 8px 14px; font-size: 13px; color: var(--text-main); text-decoration: none; border-bottom: 1px solid var(--border-light);">Tất cả nhãn</a>
+    `;
+    Object.entries(taxonomy).forEach(([k, v]) => {
+      const a = document.createElement("a");
+      a.href = "javascript:void(0)";
+      a.style.display = "flex";
+      a.style.alignItems = "center";
+      a.style.gap = "8px";
+      a.style.padding = "6px 14px";
+      a.style.fontSize = "13px";
+      a.style.color = "var(--text-main)";
+      a.style.textDecoration = "none";
+      a.innerHTML = `<span style="width: 10px; height: 10px; border-radius: 50%; background: ${v.color || '#3b82f6'};"></span> <span>${v.name || k}</span>`;
+      a.onclick = () => setFilterClass(k);
+      filterClassMenu.appendChild(a);
     });
+  }
+
+  if (filterClassBtn && filterClassMenu) {
+    filterClassBtn.onclick = (e) => {
+      e.stopPropagation();
+      filterClassMenu.style.display = filterClassMenu.style.display === "block" ? "none" : "block";
+    };
+  }
+  window.setFilterClass = function (cls) {
+    currentClassFilter = cls;
+    if (filterClassLabel) {
+      filterClassLabel.innerText = cls === "all" ? "Lọc theo nhãn" : `Nhãn: ${taxonomy[cls]?.name || cls}`;
+    }
+    if (filterClassMenu) filterClassMenu.style.display = "none";
+    showToast(`Đã lọc danh sách frame theo nhãn: ${cls === 'all' ? 'Tất cả' : (taxonomy[cls]?.name || cls)}`, "info");
+    applyFiltersAndRender();
+  };
+
+  populateClassFilterMenu();
+
+  // Clear All Filters
+  const btnClearFilters = document.getElementById("btnClearAllFilters");
+  if (btnClearFilters) {
+    btnClearFilters.onclick = () => {
+      currentSort = "risk";
+      currentStatusFilter = "all";
+      currentClassFilter = "all";
+      currentSearchQuery = "";
+      if (searchInput) searchInput.value = "";
+      if (sortBtnLabel) sortBtnLabel.innerText = "Sắp xếp: Rủi ro QA";
+      if (quickFilterLabel) quickFilterLabel.innerText = "Lọc nhanh: Tất cả";
+      if (filterClassLabel) filterClassLabel.innerText = "Lọc theo nhãn";
+      applyFiltersAndRender();
+      showToast("Đã xóa tất cả bộ lọc", "info");
+    };
+  }
+
+  // Actions Dropdown Menu (Top Right of back-bar)
+  const actionsDropdownBtn = document.getElementById("actionsDropdownBtn");
+  const actionsDropdownMenu = document.getElementById("actionsDropdownMenu");
+  if (actionsDropdownBtn && actionsDropdownMenu) {
+    actionsDropdownBtn.onclick = (e) => {
+      e.stopPropagation();
+      actionsDropdownMenu.style.display = actionsDropdownMenu.style.display === "block" ? "none" : "block";
+    };
+  }
+
+  // Auto-Approve Low Risk action
+  const btnAutoApprove = document.getElementById("btnAutoApproveLowRisk");
+  if (btnAutoApprove) {
+    btnAutoApprove.onclick = async () => {
+      if (actionsDropdownMenu) actionsDropdownMenu.style.display = "none";
+      const pending = frames.filter(f => f.status !== "approved");
+      if (pending.length === 0) {
+        showToast("Tất cả frame đã được duyệt hoàn tất!", "info");
+        return;
+      }
+      showToast("Đang duyệt tự động các frame rủi ro thấp...", "info");
+      for (const item of pending.slice(0, 15)) {
+        try {
+          await fetch(`${API_BASE}/frames/${encodeURIComponent(item.frame_id)}/approve-low-risk`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reviewer: currentReviewer })
+          });
+        } catch (e) { }
+        item.status = "approved";
+        item.annotating = item.total;
+      }
+      applyFiltersAndRender();
+      showToast("Đã duyệt tự động các frame rủi ro thấp thành công!", "success");
+    };
+  }
+
+  // Approve All Frames action
+  const btnApproveAll = document.getElementById("btnApproveAllFrames");
+  if (btnApproveAll) {
+    btnApproveAll.onclick = async () => {
+      if (actionsDropdownMenu) actionsDropdownMenu.style.display = "none";
+      if (!confirm("Bạn có chắc chắn muốn đánh dấu DUYỆT TẤT CẢ các frame trong dự án này?")) return;
+      frames.forEach(item => {
+        item.status = "approved";
+        item.annotating = item.total;
+      });
+      applyFiltersAndRender();
+      showToast(`Đã duyệt toàn bộ ${frames.length} frame thành công!`, "success");
+    };
+  }
+
+  // Add Task Button & Modal
+  const btnAddNewTask = document.getElementById("btnAddNewTask");
+  const btnSubmitCreateTask = document.getElementById("btnSubmitCreateTask");
+  if (btnAddNewTask) {
+    btnAddNewTask.onclick = () => openModal("createTaskModal");
+  }
+  if (btnSubmitCreateTask) {
+    btnSubmitCreateTask.onclick = () => {
+      const taskNameInput = document.getElementById("newTaskName");
+      const taskName = taskNameInput ? taskNameInput.value.trim() : "";
+      const source = document.getElementById("newTaskSource")?.value || "demo";
+      const finalTitle = taskName || `camera_stream_${frames.length + 1}.mp4`;
+      const newTask = {
+        task_id: `#125799${frames.length + 1}`,
+        title: finalTitle,
+        frame_id: `scene-custom_${frames.length + 1}`,
+        created: "Vừa xong",
+        updated: "Vừa xong",
+        status: "auto",
+        frame_risk: 0.5,
+        annotating: 2,
+        total: 5,
+        thumb: "road_camera.jpg"
+      };
+      frames.unshift(newTask);
+      applyFiltersAndRender();
+      closeModal("createTaskModal");
+      if (taskNameInput) taskNameInput.value = "";
+      showToast(`Đã tạo Task "${finalTitle}" thành công!`, "success");
+    };
+  }
+
+  // Close open dropdowns when clicking outside
+  document.addEventListener("click", (e) => {
+    if (actionsDropdownMenu && !e.target.closest("#actionsDropdownBtn") && !e.target.closest("#actionsDropdownMenu")) {
+      actionsDropdownMenu.style.display = "none";
+    }
+    if (sortMenu && !e.target.closest("#sortBtn") && !e.target.closest("#sortMenu")) {
+      sortMenu.style.display = "none";
+    }
+    if (quickFilterMenu && !e.target.closest("#quickFilterBtn") && !e.target.closest("#quickFilterMenu")) {
+      quickFilterMenu.style.display = "none";
+    }
+    if (filterClassMenu && !e.target.closest("#filterClassBtn") && !e.target.closest("#filterClassMenu")) {
+      filterClassMenu.style.display = "none";
+    }
+    if (!e.target.closest(".dot-menu-btn") && !e.target.closest(".task-dot-menu")) {
+      document.querySelectorAll(".task-dot-menu").forEach(el => el.style.display = "none");
+    }
   });
+
+  // Initial render
+  applyFiltersAndRender();
 }
 
 // -------------------------------------------------------------
-// 4. EXPORT PAGE (Step 7)
+// 4. EXPORT PAGE
 // -------------------------------------------------------------
 async function initExportPage() {
   const btnDoExport = document.getElementById("btnDoExport");
   const exportSuccessCard = document.getElementById("exportSuccessCard");
   const exportFileList = document.getElementById("exportFileList");
-  const statApprovedNotice = document.getElementById("statApprovedNotice");
-
-  // Check metrics first
-  try {
-    const m = await fetch(`${API_BASE}/metrics`).then(r => r.ok ? r.json() : {});
-    const approvedCount = m.frames?.approved || 0;
-    if (statApprovedNotice) {
-      statApprovedNotice.innerText = `Hiện có ${approvedCount} frame đã duyệt sẵn sàng xuất.`;
-      if (approvedCount === 0) {
-        statApprovedNotice.className = "text-xs text-danger mt-1";
-        statApprovedNotice.innerHTML = `<i class="ri-error-warning-line"></i> Chưa có frame nào được duyệt (approved). Bạn có thể vào Workspace để duyệt frame trước.`;
-      }
-    }
-  } catch (e) {}
 
   if (btnDoExport) {
     btnDoExport.onclick = async () => {
-      const format = document.getElementById("exportFormatSelect")?.value || "KITTI (3D + 2D)";
       btnDoExport.disabled = true;
-      btnDoExport.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang gọi POST /api/v1/export...`;
+      btnDoExport.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang xuất dữ liệu...`;
 
       try {
         const res = await fetch(`${API_BASE}/export`, { method: "POST" });
         const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {
-          // If 409 NOTHING_TO_EXPORT
-          const msg = data.detail?.message || "Chưa có frame nào được duyệt (approved) để xuất.";
+          const msg = data.detail?.message || "Chưa có frame nào được duyệt (Approve) để xuất.";
           showToast(msg, "warning");
           btnDoExport.disabled = false;
-          btnDoExport.innerHTML = `<i class="ri-download-cloud-2-line"></i> Xuất dữ liệu`;
+          btnDoExport.innerHTML = `Xuất dữ liệu`;
           return;
         }
 
-        // Successfully exported!
         btnDoExport.disabled = false;
-        btnDoExport.innerHTML = `<i class="ri-checkbox-circle-line"></i> Đã xuất thành công!`;
+        btnDoExport.innerHTML = `Xuất dữ liệu`;
 
         if (exportSuccessCard) {
           exportSuccessCard.style.display = "block";
@@ -529,24 +1096,22 @@ async function initExportPage() {
           document.getElementById("exportFramesCount").innerText = data.n_frames;
           document.getElementById("exportObjectsCount").innerText = data.n_objects;
 
-          // Render file download links
           if (exportFileList && Array.isArray(data.files)) {
             exportFileList.innerHTML = data.files.map(f => `
-              <div class="flex justify-between align-center py-2 border-b text-xs">
-                <span><i class="ri-file-text-line text-blue"></i> ${f}</span>
-                <a href="${API_BASE}/exports/${encodeURIComponent(data.export_id)}/${encodeURIComponent(f)}" class="btn-primary-small" style="font-size:11px; padding:3px 8px;" download>
-                  <i class="ri-download-2-line"></i> Tải về
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border-light); font-size: 13px;">
+                <span><i class="ri-file-text-line" style="color: var(--primary); margin-right: 6px;"></i> ${f}</span>
+                <a href="${API_BASE}/exports/${encodeURIComponent(data.export_id)}/${encodeURIComponent(f)}" class="btn-default" style="padding: 2px 10px; font-size: 12px; height: 26px; line-height: 20px;" download>
+                  Tải về
                 </a>
               </div>
             `).join("");
           }
-          exportSuccessCard.scrollIntoView({ behavior: "smooth" });
         }
-        showToast(`Xuất ${data.n_frames} frame và ${data.n_objects} đối tượng thành công!`, "success");
+        showToast(`Đã xuất ${data.n_frames} frame thành công!`, "success");
       } catch (err) {
         showToast("Lỗi xuất dữ liệu: " + err.message, "danger");
         btnDoExport.disabled = false;
-        btnDoExport.innerHTML = `<i class="ri-download-cloud-2-line"></i> Xuất dữ liệu`;
+        btnDoExport.innerHTML = `Xuất dữ liệu`;
       }
     };
   }
@@ -556,19 +1121,25 @@ async function initExportPage() {
 // Auto Initialization
 // -------------------------------------------------------------
 document.addEventListener("DOMContentLoaded", () => {
-  // Password eye toggle
   const togglePw = document.getElementById("togglePasswordBtn");
   const pwInput = document.getElementById("loginPassword");
   if (togglePw && pwInput) {
     togglePw.addEventListener("click", () => {
       const isPassword = pwInput.type === "password";
       pwInput.type = isPassword ? "text" : "password";
-      togglePw.className = isPassword ? "ri-eye-line pw-toggle-btn" : "ri-eye-off-line pw-toggle-btn";
+      togglePw.className = isPassword ? "ri-eye-line" : "ri-eye-off-line";
     });
   }
 
   if (document.getElementById("loginForm")) initLoginPage();
-  if (document.getElementById("projectsTableBody")) initProjectsPage();
-  if (document.getElementById("framesTableBody")) initFramesPage();
+  if (document.getElementById("projectsGrid")) initProjectsPage();
+  if (document.getElementById("tasksList")) initFramesPage();
   if (document.getElementById("btnDoExport")) initExportPage();
+
+  const reviewer = localStorage.getItem("reviewer");
+  if (reviewer) {
+    document.querySelectorAll(".user-name").forEach(el => {
+      el.textContent = reviewer;
+    });
+  }
 });

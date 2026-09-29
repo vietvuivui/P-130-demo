@@ -100,5 +100,5 @@ async def export_page():
 
 @app.get("/flow", include_in_schema=False)
 async def flow_page():
-    return RedirectResponse("/ui/flow.html")
+    return RedirectResponse("/ui/projects.html")
 

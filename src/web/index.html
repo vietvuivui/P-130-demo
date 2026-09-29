@@ -1,100 +1,161 @@
 <!DOCTYPE html>
 <html lang="vi">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AutoLabel 2D — Review</title>
+  <title>AutoLabel 2D — Workspace Gán nhãn</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=theme2">
+  <link rel="stylesheet" href="styles.css?v=modern_vi">
 </head>
-<body>
-  <!-- 7-Step Interactive Stepper Navigation -->
-  <nav class="flow-stepper-bar" aria-label="UI Flow Steps">
-    <a href="login.html" class="flow-step-item">
-      <span class="step-num">1</span>
-      <span>Đăng nhập</span>
-    </a>
-    <span class="flow-step-arrow">→</span>
 
-    <a href="projects.html" class="flow-step-item">
-      <span class="step-num">2</span>
-      <span>Dự án</span>
-    </a>
-    <span class="flow-step-arrow">→</span>
+<body class="dark-theme">
 
-    <a href="frames.html" class="flow-step-item">
-      <span class="step-num">3</span>
-      <span>Chọn frame</span>
-    </a>
-    <span class="flow-step-arrow">→</span>
-
-    <a href="index.html" class="flow-step-item active">
-      <span class="step-num">4</span>
-      <span>Gán nhãn (Workstation)</span>
-    </a>
-    <span class="flow-step-arrow">→</span>
-
-    <a href="export.html" class="flow-step-item">
-      <span class="step-num">7</span>
-      <span>Xuất dữ liệu</span>
-    </a>
-
-    <div class="stepper-actions">
-      <a href="flow.html" class="btn btn-ghost btn-sm" style="font-size: 11px; padding: 3px 8px; text-decoration: none;" title="Xem toàn cảnh UI Flow">
-        <i class="ri-node-tree"></i> Toàn cảnh Flow
-      </a>
-      <a href="login.html" class="btn btn-ghost btn-sm" style="font-size: 11px; padding: 3px 8px; color: #ef4444; text-decoration: none;" title="Đăng xuất">
-        <i class="ri-logout-box-r-line"></i> Đăng xuất
-      </a>
-    </div>
-  </nav>
-
+  <!-- Dark Top Navigation Bar (Image 1) -->
   <header class="topbar">
-    <div class="brand">
-      <div class="brand-mark">
-        <i class="ri-box-3-fill" style="font-size: 18px;"></i>
+    <div class="topbar-left">
+      <!-- Menu Dropdown Button -->
+      <div class="menu-dropdown-wrap">
+        <button class="menu-btn" id="menuBtn">
+          <i class="ri-menu-line"></i>
+          <span>Menu</span>
+        </button>
+        <div class="menu-dropdown" id="menuDropdown">
+          <a href="projects.html"><i class="ri-folder-2-line"></i> Dự án</a>
+          <a href="frames.html"><i class="ri-list-check-2"></i> Tasks &amp; Frames</a>
+          <a href="export.html"><i class="ri-download-cloud-2-line"></i> Xuất dữ liệu</a>
+          <div class="dropdown-divider"></div>
+          <a href="javascript:void(0)" onclick="toggleQueuePanel()"><i class="ri-side-bar-line"></i> Hàng đợi Frame</a>
+          <a href="login.html" style="color: #ff4d4f;"><i class="ri-logout-box-r-line"></i> Đăng xuất</a>
+        </div>
       </div>
-      <div>
-        <div class="brand-title">AutoLabel 3D / 2D</div>
-        <div class="brand-sub">nuScenes CAM_FRONT &amp; LiDAR · Review by exception</div>
+
+      <!-- Quick Action Icons -->
+      <div class="top-actions">
+        <button class="top-btn" id="btn-save-frame" title="Lưu nhãn (Ctrl+S)">
+          <i class="ri-save-line"></i>
+          <span>Lưu</span>
+        </button>
       </div>
     </div>
-    <div class="mode-switch" role="tablist" aria-label="Chế độ gán nhãn">
-      <button class="mode active" data-mode="image" role="tab" title="Gán nhãn từng frame ảnh độc lập"><i class="ri-image-line"></i> Ảnh</button>
-      <button class="mode" data-mode="video" role="tab" title="Gán nhãn cả video: timeline + lan truyền nhãn"><i class="ri-film-line"></i> Video</button>
+
+    <!-- Media / Frame Player Navigation Controls (Image 1) -->
+    <div class="player-controls">
+      <button class="player-btn" title="Về đầu video (Shift+P)" onclick="stepFrame(-10)"><i
+          class="ri-skip-back-line"></i></button>
+      <button class="player-btn" id="btn-nav-prev" title="Frame trước (P)" onclick="stepFrame(-1)"><i
+          class="ri-arrow-left-s-line"></i></button>
+      <button class="player-btn play-btn" id="btn-nav-play" title="Phát / Dừng video (Space)"><i
+          class="ri-play-fill"></i></button>
+      <button class="player-btn" id="btn-nav-next" title="Frame tiếp theo (N)" onclick="stepFrame(1)"><i
+          class="ri-arrow-right-s-line"></i></button>
+      <button class="player-btn" title="Tới cuối video (Shift+N)" onclick="stepFrame(10)"><i
+          class="ri-skip-forward-line"></i></button>
+
+      <!-- Frame scrubbing track -->
+      <div class="slider-wrap">
+        <input type="range" id="frameScrubber" min="0" max="100" value="0" class="scrubber-slider"
+          title="Kéo timeline">
+      </div>
+
+      <!-- Frame index input box (Image 1) -->
+      <input type="number" id="frameNumInput" value="0" min="0" class="frame-input" title="Số thứ tự frame">
     </div>
-    <nav class="tabs" role="tablist">
-      <button class="tab active" data-tab="review" role="tab"><i class="ri-check-double-line"></i> Review</button>
-      <button class="tab" data-tab="log" role="tab"><i class="ri-history-line"></i> Correction log</button>
-      <button class="tab" data-tab="metrics" role="tab"><i class="ri-bar-chart-2-line"></i> Metrics &amp; Export</button>
-    </nav>
-    <label class="reviewer"><i class="ri-user-3-line" style="color: var(--accent);"></i> Người duyệt
-      <input id="reviewer" type="text" maxlength="40">
-    </label>
-    <div class="workflow-nav" style="display: flex; gap: 6px; align-items: center; margin-left: auto;">
-      <a href="projects.html" class="btn btn-ghost btn-sm" style="text-decoration: none; display: flex; align-items: center; gap: 4px; font-weight: 600;" title="Danh sách dự án">
-        <i class="ri-folder-2-line"></i> <span>Dự án</span>
-      </a>
-      <a href="frames.html" class="btn btn-ghost btn-sm" style="text-decoration: none; display: flex; align-items: center; gap: 4px;" title="Danh sách frame">
-        <i class="ri-list-check-2"></i> <span>Frames</span>
-      </a>
-      <a href="export.html" class="btn btn-ghost btn-sm" style="text-decoration: none; display: flex; align-items: center; gap: 4px;" title="Xuất dữ liệu">
-        <i class="ri-download-cloud-2-line"></i> <span>Xuất</span>
-      </a>
+
+    <!-- Right Tools & Mode Selection (Image 1) -->
+    <div class="topbar-right">
+      <button class="top-btn-icon" id="btn-fullscreen" title="Toàn màn hình" onclick="toggleFullscreen()"><i
+          class="ri-fullscreen-line"></i></button>
+
+      <!-- Mode Selector (Image 1: 'Standard') -->
+      <select class="mode-select" id="workspaceModeSelect">
+        <option value="standard">Tiêu chuẩn</option>
+        <option value="review">Duyệt QA</option>
+        <option value="lidar">LiDAR 3D</option>
+      </select>
+
+      <div class="mode-switch hidden" role="tablist">
+        <button class="mode active" data-mode="image" role="tab">Ảnh</button>
+        <button class="mode" data-mode="video" role="tab">Video</button>
+      </div>
+
+      <nav class="tabs hidden" role="tablist">
+        <button class="tab active" data-tab="review" role="tab">Review</button>
+        <button class="tab" data-tab="log" role="tab">Log</button>
+        <button class="tab" data-tab="metrics" role="tab">Metrics</button>
+      </nav>
+
+      <!-- Reviewer input -->
+      <label class="reviewer-tag" title="Người duyệt hiện tại">
+        <i class="ri-user-line"></i>
+        <input id="reviewer" type="text" maxlength="40" value="Huy">
+      </label>
     </div>
   </header>
 
-  <!-- ===== Review ===== -->
-  <main id="tab-review" class="tab-panel review-layout">
-    <aside class="queue" id="queue-panel">
+  <!-- Main Workstation Layout -->
+  <main id="tab-review" class="tab-panel workstation-layout">
+
+    <!-- Left Vertical Icon Toolbar (Image 1) -->
+    <aside class="left-toolbar">
+      <button class="tool-btn active" id="tool-select" title="Con trỏ chọn đối tượng (Esc)">
+        <i class="ri-cursor-fill"></i>
+      </button>
+      <button class="tool-btn" id="tool-pan" title="Di chuyển góc nhìn (Space + Kéo)">
+        <i class="ri-drag-move-fill"></i>
+      </button>
+      <button class="tool-btn" id="tool-rotate" title="Đặt lại góc nhìn vừa khung (0)">
+        <i class="ri-restart-line"></i>
+      </button>
+      <div class="tool-divider"></div>
+      <button class="tool-btn" id="tool-rect" title="Vẽ bounding box hình chữ nhật (B)">
+        <i class="ri-checkbox-blank-line"></i>
+      </button>
+      <button class="tool-btn" id="tool-poly" title="Vẽ hình đa giác (Polygon)">
+        <i class="ri-pentagon-line"></i>
+      </button>
+      <button class="tool-btn" id="tool-line" title="Vẽ đường gấp khúc (Polyline)">
+        <i class="ri-compasses-2-line"></i>
+      </button>
+      <button class="tool-btn" id="tool-magic" title="Cọ thông minh AI Auto-detect">
+        <i class="ri-magic-line"></i>
+      </button>
+      <button class="tool-btn" id="tool-skeleton" title="Khung xương / Keypoints">
+        <i class="ri-node-tree"></i>
+      </button>
+      <button class="tool-btn" id="tool-tag" title="Gắn nhãn sự cố (Issue marker)">
+        <i class="ri-price-tag-3-line"></i>
+      </button>
+      <button class="tool-btn" id="tool-circle" title="Hình elip / Tròn">
+        <i class="ri-circle-line"></i>
+      </button>
+      <button class="tool-btn" id="tool-points" title="Point cloud LiDAR 3D">
+        <i class="ri-bubble-chart-line"></i>
+      </button>
+      <div class="tool-divider"></div>
+      <button class="tool-btn" id="tool-eye" title="Ẩn / Hiện tất cả đối tượng">
+        <i class="ri-eye-line"></i>
+      </button>
+      <button class="tool-btn" id="tool-more" title="Công cụ mở rộng">
+        <i class="ri-more-fill"></i>
+      </button>
+    </aside>
+
+    <!-- Collapsible Queue Panel (Frames List) -->
+    <aside class="queue hidden" id="queue-panel">
       <div class="panel-head">
-        <h2>Hàng đợi frame</h2>
-        <select id="queue-sort" title="Sắp xếp">
-          <option value="risk">Khó nhất trước</option>
-          <option value="order">Theo thứ tự</option>
-        </select>
+        <h2>Hàng đợi Frame</h2>
+        <div class="flex gap-1">
+          <select id="queue-sort" title="Sắp xếp">
+            <option value="risk">Rủi ro cao trước</option>
+            <option value="order">Theo thứ tự</option>
+          </select>
+          <button class="btn-icon-xs" onclick="toggleQueuePanel()" title="Đóng hàng đợi"><i
+              class="ri-close-line"></i></button>
+        </div>
       </div>
       <div class="queue-filter" id="queue-filter">
         <button data-status="" class="chip active">Tất cả</button>
@@ -105,167 +166,309 @@
       <ul id="queue-list" class="queue-list"></ul>
     </aside>
 
+    <!-- Hidden Video Panel (for API compatibility) -->
     <aside class="queue hidden" id="video-panel">
       <div class="panel-head">
         <h2>Video</h2>
-        <button id="btn-upload" class="btn btn-ghost btn-sm" title="Tải lên video mp4 (cắt frame, auto-label chạy nền)">⬆ Tải lên mp4</button>
-        <input id="upload-input" type="file" accept="video/mp4,video/quicktime,video/x-msvideo,video/x-matroska,video/webm,.mp4,.mov,.avi,.mkv,.webm" hidden>
+        <button id="btn-upload" class="btn btn-ghost btn-sm" title="Tải lên MP4">Tải MP4</button>
+        <input id="upload-input" type="file"
+          accept="video/mp4,video/quicktime,video/x-msvideo,video/x-matroska,video/webm,.mp4" hidden>
       </div>
-      <p class="muted panel-note">Mỗi scene nuScenes là một video; video tải lên được cắt 10 fps, keyframe 2 fps.</p>
       <ul id="video-list" class="queue-list"></ul>
     </aside>
 
+    <!-- Center Workspace & Canvas -->
     <section class="workspace">
+      <!-- Minimalist Status & Zoom Toolbar -->
       <div class="toolbar">
         <div class="frame-title">
           <strong id="frame-id">—</strong>
           <span id="frame-status" class="status-pill"></span>
-          <span class="timer" title="Thời gian duyệt frame này (M1)">⏱ <span id="timer">0:00</span></span>
-          <span class="muted detector" id="frame-detectors" title="Model đã sinh box cho frame này"></span>
+          <span class="timer" title="Thời gian duyệt">⏱ <span id="timer">0:00</span></span>
+          <span class="muted detector" id="frame-detectors"></span>
         </div>
         <div class="toolbar-actions">
           <label class="toggle"><input type="checkbox" id="show-lidar"> LiDAR <kbd>L</kbd></label>
-          <label class="toggle" title="GT = nhãn gốc của nuScenes: box 3D người gán, chiếu xuống ảnh thành hình chữ nhật bao 8 đỉnh (nét đứt trắng). Box mờ không chữ = vật khó thấy (hiển thị 0–40%) hoặc không có điểm LiDAR/radar, bị bỏ qua khi đánh giá. Video tải lên không có GT."><input type="checkbox" id="show-gt"> GT <kbd>G</kbd></label>
-          <label class="toggle"><input type="checkbox" id="show-low" checked> Box rủi ro thấp</label>
-          <span class="zoom-controls" title="Phóng to/thu nhỏ: lăn chuột trên ảnh, phím + / − ; phím 0 về vừa khung. Khi phóng to, kéo vùng trống để di chuyển ảnh">
-            <button id="btn-zoom-out" class="btn btn-ghost btn-sm" aria-label="Thu nhỏ">−</button>
-            <button id="btn-zoom-reset" class="btn btn-ghost btn-sm zoom-level" aria-label="Vừa khung">100%</button>
-            <button id="btn-zoom-in" class="btn btn-ghost btn-sm" aria-label="Phóng to">+</button>
+          <label class="toggle"><input type="checkbox" id="show-gt"> GT <kbd>G</kbd></label>
+          <label class="toggle"><input type="checkbox" id="show-low" checked> Rủi ro thấp</label>
+          <span class="zoom-controls">
+            <button id="btn-zoom-out" class="btn btn-ghost btn-sm" title="Thu nhỏ">−</button>
+            <button id="btn-zoom-reset" class="btn btn-ghost btn-sm zoom-level" title="Vừa khung">100%</button>
+            <button id="btn-zoom-in" class="btn btn-ghost btn-sm" title="Phóng to">+</button>
           </span>
-          <button id="btn-add" class="btn btn-ghost" title="Vẽ box mới (B)">＋ Add box <kbd>B</kbd></button>
+          <button id="btn-add" class="btn btn-ghost" title="Vẽ box mới (B)">＋ Box <kbd>B</kbd></button>
         </div>
       </div>
+
+      <!-- Canvas Wrap -->
       <div class="canvas-wrap" id="canvas-wrap">
-        <div id="drop-hint" class="drop-hint hidden">Thả frame vào đây để chỉnh sửa</div>
+        <div id="drop-hint" class="drop-hint hidden">Thả frame vào đây để gán nhãn</div>
         <div id="canvas-scroll" class="canvas-scroll"><canvas id="canvas"></canvas></div>
         <div id="edit-bar" class="edit-bar hidden">
-          <span id="edit-hint">Kéo góc/cạnh để sửa box</span>
+          <span id="edit-hint">Kéo góc/cạnh để điều chỉnh box</span>
           <select id="add-class" class="hidden"></select>
           <button id="edit-save" class="btn btn-primary">Lưu box</button>
-          <button id="edit-cancel" class="btn btn-ghost">Huỷ</button>
+          <button id="edit-cancel" class="btn btn-ghost">Hủy</button>
         </div>
         <div id="empty-state" class="empty-state">
           <p>Chưa có frame nào trong workspace.</p>
-          <code>python -m src.cli run --limit 20</code>
         </div>
       </div>
+
+      <!-- Video Timeline (for scene mode) -->
       <section id="timeline-panel" class="timeline-panel hidden">
         <div class="timeline-head">
           <strong id="timeline-title">Timeline</strong>
           <span class="muted" id="timeline-meta"></span>
           <span id="video-controls" class="video-controls">
             <button id="btn-prev" class="btn btn-ghost btn-sm" title="Frame trước (P)">◀</button>
-            <button id="btn-play" class="btn btn-ghost btn-sm" title="Phát / dừng xem nhanh cả video (Space)">▶ Phát</button>
+            <button id="btn-play" class="btn btn-ghost btn-sm" title="Phát (Space)">▶ Phát</button>
             <button id="btn-next" class="btn btn-ghost btn-sm" title="Frame sau (N)">▶|</button>
-            <label class="toggle" title="Sau khi approve, mang nhãn của frame này sang các frame sau của video"><input type="checkbox" id="auto-prop" checked> Lan truyền khi approve</label>
-            <button id="btn-propagate" class="btn btn-ghost btn-sm" title="Lan truyền nhãn đã duyệt sang các frame sau (T)" disabled>↦ Lan truyền <kbd>T</kbd></button>
+            <label class="toggle"><input type="checkbox" id="auto-prop" checked> Lan truyền khi approve</label>
+            <button id="btn-propagate" class="btn btn-ghost btn-sm" disabled>↦ Lan truyền <kbd>T</kbd></button>
           </span>
         </div>
         <div class="timeline" id="timeline"></div>
-        <div class="timeline-legend">
-          <span><span class="tl-mark approved">★</span> người đã duyệt</span>
-          <span><span class="tl-mark propagated">↦</span> nhãn lan truyền (chưa ai mở)</span>
-          <span><span class="tl-mark editing">✎</span> đang sửa</span>
-          <span class="muted">Bấm vào frame, hoặc kéo frame thả lên khung ảnh, để chỉnh như ảnh 2D</span>
-        </div>
       </section>
-      <div class="filmstrip-head" id="filmstrip-head">
-        <span>Temporal consistency</span>
-        <span class="muted" id="film-caption">Chọn một object để xem track qua các sweep</span>
+
+      <!-- Filmstrip (temporal consistency) -->
+      <div class="filmstrip-head" id="filmstrip-head" style="display: none;">
+        <span>Tính nhất quán thời gian</span>
+        <span class="muted" id="film-caption">Chọn một đối tượng để theo dõi</span>
       </div>
-      <div class="filmstrip" id="filmstrip"></div>
+      <div class="filmstrip" id="filmstrip" style="display: none;"></div>
     </section>
 
-    <aside class="review-panel">
-      <div class="risk-summary" id="risk-summary"></div>
-      <div class="review-scroll" id="review-scroll">
+    <!-- Right Sidebar (Image 1: Objects, Labels, Issues & Appearance) -->
+    <aside class="review-panel right-sidebar">
+
+      <!-- Top Tabs (Image 1: Objects, Labels, Issues) -->
+      <div class="sidebar-tabs">
+        <button class="tab-btn active" data-tab-name="objects">Đối tượng</button>
+        <button class="tab-btn" data-tab-name="labels">Nhãn</button>
+        <button class="tab-btn" data-tab-name="issues">Sự cố</button>
+      </div>
+
+      <!-- Header row (Image 1: Items: 11, Sort by, lock all, hide all) -->
+      <div class="items-control-row">
+        <span class="items-count">Số lượng: <span id="totalItemsCount">0</span></span>
+        <div class="sort-wrap">
+          <span>Sắp xếp</span>
+          <select id="objSortSelect" class="sidebar-select">
+            <option>ID - tăng dần</option>
+            <option>ID - giảm dần</option>
+            <option>Mức độ rủi ro</option>
+          </select>
+        </div>
+        <div class="items-quick-icons">
+          <button class="side-icon-btn" title="Khóa tất cả"><i class="ri-lock-line"></i></button>
+          <button class="side-icon-btn" title="Ẩn tất cả"><i class="ri-eye-line"></i></button>
+          <button class="side-icon-btn" title="Bộ lọc"><i class="ri-filter-line"></i></button>
+        </div>
+      </div>
+
+      <!-- Objects Scroll Container -->
+      <div class="review-scroll objects-scroll" id="review-scroll">
+        <div class="risk-summary" id="risk-summary" style="display: none;"></div>
+
+        <!-- High Risk -->
         <section class="group group-high">
-          <h3><span class="dot high"></span>High risk <small>xem chi tiết</small> <span class="count" id="count-high">0</span></h3>
           <div id="list-high"></div>
+          <span class="count hidden" id="count-high">0</span>
         </section>
+
+        <!-- Medium Risk -->
         <section class="group group-medium">
-          <h3><span class="dot medium"></span>Medium risk <span class="count" id="count-medium">0</span></h3>
           <div id="list-medium"></div>
+          <span class="count hidden" id="count-medium">0</span>
         </section>
+
+        <!-- Low Risk -->
         <section class="group group-low">
-          <h3>
-            <button id="toggle-low" class="linklike" aria-expanded="false"><span class="dot low"></span>Low risk <small>duyệt theo lô</small></button>
-            <span class="count" id="count-low">0</span>
-          </h3>
-          <button id="btn-approve-low" class="btn btn-good wide">✓ Approve all low-risk <kbd>A</kbd></button>
-          <div id="list-low" class="collapsed"></div>
+          <button id="toggle-low" class="linklike" aria-expanded="true" style="display: none;"></button>
+          <button id="btn-approve-low" class="btn btn-good wide" style="margin-bottom: 8px;">✓ Duyệt tất cả rủi ro thấp
+            <kbd>A</kbd></button>
+          <div id="list-low"></div>
+          <span class="count hidden" id="count-low">0</span>
         </section>
+
+        <!-- Done / Processed -->
         <section class="group group-done">
-          <h3>Đã xử lý <span class="count" id="count-done">0</span></h3>
           <div id="list-done" class="done-list"></div>
+          <span class="count hidden" id="count-done">0</span>
         </section>
       </div>
-      <div class="review-foot">
-        <div class="progress"><div id="progress-bar"></div></div>
-        <div class="foot-row">
-          <span id="progress-text" class="muted"></span>
-          <button id="btn-approve-frame" class="btn btn-primary">Approve frame <kbd>Enter</kbd></button>
+
+      <!-- Appearance Collapsible Section (Image 1) -->
+      <div class="appearance-box">
+        <div class="appearance-head" onclick="toggleAppearanceBox()">
+          <div class="flex align-center gap-1">
+            <i class="ri-arrow-down-s-line" id="appearanceArrowIcon"></i>
+            <strong>Hiển thị (Appearance)</strong>
+          </div>
         </div>
-        <div class="shortcuts">
-          <kbd>↑</kbd><kbd>↓</kbd> chọn object · <kbd>K</kbd> keep · <kbd>D</kbd> delete · <kbd>C</kbd> đổi lớp · <kbd>E</kbd> sửa box · <kbd>T</kbd> lan truyền · <kbd>Space</kbd> phát video · <kbd>N</kbd>/<kbd>P</kbd> frame kế · lăn chuột, <kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>0</kbd> vừa khung
+        <div class="appearance-content" id="appearanceContent">
+          <div class="color-by-row">
+            <span class="text-xs text-gray">Màu theo</span>
+            <div class="segmented-btn-group">
+              <button class="seg-btn active">Nhãn</button>
+              <button class="seg-btn">Đối tượng</button>
+              <button class="seg-btn">Nhóm</button>
+            </div>
+          </div>
+
+          <div class="slider-field">
+            <div class="flex justify-between text-xs text-gray mb-1">
+              <span>Độ mờ (Opacity)</span>
+            </div>
+            <input type="range" min="0" max="100" value="20" class="range-slider" id="opacitySlider">
+          </div>
+
+          <div class="slider-field">
+            <div class="flex justify-between text-xs text-gray mb-1">
+              <span>Độ mờ khi chọn</span>
+            </div>
+            <input type="range" min="0" max="100" value="60" class="range-slider" id="selectedOpacitySlider">
+          </div>
+
+          <div class="checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" checked>
+              <span>Viền ngoài đối tượng</span>
+              <i class="ri-pencil-line text-blue" style="font-size: 11px;"></i>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox">
+              <span>Hiện lớp bitmap</span>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox">
+              <span>Hiện hình chiếu 3D</span>
+            </label>
+          </div>
         </div>
       </div>
+
+      <!-- Bottom Approval & Shortcuts Bar -->
+      <div class="review-foot sidebar-foot">
+        <div class="progress">
+          <div id="progress-bar"></div>
+        </div>
+        <div class="foot-row">
+          <span id="progress-text" class="muted text-xs"></span>
+          <button id="btn-approve-frame" class="btn btn-primary" style="padding: 6px 14px; font-size: 12px;">Duyệt frame
+            <kbd>Enter</kbd></button>
+        </div>
+      </div>
+
     </aside>
   </main>
 
-  <!-- ===== Correction log ===== -->
+  <!-- Correction log (Tab compatibility) -->
   <main id="tab-log" class="tab-panel hidden">
-    <div class="page">
-      <div class="page-head">
-        <h2>Correction log</h2>
-        <label>Frame <input id="log-frame" type="text" placeholder="vd. scene-0061_005"></label>
-        <button id="log-refresh" class="btn btn-ghost">Tải lại</button>
+    <div class="page" style="padding: 16px;">
+      <div class="page-head" style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px;">
+        <h2>Nhật ký chỉnh sửa (Correction Log)</h2>
+        <input id="log-frame" type="text" placeholder="Mã Frame ID">
+        <button id="log-refresh" class="btn btn-ghost btn-sm">Tải lại</button>
       </div>
-      <div class="log-layout">
-        <div class="table-wrap">
-          <table class="data-table" id="log-table">
-            <thead><tr><th>Thời điểm</th><th>Frame</th><th>Object</th><th>Hành động</th><th>Dự đoán</th><th>Kết quả</th><th class="num">Score</th><th class="num">Risk</th><th>Issues</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-        <pre class="json-view" id="log-json">Chọn một dòng để xem JSON</pre>
-      </div>
+      <table class="data-table" id="log-table">
+        <thead>
+          <tr>
+            <th>Thời điểm</th>
+            <th>Frame</th>
+            <th>Đối tượng</th>
+            <th>Hành động</th>
+            <th>Score</th>
+            <th>Rủi ro</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <pre class="json-view" id="log-json" style="margin-top: 16px;"></pre>
     </div>
   </main>
 
-  <!-- ===== Metrics & Export ===== -->
+  <!-- Metrics & Export (Tab compatibility) -->
   <main id="tab-metrics" class="tab-panel hidden">
-    <div class="page">
-      <div class="page-head">
-        <h2>Metrics</h2>
-        <button id="metrics-refresh" class="btn btn-ghost">Tải lại</button>
+    <div class="page" style="padding: 16px;">
+      <div class="page-head" style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px;">
+        <h2>Chỉ số đánh giá (Metrics)</h2>
+        <button id="metrics-refresh" class="btn btn-ghost btn-sm">Tải lại</button>
       </div>
       <div class="tiles" id="tiles"></div>
-      <div class="two-col">
-        <section class="card">
-          <h3>Tỉ lệ phải sửa theo nhóm risk</h3>
-          <p class="muted">Nếu triage đúng, nhóm high phải có tỉ lệ sửa cao hơn hẳn nhóm low.</p>
-          <table class="data-table" id="level-table"></table>
-        </section>
-        <section class="card">
-          <h3>Issue code nào đáng tin</h3>
-          <p class="muted">Tỉ lệ object gắn issue này thật sự bị người sửa (precision của từng check).</p>
-          <table class="data-table" id="issue-table"></table>
-        </section>
-      </div>
-
-      <div class="page-head"><h2>Auto-labeled dataset</h2></div>
-      <section class="card export-card">
-        <p>Chỉ frame đã <strong>Approve</strong> được xuất. Gồm <code>coco.json</code>, <code>labels.jsonl</code> (box, lớp, risk, issue, hành động của người), <code>corrections.jsonl</code>, <code>manifest.json</code>.</p>
-        <button id="btn-export" class="btn btn-primary">Xuất dataset</button>
+      <table class="data-table" id="level-table"></table>
+      <table class="data-table" id="issue-table"></table>
+      <div style="margin-top: 24px;">
+        <button id="btn-export" class="btn btn-primary">Xuất tập dữ liệu</button>
         <div id="export-result"></div>
-        <h4>Các lần xuất</h4>
         <ul id="export-list" class="export-list"></ul>
-      </section>
+      </div>
     </div>
   </main>
 
   <div id="toast" class="toast hidden" role="status"></div>
-  <script src="app.js?v=theme2"></script>
+
+  <!-- Workspace Helper Scripts -->
+  <script>
+    // Menu Dropdown toggle
+    const menuBtn = document.getElementById('menuBtn');
+    const menuDropdown = document.getElementById('menuDropdown');
+    if (menuBtn && menuDropdown) {
+      menuBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menuDropdown.classList.toggle('show');
+      });
+      document.addEventListener('click', () => {
+        menuDropdown.classList.remove('show');
+      });
+    }
+
+    // Toggle Queue Panel
+    function toggleQueuePanel() {
+      const q = document.getElementById('queue-panel');
+      if (q) q.classList.toggle('hidden');
+    }
+
+    // Toggle Appearance Box
+    function toggleAppearanceBox() {
+      const content = document.getElementById('appearanceContent');
+      const arrow = document.getElementById('appearanceArrowIcon');
+      if (content && arrow) {
+        content.classList.toggle('collapsed');
+        arrow.className = content.classList.contains('collapsed') ? 'ri-arrow-right-s-line' : 'ri-arrow-down-s-line';
+      }
+    }
+
+    // Fullscreen toggle
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => { });
+      } else {
+        document.exitFullscreen().catch(() => { });
+      }
+    }
+
+    // Sync Item Count
+    setInterval(() => {
+      const el = document.getElementById('totalItemsCount');
+      if (el) {
+        const total = document.querySelectorAll('.obj-card, .low-row').length;
+        el.textContent = total;
+      }
+    }, 500);
+
+    // Left toolbar tool-rect triggers #btn-add
+    const toolRect = document.getElementById('tool-rect');
+    if (toolRect) {
+      toolRect.addEventListener('click', () => {
+        const btnAdd = document.getElementById('btn-add');
+        if (btnAdd) btnAdd.click();
+      });
+    }
+  </script>
+
+  <script src="app.js?v=modern_vi"></script>
 </body>
+
 </html>

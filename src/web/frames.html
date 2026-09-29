@@ -1,158 +1,286 @@
 <!DOCTYPE html>
 <html lang="vi">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Danh sách frame — AutoLabel 3D / 2D</title>
+  <title>Chi tiết dự án &amp; Tasks — AutoLabel</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
   <link rel="stylesheet" href="ui-flow.css">
 </head>
+
 <body>
 
-  <!-- 7-Step Interactive Stepper Navigation -->
-  <nav class="flow-stepper-bar" aria-label="UI Flow Steps">
-    <a href="login.html" class="flow-step-item">
-      <span class="step-num">1</span>
-      <span>Đăng nhập</span>
-    </a>
-    <span class="flow-step-arrow">→</span>
-
-    <a href="projects.html" class="flow-step-item">
-      <span class="step-num">2</span>
-      <span>Dự án</span>
-    </a>
-    <span class="flow-step-arrow">→</span>
-
-    <a href="frames.html" class="flow-step-item active">
-      <span class="step-num">3</span>
-      <span>Chọn frame</span>
-    </a>
-    <span class="flow-step-arrow">→</span>
-
-    <a href="index.html" class="flow-step-item">
-      <span class="step-num">4</span>
-      <span>Gán nhãn (Workstation)</span>
-    </a>
-    <span class="flow-step-arrow">→</span>
-
-    <a href="export.html" class="flow-step-item">
-      <span class="step-num">7</span>
-      <span>Xuất dữ liệu</span>
-    </a>
-
-    <div style="margin-left: auto;">
-      <a href="flow.html" class="btn-outline" style="padding: 4px 10px; font-size: 11px;">
-        <i class="ri-node-tree"></i> Xem toàn cảnh Flow
+  <!-- Top Navigation Bar (Image 3) -->
+  <header class="header">
+    <div class="header-left">
+      <a href="projects.html" class="logo">
+        <i class="ri-box-3-fill logo-icon"></i>
+        <span>AutoLabel</span>
       </a>
-    </div>
-  </nav>
-
-  <!-- App Layout -->
-  <div class="app-layout">
-    <!-- Sidebar -->
-    <aside class="sidebar">
-      <div class="sidebar-brand">
-        <div class="logo-icon"><i class="ri-box-3-fill"></i></div>
-        <span>AutoLabel 3D</span>
-      </div>
-
-      <nav class="sidebar-nav">
-        <a href="projects.html">
-          <i class="ri-folder-2-line"></i>
-          <span>Dự án</span>
-        </a>
-        <a href="javascript:void(0)" onclick="showToast('Quản lý tập dữ liệu thô', 'info')">
-          <i class="ri-database-2-line"></i>
-          <span>Dữ liệu thô</span>
-        </a>
-        <a href="index.html">
-          <i class="ri-price-tag-3-line"></i>
-          <span>Workspace Gán nhãn</span>
-        </a>
-        <a href="export.html">
-          <i class="ri-download-cloud-2-line"></i>
-          <span>Xuất dữ liệu</span>
-        </a>
-        <a href="flow.html">
-          <i class="ri-node-tree"></i>
-          <span>Toàn cảnh UI Flow</span>
-        </a>
+      <nav class="nav">
+        <a href="projects.html" class="nav-item">Dự án</a>
+        <a href="frames.html" class="nav-item active">Tasks &amp; Frames</a>
+        <a href="export.html" class="nav-item">Xuất dữ liệu</a>
       </nav>
+    </div>
 
-      <div class="sidebar-footer">
-        <div class="user-profile">
-          <div class="user-avatar">NH</div>
-          <div class="user-meta">
-            <span class="user-name">Phạm Quang Huy</span>
-            <span class="user-role">Reviewer &amp; Annotator</span>
+    <div class="header-right">
+      <div class="user-profile" onclick="window.location.href='login.html'" title="Tài khoản người dùng">
+        <i class="ri-user-line avatar-icon"></i>
+        <span class="user-name">Người dùng</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content (Image 3) -->
+  <main class="page-wrap">
+    <!-- Back to projects & Actions bar -->
+    <div class="back-bar">
+      <a href="projects.html" class="back-link">
+        <i class="ri-arrow-left-s-line"></i>
+        <span>Quay lại danh sách dự án</span>
+      </a>
+      <div style="position: relative;">
+        <button class="actions-btn" id="actionsDropdownBtn" title="Menu thao tác dự án">
+          <span>Thao tác</span>
+          <i class="ri-more-2-fill"></i>
+        </button>
+        <div class="actions-dropdown-menu" id="actionsDropdownMenu"
+          style="display: none; position: absolute; right: 0; top: calc(100% + 4px); background: #ffffff; border: 1px solid var(--border-light); border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); width: 230px; z-index: 100; padding: 4px 0;">
+          <a href="index.html" class="dropdown-item"
+            style="display: flex; align-items: center; gap: 8px; padding: 8px 14px; font-size: 13px; color: var(--text-main); text-decoration: none;"><i
+              class="ri-edit-circle-line" style="color: var(--primary);"></i> Mở Workspace gán nhãn</a>
+          <a href="export.html" class="dropdown-item"
+            style="display: flex; align-items: center; gap: 8px; padding: 8px 14px; font-size: 13px; color: var(--text-main); text-decoration: none;"><i
+              class="ri-download-cloud-line" style="color: #52c41a;"></i> Xuất dữ liệu nhãn</a>
+          <div style="height: 1px; background: var(--border-light); margin: 4px 0;"></div>
+          <a href="javascript:void(0)" id="btnAutoApproveLowRisk" class="dropdown-item"
+            style="display: flex; align-items: center; gap: 8px; padding: 8px 14px; font-size: 13px; color: var(--text-main); text-decoration: none;"><i
+              class="ri-shield-check-line" style="color: #1890ff;"></i> Duyệt frame rủi ro thấp</a>
+          <a href="javascript:void(0)" id="btnApproveAllFrames" class="dropdown-item"
+            style="display: flex; align-items: center; gap: 8px; padding: 8px 14px; font-size: 13px; color: var(--text-main); text-decoration: none;"><i
+              class="ri-check-double-line" style="color: #52c41a;"></i> Duyệt tất cả frame</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Project Header Card (Image 3) -->
+    <div class="project-header-card">
+      <div class="project-title-row">
+        <div class="project-title">
+          <span id="projectTitleDisplay">Dự án 2</span>
+          <i class="ri-edit-line" id="btnEditProjectTitle"
+            style="font-size: 16px; color: var(--primary); cursor: pointer;" title="Chỉnh sửa tên dự án"></i>
+        </div>
+      </div>
+
+      <div class="project-meta-row">
+        <div id="projectMetaDisplay">Dự án xe tự hành tạo bởi <span class="user-name">annotator</span> vào 26/02/2025
+        </div>
+        <div class="assigned-select">
+          <span>Phân công cho</span>
+          <select id="assignedUserSelect">
+            <option value="annotator">annotator</option>
+            <option value="reviewer">reviewer</option>
+            <option value="lead">team_lead</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="project-section-row">
+        <strong>Mô tả dự án</strong>
+        <button class="btn-xs" id="btnEditProjectDesc">Chỉnh sửa</button>
+      </div>
+      <div id="projectDescDisplay"
+        style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px; line-height: 1.5;">
+        Dự án gán nhãn dữ liệu video giao thông đường bộ 2D Bounding Box & 3D LiDAR cho xe tự hành.
+      </div>
+      <div id="projectDescEditArea" style="display: none; margin-bottom: 12px;">
+        <textarea id="projectDescInput" class="form-control" rows="2"
+          style="font-size: 13px; margin-bottom: 6px;"></textarea>
+        <div style="display: flex; gap: 6px;">
+          <button class="btn-xs" id="btnSaveProjectDesc" style="background: var(--primary); color: #fff;">Lưu mô
+            tả</button>
+          <button class="btn-xs" id="btnCancelProjectDesc">Hủy</button>
+        </div>
+      </div>
+
+      <div class="project-section-row" style="margin-bottom: 0;">
+        <span>Theo dõi sự cố (Issue Tracker):</span>
+        <a id="issueTrackerLink" href="https://github.com/issues" target="_blank"
+          style="font-size: 13px; color: var(--primary); text-decoration: none; margin-left: 6px;">https://github.com/issues</a>
+        <i class="ri-edit-line" id="btnEditIssueTracker"
+          style="font-size: 14px; color: var(--primary); cursor: pointer; margin-left: 6px;"
+          title="Cấu hình đường dẫn Issue Tracker"></i>
+      </div>
+
+      <!-- Label Constructor (Image 3) -->
+      <div class="constructor-card">
+        <div class="constructor-tabs">
+          <button class="tab" id="tabRawLabels"><i class="ri-edit-line"></i> Dạng thô (Raw)</button>
+          <button class="tab active" id="tabConstructorLabels"><i class="ri-layout-grid-line"></i> Trình dựng nhãn
+            (Constructor)</button>
+        </div>
+
+        <!-- Constructor Visual View -->
+        <div id="constructorView">
+          <div class="labels-row">
+            <button class="btn-xs" id="btnAddLabel" onclick="openModal('addLabelModal')" style="height: 28px;"><i class="ri-add-line"></i> Thêm nhãn</button>
+            <button class="btn-xs" id="btnSyncAIModels" style="height: 28px;"><i class="ri-magic-line"></i> Từ mô hình AI</button>
+
+            <!-- Real Autonomous Driving Taxonomy Pills Container -->
+            <div id="labelsContainer" style="display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+              <!-- Populated dynamically via ui-flow.js -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Raw Text/JSON View -->
+        <div id="rawLabelsView" style="display: none; padding: 10px 0;">
+          <textarea id="rawLabelsTextarea" class="form-control" rows="6"
+            style="font-family: monospace; font-size: 12px; width: 100%;"></textarea>
+          <div style="margin-top: 8px; display: flex; gap: 8px;">
+            <button class="btn-xs" id="btnSaveRawLabels" style="background: var(--primary); color: #fff;">Lưu cấu hình
+              nhãn</button>
+            <button class="btn-xs" id="btnResetRawLabels">Đặt lại mặc định</button>
           </div>
         </div>
       </div>
-    </aside>
+    </div>
 
-    <!-- Main Content -->
-    <main class="main-content">
-      <div class="page-container">
-        <!-- Breadcrumb & Header -->
-        <div class="flex align-center gap-2 mb-3">
-          <a href="projects.html" class="btn-outline icon-btn-small" title="Quay lại danh sách dự án">
-            <i class="ri-arrow-left-line"></i>
-          </a>
-          <span class="text-xs text-gray">Dự án</span>
-          <span class="text-xs text-gray">/</span>
-          <span class="text-xs fw-600 text-blue" id="frameProjectTitle">nuScenes_CAM_FRONT</span>
-        </div>
+    <!-- Tasks Filter & Search Toolbar (Image 3) -->
+    <div class="toolbar-row">
+      <div class="search-box">
+        <input type="text" id="taskSearchInput" placeholder="Tìm kiếm frame, task...">
+        <button class="search-btn" title="Tìm kiếm">
+          <i class="ri-search-line"></i>
+        </button>
+      </div>
 
-        <div class="page-header">
-          <div>
-            <h1>Danh sách Frame</h1>
-            <p class="text-gray text-sm mt-1">Chọn frame ảnh và point cloud để tiến hành kiểm tra, chỉnh sửa và phê duyệt nhãn</p>
-          </div>
-          <div class="flex gap-2">
-            <a href="index.html" class="btn-primary">
-              <i class="ri-play-circle-line"></i> Mở Workspace Gán nhãn
-            </a>
-          </div>
-        </div>
-
-        <!-- Filter & Search Toolbar -->
-        <div class="toolbar-row">
-          <div class="tabs-pill-group">
-            <button class="tab-pill frame-filter-tab active" data-filter="all">Tất cả</button>
-            <button class="tab-pill frame-filter-tab" data-filter="unannotated">Chưa gán nhãn</button>
-            <button class="tab-pill frame-filter-tab" data-filter="annotated">Đã hoàn thành</button>
-          </div>
-
-          <div class="search-box">
-            <i class="ri-search-line"></i>
-            <input type="text" id="frameSearchInput" placeholder="Tìm kiếm theo mã Frame ID...">
-          </div>
-        </div>
-
-        <!-- Frames Table -->
-        <div class="table-card">
-          <table class="table-custom">
-            <thead>
-              <tr>
-                <th>Frame ID</th>
-                <th>Trạng thái</th>
-                <th>Đối tượng</th>
-                <th>Thời gian</th>
-                <th class="text-right">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody id="framesTableBody">
-              <!-- Dynamically populated from ui-flow.js -->
-            </tbody>
-          </table>
+      <!-- Sắp xếp dropdown -->
+      <div style="position: relative;">
+        <button class="filter-btn" id="sortBtn" title="Sắp xếp danh sách">
+          <span id="sortBtnLabel">Sắp xếp: Rủi ro QA</span>
+          <i class="ri-list-check"></i>
+        </button>
+        <div class="filter-dropdown-menu" id="sortMenu"
+          style="display: none; position: absolute; left: 0; top: calc(100% + 4px); background: #fff; border: 1px solid var(--border-light); border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); width: 210px; z-index: 100; padding: 4px 0;">
+          <a href="javascript:void(0)" onclick="setSortMode('risk')" class="dropdown-item"
+            style="display: block; padding: 8px 14px; font-size: 13px; color: var(--text-main); text-decoration: none;">Mức
+            độ rủi ro (Risk QA)</a>
+          <a href="javascript:void(0)" onclick="setSortMode('order')" class="dropdown-item"
+            style="display: block; padding: 8px 14px; font-size: 13px; color: var(--text-main); text-decoration: none;">Thứ
+            tự frame ID</a>
+          <a href="javascript:void(0)" onclick="setSortMode('objects')" class="dropdown-item"
+            style="display: block; padding: 8px 14px; font-size: 13px; color: var(--text-main); text-decoration: none;">Số
+            lượng đối tượng</a>
         </div>
       </div>
-    </main>
+
+      <!-- Lọc nhanh dropdown -->
+      <div style="position: relative;">
+        <button class="filter-btn" id="quickFilterBtn" title="Lọc nhanh trạng thái">
+          <span id="quickFilterLabel">Lọc nhanh: Tất cả</span>
+          <i class="ri-filter-3-line"></i>
+        </button>
+        <div class="filter-dropdown-menu" id="quickFilterMenu"
+          style="display: none; position: absolute; left: 0; top: calc(100% + 4px); background: #fff; border: 1px solid var(--border-light); border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); width: 190px; z-index: 100; padding: 4px 0;">
+          <a href="javascript:void(0)" onclick="setFilterStatus('all')" class="dropdown-item"
+            style="display: block; padding: 8px 14px; font-size: 13px; color: var(--text-main); text-decoration: none;">Tất
+            cả frame</a>
+          <a href="javascript:void(0)" onclick="setFilterStatus('auto')" class="dropdown-item"
+            style="display: block; padding: 8px 14px; font-size: 13px; color: var(--text-main); text-decoration: none;">Cần
+            duyệt (Auto)</a>
+          <a href="javascript:void(0)" onclick="setFilterStatus('approved')" class="dropdown-item"
+            style="display: block; padding: 8px 14px; font-size: 13px; color: var(--text-main); text-decoration: none;">Đã
+            duyệt (Approved)</a>
+          <a href="javascript:void(0)" onclick="setFilterStatus('editing')" class="dropdown-item"
+            style="display: block; padding: 8px 14px; font-size: 13px; color: var(--text-main); text-decoration: none;">Đang
+            sửa (Editing)</a>
+        </div>
+      </div>
+
+      <!-- Bộ lọc nhãn dropdown -->
+      <div style="position: relative;">
+        <button class="filter-btn" id="filterClassBtn" title="Lọc theo lớp nhãn">
+          <span id="filterClassLabel">Lọc theo nhãn</span>
+          <i class="ri-price-tag-3-line"></i>
+        </button>
+        <div class="filter-dropdown-menu" id="filterClassMenu"
+          style="display: none; position: absolute; left: 0; top: calc(100% + 4px); background: #fff; border: 1px solid var(--border-light); border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); width: 200px; max-height: 240px; overflow-y: auto; z-index: 100; padding: 4px 0;">
+          <!-- Populated dynamically with class options -->
+        </div>
+      </div>
+
+      <button class="clear-filters" id="btnClearAllFilters">
+        Xóa bộ lọc
+      </button>
+
+      <button class="add-btn" id="btnAddNewTask" title="Tạo frame / task mới hoặc mở Workspace">
+        <i class="ri-add-line"></i>
+      </button>
+    </div>
+
+    <!-- Tasks List (Image 3) -->
+    <div class="tasks-list" id="tasksList">
+      <!-- Populated dynamically via ui-flow.js -->
+    </div>
+  </main>
+
+  <!-- Modal Thêm Nhãn Mới -->
+  <div id="addLabelModal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) closeModal('addLabelModal')">
+    <div class="modal-card" style="max-width: 420px;">
+      <div class="modal-header">Thêm nhãn đối tượng mới</div>
+      <div class="modal-sub">Nhập tên nhãn taxonomy cho dự án xe tự hành (ví dụ: car, pedestrian, rider).</div>
+      <div class="form-item">
+        <label class="form-label">Tên nhãn (ID / Tên hiển thị)</label>
+        <input type="text" id="newLabelName" class="form-control" placeholder="ví dụ: traffic_light, rider">
+      </div>
+      <div class="form-item">
+        <label class="form-label">Màu sắc hiển thị</label>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <input type="color" id="newLabelColor" value="#3b82f6"
+            style="width: 44px; height: 36px; padding: 2px; border: 1px solid var(--border-light); border-radius: 4px; cursor: pointer;">
+          <input type="text" id="newLabelColorHex" class="form-control" value="#3b82f6" style="flex: 1;">
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+        <button type="button" class="btn-default" onclick="closeModal('addLabelModal')">Hủy</button>
+        <button type="button" class="btn-primary" id="btnSubmitAddLabel">Thêm nhãn</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Thêm Task / Video Mới -->
+  <div id="createTaskModal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) closeModal('createTaskModal')">
+    <div class="modal-card" style="max-width: 460px;">
+      <div class="modal-header">Tạo Task gán nhãn mới</div>
+      <div class="modal-sub">Tải lên video MP4 hoặc chọn luồng dữ liệu camera để tạo task gán nhãn mới.</div>
+      <div class="form-item">
+        <label class="form-label">Tên Task / File video</label>
+        <input type="text" id="newTaskName" class="form-control" placeholder="ví dụ: street_camera_02.mp4">
+      </div>
+      <div class="form-item">
+        <label class="form-label">Nguồn dữ liệu</label>
+        <select id="newTaskSource" class="form-control">
+          <option value="demo">street_demo.mp4 (160 frames, 32 keyframes)</option>
+          <option value="nuscenes">nuScenes Scene 0061</option>
+          <option value="custom">File video cục bộ (.mp4)</option>
+        </select>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+        <button type="button" class="btn-default" onclick="closeModal('createTaskModal')">Hủy</button>
+        <button type="button" class="btn-primary" id="btnSubmitCreateTask">Tạo Task</button>
+      </div>
+    </div>
   </div>
 
   <div id="toastContainer" class="toast-container"></div>
   <script src="ui-flow.js"></script>
 </body>
+
 </html>
