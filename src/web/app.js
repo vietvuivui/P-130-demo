@@ -1,7 +1,9 @@
 /* AutoLabel 2D — UI review by exception (không cần build, gọi thẳng FastAPI) */
 'use strict';
 
-const API = '/api/v1';
+// ?project=<id>: làm việc trong một dự án (data/projects/<id>), API cùng đường dẫn nhưng có tiền tố /p/<id>
+const PROJECT = new URLSearchParams(location.search).get('project');
+const API = PROJECT ? `/p/${encodeURIComponent(PROJECT)}/api/v1` : '/api/v1';
 const LEVELS = ['high', 'medium', 'low'];
 const LEVEL_NAME = { low: 'Low', medium: 'Medium', high: 'High' };
 const RISK_COLOR = { low: '#0ca30c', medium: '#fab219', high: '#d03b3b' };
@@ -76,11 +78,13 @@ function toast(msg, error = false) {
   toastTimer = setTimeout(() => t.classList.add('hidden'), error ? 5000 : 2200);
 }
 
+// mỗi dự án nhớ chế độ / video đang mở riêng; tên người duyệt dùng chung
+const storageKey = (k) => (PROJECT && k !== 'reviewer' ? `pj.${PROJECT}.${k}` : k);
 function storageGet(k, fallback) {
-  try { return localStorage.getItem(k) ?? fallback; } catch { return fallback; }
+  try { return localStorage.getItem(storageKey(k)) ?? fallback; } catch { return fallback; }
 }
 function storageSet(k, v) {
-  try { localStorage.setItem(k, v); } catch { /* bỏ qua: private mode */ }
+  try { localStorage.setItem(storageKey(k), v); } catch { /* bỏ qua: private mode */ }
 }
 
 const reviewer = () => $('reviewer').value.trim() || S.cfg?.reviewer || 'annotator';
@@ -1279,6 +1283,22 @@ new ResizeObserver(() => { fitCanvas(); draw(); }).observe($('canvas-wrap'));
 // cho bev2d.js (module) dùng chung trạng thái
 window.AL = { get S() { return S; }, select, ensureLidar };
 
+// Dự án: hiện tên + link quay lại, ẩn chế độ không có dữ liệu (không LiDAR -> không 3D)
+async function initProject() {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(PROJECT)}`);
+  if (!r.ok) throw new Error(`Không tìm thấy dự án ${PROJECT}`);
+  const p = await r.json();
+  document.title = `${p.name} — AutoLabel 3D`;
+  document.body.classList.add('in-project');
+  $('project-link').classList.remove('hidden');
+  $('project-name').textContent = p.name;
+  const modes = ['image', 'video'];
+  const done3d = p.steps.some((s) => s.name === 'predict3d' && s.status === 'done');
+  if (p.stats?.has_lidar && done3d) modes.push('3d');
+  document.querySelectorAll('.mode').forEach((b) => b.classList.toggle('hidden', !modes.includes(b.dataset.mode)));
+  return modes;
+}
+
 (async function init() {
   try {
     S.cfg = await api('/config');
@@ -1286,8 +1306,11 @@ window.AL = { get S() { return S; }, select, ensureLidar };
     S.autoProp = storageGet('autoProp', '1') === '1';
     $('auto-prop').checked = S.autoProp;
     $('add-class').innerHTML = classOptions('car');
-    const saved = storageGet('viewMode', 'image');
-    await setMode(['video', '3d'].includes(saved) ? saved : 'image');
+    let modes = ['image', 'video', '3d'];
+    if (PROJECT) modes = await initProject();
+    const urlMode = new URLSearchParams(location.search).get('mode');
+    const saved = modes.includes(urlMode) ? urlMode : storageGet('viewMode', modes[0]);
+    await setMode(modes.includes(saved) ? saved : modes[0]);
   } catch (err) {
     toast('Không tải được dữ liệu: ' + err.message, true);
   }

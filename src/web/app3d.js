@@ -2,7 +2,9 @@
 import * as THREE from './vendor/three.module.min.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
 
-const API = '/api/v1/3d';
+const PROJECT = new URLSearchParams(location.search).get('project');
+const BASE = PROJECT ? `/p/${encodeURIComponent(PROJECT)}/api/v1` : '/api/v1';
+const API = `${BASE}/3d`;
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const LEVELS = ['high', 'medium', 'low'];
@@ -45,9 +47,10 @@ async function api(path, opts = {}) {
 }
 const toast = (m, err) => (window.toast ? window.toast(m, err) : console.log(m));
 const reviewer = () => ($('reviewer')?.value || '').trim() || undefined;
+const PREFIX = PROJECT ? `m3.${PROJECT}.` : 'm3.';
 const storage = {
-  get: (k, d) => { try { return localStorage.getItem('m3.' + k) ?? d; } catch { return d; } },
-  set: (k, v) => { try { localStorage.setItem('m3.' + k, v); } catch { /* chế độ riêng tư */ } },
+  get: (k, d) => { try { return localStorage.getItem(PREFIX + k) ?? d; } catch { return d; } },
+  set: (k, v) => { try { localStorage.setItem(PREFIX + k, v); } catch { /* chế độ riêng tư */ } },
 };
 
 // ---------------------------------------------------------------- hình học
@@ -1074,7 +1077,7 @@ async function activate() {
     initViewer();
     bind();
     T.color = storage.get('color', 'height'); $('m3-color').value = T.color;
-    const cfg = await fetch('/api/v1/config').then((r) => r.json()).catch(() => ({}));
+    const cfg = await fetch(`${BASE}/config`).then((r) => r.json()).catch(() => ({}));
     T.classes = Object.keys(cfg.classes || {}).filter((c) => !c.startsWith('__'));
     $('m3-new-class').innerHTML = T.classes.map((c) => `<option value="${c}">${c}</option>`).join('');
     T.showBevImg = storage.get('bevimg', '1') === '1'; $('m3-show-bevimg').checked = T.showBevImg;

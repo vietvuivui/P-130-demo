@@ -62,6 +62,67 @@ Kết quả cần gửi lại cho nhóm (nhỏ, đưa vào git được): cả t
 
 File dự đoán đầy đủ và trọng số nằm trong `tools3d/work/` (đã gitignore).
 
+## Tăng độ chính xác không cần huấn luyện: ensemble + tinh chỉnh theo track + TTA
+
+`eval` tự thêm hai "mô hình" dẫn xuất, tính từ dự đoán đã có (không suy luận lại):
+
+| Tên | Cách làm | File |
+|---|---|---|
+| `centerpoint_voxel_track` | CenterPoint voxel + tinh chỉnh theo track | `tools3d/refine3d.py` |
+| `ensemble` | gộp 4 mô hình LiDAR (PointPillars, SSN, CenterPoint pillar / voxel) rồi tinh chỉnh theo track | `tools3d/refine3d.py` |
+
+**Gộp.** Gom box cùng lớp theo khoảng cách tâm, với bán kính riêng từng lớp. Điểm của box gộp là điểm trung bình nhân
+với tỉ lệ mô hình đồng ý: box chỉ một mô hình thấy bị hạ điểm.
+
+**Tinh chỉnh theo track** (kiểu "auto-label offboard": được nhìn cả trước lẫn sau):
+
+- nối box qua các keyframe bằng vận tốc dự đoán;
+- mỗi track dùng một kích thước (trung vị);
+- tính lại vận tốc bằng sai phân trung tâm, nhưng chỉ khi khớp với vận tốc của mô hình;
+- sửa hướng bị lật 180°;
+- trộn điểm của track;
+- nội suy keyframe bị sót ở giữa track, với điểm thấp để người duyệt xem lại;
+- gán `tracking_id`, để xuất nuScenes nối được instance.
+
+**`--tta`** chạy thêm 3 lượt lật trục (x, y, cả hai) cho mỗi mô hình LiDAR. Mỗi lượt được lật ngược kết quả về trước
+khi gộp. Chậm hơn khoảng 4 lần.
+
+Kết quả trên 3 scene dev (scene-0035/0097/0101). Tham số lấy theo mặc định của CenterPoint / bài báo, không dò trên dữ
+liệu chấm:
+
+| Cấu hình | mAP | NDS |
+|---|---|---|
+| CenterPoint voxel | 0.537 | 0.560 |
+| + tinh chỉnh theo track | 0.573 | 0.583 |
+| gộp 4 mô hình LiDAR | 0.617 | 0.621 |
+| **gộp 4 mô hình + track** (`ensemble`) | **0.644** | **0.643** |
+| thêm 2 mô hình camera vào ensemble | 0.639 | — (không dùng) |
+| CenterPoint pillar, scene-0035 (4 sweep), + TTA lật | 0.433 → 0.450 | 0.478 → 0.495 |
+
+Những gì đã thử nhưng không dùng:
+
+- **Chấm lại điểm bằng camera** (hồi quy logistic, kiểm tra chéo bỏ từng scene): mAP giảm từ 0.644 xuống 0.58–0.61.
+- **Đổi / xoá box theo detector 2D:** sửa đúng 14 box nhưng làm hỏng 39.
+
+**Con số quyết định phải là held-out**, tức 24 scene val còn lại mà khi làm chưa hề nhìn. Chạy trên máy GPU:
+
+```powershell
+.venv-mm3d\Scripts\python tools3d\run3d.py run --dataroot ..\v1.0-trainval -m pointpillars ssn centerpoint_pillar centerpoint_voxel --tta
+.venv-mm3d\Scripts\python tools3d\run3d.py eval --dataroot ..\v1.0-trainval
+```
+
+`eval/results/det3d/summary.json` có thêm `splits.dev` / `splits.heldout` cho từng mô hình. Nếu `ensemble` hơn
+`centerpoint_voxel` trên held-out, dự án của end-user sẽ dùng ensemble.
+
+### Dữ liệu chưa gán nhãn (dự án của end-user)
+
+```powershell
+.venv-mm3d\Scripts\python tools3d\run3d.py predict --dataroot <dataset> --version v1.0-custom --out preds.json [--tta]
+```
+
+Web gọi lệnh này ở bước "Dự đoán 3D" của dự án: suy luận 4 mô hình LiDAR, gộp, tinh chỉnh theo track, rồi ghi dự
+đoán mọi keyframe. Không cần thư mục `maps/`, không cần nhãn.
+
 ## Đưa vào sản phẩm
 
 Trong môi trường chính của repo, với `NUSCENES_DATAROOT` trỏ tới dữ liệu có 3 scene demo:

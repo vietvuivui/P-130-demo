@@ -69,6 +69,10 @@ v1.0-mini*/
 # Text encoder YOLOE do ultralytics tự tải về thư mục chạy
 mobileclip*.ts
 
+# Fine-tune 2D (tools2d/): kết quả huấn luyện của Ultralytics, dataset YOLO đổi từ nuImages, cache chấm
+runs/
+data/cache_eval2d/
+
 # Phần 3D: môi trường mmdet3d riêng, trọng số, info, dự đoán đầy đủ (chỉ eval/results/det3d/ được commit)
 .venv-mm3d/
 tools3d/work/

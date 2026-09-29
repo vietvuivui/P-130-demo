@@ -52,6 +52,9 @@ class Object3D(BaseModel):
     score: float
     box: Box3D
     source: Literal["model", "human"] = "model"
+    track_id: str | None = (
+        None  # cùng vật qua các keyframe (tinh chỉnh theo track), dùng làm instance khi xuất nuScenes
+    )
     original_box: Box3D | None = None  # box mô hình sinh ra, giữ lại khi người sửa box (EDIT_BOX)
     verify: Verify3D | None = None
     review: ReviewState = Field(default_factory=ReviewState)

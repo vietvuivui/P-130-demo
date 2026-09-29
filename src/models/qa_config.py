@@ -25,6 +25,8 @@ class YoloeCfg(BaseModel):
     # YOLOE-26: open-vocab trên nền YOLO26, text encoder MobileCLIP2 (tự tải từ GitHub của Ultralytics)
     weights: str = "yoloe-26l-seg.pt"
     imgsz: int = 1280
+    # Chạy thêm ảnh lật ngang rồi gộp (augment=True của Ultralytics không có tác dụng với YOLOE): ~2x thời gian
+    tta_flip: bool = False
 
 
 class Yolo26Cfg(BaseModel):

@@ -6,7 +6,7 @@
   <title>AutoLabel 3D — Review</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
-  <link rel="stylesheet" href="styles.css?v=3d5">
+  <link rel="stylesheet" href="styles.css?v=3d6">
 </head>
 <body>
   <header class="topbar">
@@ -17,6 +17,7 @@
         <div class="brand-sub">nuScenes camera + LiDAR · QA Agent · Review by exception</div>
       </div>
     </div>
+    <a id="project-link" class="project-link hidden" href="/ui/projects.html" title="Về danh sách dự án">← Dự án <b id="project-name"></b></a>
     <div class="mode-switch" role="tablist" aria-label="Chế độ gán nhãn">
       <button class="mode active" data-mode="image" role="tab" title="Gán nhãn từng frame ảnh độc lập">🖼 Ảnh</button>
       <button class="mode" data-mode="video" role="tab" title="Gán nhãn cả video: timeline + lan truyền nhãn">🎞 Video</button>
@@ -348,8 +349,8 @@
   </main>
 
   <div id="toast" class="toast hidden" role="status"></div>
-  <script src="app.js?v=3d5"></script>
-  <script type="module" src="bev2d.js?v=3d5"></script>
-  <script type="module" src="app3d.js?v=3d5"></script>
+  <script src="app.js?v=3d6"></script>
+  <script type="module" src="bev2d.js?v=3d6"></script>
+  <script type="module" src="app3d.js?v=3d6"></script>
 </body>
 </html>

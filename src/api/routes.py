@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 import numpy as np
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from src.config import get_settings
@@ -55,7 +55,21 @@ def _store(root: str) -> WorkspaceStore:
     return WorkspaceStore(root)
 
 
-def get_store() -> WorkspaceStore:
+def _project_id(request: Request | None) -> str | None:
+    """API được gắn hai lần: /api/v1 (workspace mặc định trong .env) và /p/{project_id}/api/v1 (dự án của end-user)."""
+    return request.path_params.get("project_id") if request is not None else None
+
+
+def get_store(request: Request = None) -> WorkspaceStore:
+    pid = _project_id(request)
+    if pid:
+        from src.services.projects import ProjectError, get_manager
+
+        try:
+            get_manager().get(pid)
+            return get_manager().store(pid)
+        except ProjectError as e:
+            raise _error(e.status, e.code, str(e)) from e
     return _store(get_settings().workspace_dir)
 
 
@@ -63,8 +77,20 @@ def get_config() -> AutoLabelConfig:
     return get_autolabel_config(get_settings().autolabel_config)
 
 
-def get_dataroot() -> Path:
-    return Path(get_settings().nuscenes_dataroot)
+def data_source(request: Request | None) -> tuple[str, str]:
+    """(dataroot, version) nuScenes của workspace mặc định hoặc của dự án."""
+    pid = _project_id(request)
+    if pid:
+        from src.services.projects import get_manager
+
+        root, version = get_manager().dataset(pid)
+        return str(root), version
+    s = get_settings()
+    return s.nuscenes_dataroot, s.nuscenes_version
+
+
+def get_dataroot(request: Request = None) -> Path:
+    return Path(data_source(request)[0])
 
 
 @lru_cache
@@ -73,9 +99,10 @@ def _ensemble(workspace: str, config_path: str) -> DetectorEnsemble:
     return DetectorEnsemble(get_autolabel_config(config_path), Path(workspace) / "cache" / "detections")
 
 
-def get_ensemble() -> DetectorEnsemble:
+def get_ensemble(request: Request = None) -> DetectorEnsemble:
     s = get_settings()
-    return _ensemble(s.workspace_dir, s.autolabel_config)
+    pid = _project_id(request)
+    return _ensemble(str(get_store(request).root) if pid else s.workspace_dir, s.autolabel_config)
 
 
 @lru_cache
@@ -88,10 +115,12 @@ def _nuscenes(dataroot: str, version: str):
 
 
 def get_sequence_source(
-    store: WorkspaceStore = Depends(get_store), ensemble: DetectorEnsemble = Depends(get_ensemble)
+    request: Request,
+    store: WorkspaceStore = Depends(get_store),
+    ensemble: DetectorEnsemble = Depends(get_ensemble),
 ) -> SequenceSource:
-    s = get_settings()
-    return WorkspaceSequenceSource(store, ensemble, lambda: _nuscenes(s.nuscenes_dataroot, s.nuscenes_version))
+    root, version = data_source(request)
+    return WorkspaceSequenceSource(store, ensemble, lambda: _nuscenes(root, version))
 
 
 def resume_videos() -> None:
@@ -178,14 +207,14 @@ def get_lidar(frame_id: str, store: WorkspaceStore = Depends(get_store)):
     return store.load_aux("lidar", frame_id) or {"u": [], "v": [], "d": []}
 
 
-def _cam_from_ego(frame: FrameRecord) -> tuple[np.ndarray, bool]:
+def _cam_from_ego(frame: FrameRecord, request: Request | None = None) -> tuple[np.ndarray, bool]:
     """Ngoại tham số camera so với hệ ego (mặt đường z = 0). Video tải lên / thiếu bảng: giả định, estimated=True."""
     from src.services import bev
 
     if not frame.image.path.startswith("@workspace"):
-        s = get_settings()
+        root, version = data_source(request)
         try:
-            data = _nuscenes(s.nuscenes_dataroot, s.nuscenes_version)
+            data = _nuscenes(root, version)
             return np.linalg.inv(data._ego_from_sensor(frame.image.sd_token)), False
         except (FileNotFoundError, KeyError):
             pass
@@ -193,12 +222,12 @@ def _cam_from_ego(frame: FrameRecord) -> tuple[np.ndarray, bool]:
 
 
 @router.get("/frames/{frame_id}/bev/meta")
-def get_bev_meta(frame_id: str, store: WorkspaceStore = Depends(get_store)):
+def get_bev_meta(frame_id: str, request: Request, store: WorkspaceStore = Depends(get_store)):
     """Thông số để UI đặt box 2D / điểm LiDAR lên ảnh BEV: ngoại tham số, homography mặt đường -> ảnh, vùng phủ."""
     from src.services import bev
 
     frame = _load(store, frame_id)
-    cam_from_ego, estimated = _cam_from_ego(frame)
+    cam_from_ego, estimated = _cam_from_ego(frame, request)
     homo = bev.ground_homography(np.asarray(frame.intrinsic, float), cam_from_ego, 0.0)
     return {
         "cam_from_ego": np.round(cam_from_ego, 6).tolist(), "estimated": estimated,
@@ -209,7 +238,8 @@ def get_bev_meta(frame_id: str, store: WorkspaceStore = Depends(get_store)):
 
 
 @router.get("/frames/{frame_id}/bev")
-def get_bev(frame_id: str, store: WorkspaceStore = Depends(get_store), dataroot: Path = Depends(get_dataroot)):
+def get_bev(frame_id: str, request: Request, store: WorkspaceStore = Depends(get_store),
+            dataroot: Path = Depends(get_dataroot)):  # fmt: skip
     """Ảnh camera của frame chiếu xuống mặt đường (homography), PNG RGBA; phía trước ở trên."""
     from src.services import bev
 
@@ -219,7 +249,7 @@ def get_bev(frame_id: str, store: WorkspaceStore = Depends(get_store), dataroot:
         img = bev.load_rgb(image_path(dataroot, frame, 0, workspace=store.root))
         if img is None:
             raise _error(404, "IMAGE_NOT_FOUND", "Không tìm thấy file ảnh trong dataroot")
-        cam_from_ego, _ = _cam_from_ego(frame)
+        cam_from_ego, _ = _cam_from_ego(frame, request)
         data = bev.to_png(bev.bev_camera(img, np.asarray(frame.intrinsic, float), cam_from_ego))
         cache.parent.mkdir(parents=True, exist_ok=True)
         cache.write_bytes(data)

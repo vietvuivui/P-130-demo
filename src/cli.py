@@ -168,14 +168,9 @@ def cmd_label3d(args) -> None:
 
 def _min_score3d(model: str, arg: str, default: float) -> float:
     """--min-score số cụ thể, hoặc "auto": ngưỡng F1 cao nhất trong eval/results/det3d/<model>/metrics.json."""
-    from src.services.label3d import best_threshold
+    from src.services.label3d import auto_min_score
 
-    if arg != "auto":
-        return float(arg)
-    metrics = Path("eval/results/det3d") / model / "metrics.json"
-    if not metrics.exists():
-        return default
-    return best_threshold(json.loads(metrics.read_text(encoding="utf-8"))["pr"])
+    return float(arg) if arg != "auto" else auto_min_score(model, default)
 
 
 def cmd_evaluate3d(args) -> None:

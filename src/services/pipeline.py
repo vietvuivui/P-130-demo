@@ -36,12 +36,15 @@ class AutoLabelPipeline:
         self.config = config
         self.ensemble = DetectorEnsemble(config, store.root / "cache" / "detections", detectors)
 
-    def run(self, scenes: list[str] | None = None, limit: int | None = None, overwrite: bool = False) -> list[str]:
+    def run(self, scenes: list[str] | None = None, limit: int | None = None, overwrite: bool = False,
+            progress=None) -> list[str]:  # fmt: skip
         keyframes = self.data.keyframes(scenes)[:limit]
         done = []
         for n, (scene, index, token) in enumerate(keyframes, start=1):
             t0 = time.perf_counter()
             record = self.process(scene, index, token, overwrite=overwrite)
+            if progress:
+                progress(n, len(keyframes))
             if record is None:
                 continue
             done.append(record.frame_id)

@@ -194,7 +194,7 @@ class VideoRecord(BaseModel):
 
     video_id: str
     name: str
-    source: Literal["upload"] = "upload"
+    source: Literal["upload", "images"] = "upload"  # images: bộ ảnh rời (không lan truyền giữa ảnh)
     status: Literal["processing", "ready", "error"] = "processing"
     progress: float = 0.0
     message: str | None = None
@@ -216,7 +216,7 @@ class VideoFrame(FrameSummary):
 class VideoSummary(BaseModel):
     video_id: str
     name: str
-    source: Literal["nuscenes", "upload"]
+    source: Literal["nuscenes", "upload", "images"]
     status: Literal["processing", "ready", "error"] = "ready"
     progress: float = 1.0
     message: str | None = None

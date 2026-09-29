@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AutoLabel 3D — Dự án</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="styles.css?v=3d6">
+</head>
+<body class="projects-page">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">AL</span>
+      <div>
+        <div class="brand-title">AutoLabel 3D</div>
+        <div class="brand-sub">Tự động gán nhãn ảnh, video và LiDAR · người chỉ duyệt phần khó</div>
+      </div>
+    </div>
+    <nav class="tabs"><span class="tab active">Dự án</span><a class="tab" href="/ui/" title="Workspace mặc định cấu hình trong .env (nuScenes của nhóm)">Workspace nhóm</a></nav>
+  </header>
+
+  <main class="pj-main">
+    <section class="pj-new card">
+      <h2>Dự án mới</h2>
+      <form id="pj-form">
+        <label class="pj-field">Tên dự án
+          <input id="pj-name" type="text" maxlength="60" placeholder="vd. Dashcam Hà Nội tháng 9">
+        </label>
+        <div id="pj-drop" class="pj-drop" tabindex="0">
+          <input id="pj-files" type="file" multiple hidden
+                 accept=".zip,.tar,.tgz,.gz,.mp4,.mov,.avi,.mkv,.webm,.jpg,.jpeg,.png,.bmp">
+          <div class="pj-drop-main">Kéo thả file vào đây hoặc <button type="button" id="pj-pick" class="linklike">chọn file</button></div>
+          <div class="muted" id="pj-picked">Một video, nhiều ảnh, hoặc một file .zip</div>
+        </div>
+        <div class="pj-row">
+          <label class="pj-field">Loại dữ liệu
+            <select id="pj-kind">
+              <option value="auto">Tự nhận dạng</option>
+              <option value="video">Video (2D)</option>
+              <option value="images">Ảnh (2D)</option>
+              <option value="nuscenes">nuScenes (2D + 3D)</option>
+              <option value="kitti">KITTI (2D + 3D)</option>
+              <option value="lidar_cam">LiDAR + camera (2D + 3D)</option>
+            </select>
+          </label>
+          <label class="pj-field">Giới hạn frame
+            <input id="pj-max" type="number" min="1" placeholder="tất cả">
+          </label>
+        </div>
+        <label class="toggle" title="Bỏ chọn: mỗi ảnh được gán nhãn riêng"><input type="checkbox" id="pj-seq"> Ảnh là các frame liên tiếp của video (~10 fps): máy gán nhãn 1/5 số ảnh, phần còn lại lan truyền</label>
+        <label class="toggle"><input type="checkbox" id="pj-tta"> 3D chính xác hơn (lật trục khi suy luận, chậm ~4 lần)</label>
+        <div class="pj-upload hidden" id="pj-upload">
+          <div class="progress"><div id="pj-upload-bar" class="m3-progress-bar"></div></div>
+          <span id="pj-upload-text" class="muted"></span>
+        </div>
+        <button id="pj-submit" class="btn btn-primary wide" type="submit">Tạo dự án và xử lý</button>
+      </form>
+      <details class="pj-help">
+        <summary>Dữ liệu được nhận</summary>
+        <ul>
+          <li><b>Video</b> mp4/mov/avi/mkv/webm: cắt 10 fps, gán nhãn 2 fps, lan truyền nhãn theo video.</li>
+          <li><b>Ảnh</b> jpg/png (chọn nhiều file hoặc nén .zip): mặc định mỗi ảnh gán nhãn riêng; chọn "frame liên tiếp" nếu ảnh được cắt từ video.</li>
+          <li><b>nuScenes</b>: .zip gồm <code>v1.0-*/</code> (bảng json), <code>samples/</code>, <code>sweeps/</code>.</li>
+          <li><b>KITTI</b>: .zip object (<code>velodyne/ image_2/ calib/</code>) hoặc tracking (<code>velodyne/0000/ image_02/0000/ calib/0000.txt</code>, <code>oxts/</code> tuỳ chọn).</li>
+          <li><b>LiDAR + camera</b>: .zip gồm <code>calib.json</code>, <code>lidar/000000.bin|.pcd</code>, mỗi camera một thư mục ảnh cùng tên frame, <code>poses.json</code> tuỳ chọn. Xem mẫu ở README.</li>
+        </ul>
+        <p class="muted">Dữ liệu có LiDAR được gán cả nhãn 2D (camera trước) và 3D (ensemble 4 mô hình LiDAR + tinh chỉnh theo track), rồi xuất ra định dạng nuScenes.</p>
+      </details>
+    </section>
+
+    <section class="pj-list">
+      <div class="panel-head"><h2>Dự án</h2><span class="muted" id="pj-count"></span></div>
+      <div id="pj-items"></div>
+      <p class="muted pj-empty hidden" id="pj-empty">Chưa có dự án nào. Tải dữ liệu lên ở khung bên trái để bắt đầu.</p>
+    </section>
+  </main>
+  <div id="toast" class="toast hidden" role="status"></div>
+  <script src="projects.js?v=3d6"></script>
+</body>
+</html>

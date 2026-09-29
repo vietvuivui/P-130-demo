@@ -30,6 +30,54 @@ Quy tắc:
 
 ---
 
+## 2026-09-29 (3) · Kiên · nhánh `kien`
+
+**Làm gì:**
+
+- **Web cho end-user (trang Dự án, mặc định khi mở `/`):**
+  - tải lên video, ảnh, zip nuScenes, KITTI, hoặc "LiDAR rời + camera";
+  - xử lý nền, có tiến độ từng bước;
+  - duyệt 2D / 3D bằng UI review có sẵn, trên đúng dự án;
+  - xuất nuScenes (sample_annotation + instance nối theo track) hoặc COCO.
+- **3D:**
+  - ensemble 4 mô hình LiDAR + tinh chỉnh theo track (offboard);
+  - TTA lật trục;
+  - `run3d.py predict` cho dữ liệu chưa gán nhãn.
+  - Trên 3 scene dev: mAP 0.537 → 0.644, NDS 0.560 → 0.643 so với CenterPoint voxel.
+- **2D:** gói fine-tune YOLOE-26L trên nuImages (`tools2d/`), gồm converter chống rò rỉ, huấn luyện linear probe /
+  full, chấm dev / held-out, và hướng dẫn chuyển file giữa hai máy không chung LAN. Đổi prompt / thêm prompt gây nhiễu
+  / lật ảnh / 1600 px đã đo và không tăng mAP (`eval/results/det2d_variants.json`).
+
+**File chính:**
+
+- mới: `src/services/projects.py`, `src/services/ingest/` (KITTI, LiDAR+camera, ghi bảng nuScenes),
+  `src/services/export_nusc.py`, `src/api/projects_routes.py`, `src/web/projects.{html,js}`, `tools3d/refine3d.py`,
+  `tools2d/`;
+- sửa: `tools3d/run3d.py` (eval ensemble + dev/held-out, `--tta`, `predict`), `src/api/routes.py` (store / dataroot
+  theo dự án), `src/main.py`, `src/web/app.js` / `app3d.js` / `bev2d.js` (`?project=`),
+  `src/services/detectors/yoloe.py` (`tta_flip`, nhận trọng số đã fine-tune).
+
+**Ảnh hưởng tới người khác:**
+
+- `Object3D` thêm `track_id`.
+- `VideoRecord.source` thêm `"images"`.
+- `YoloeCfg` thêm `tta_flip` (mặc định tắt, khoá cache cũ giữ nguyên).
+- `.env` thêm `PROJECTS_DIR`, `MM3D_PYTHON`.
+- API mới: `/api/v1/projects...`, cùng mọi API review lặp lại dưới `/p/{id}/api/v1`.
+- `/` giờ mở trang Dự án. Workspace nhóm vẫn ở `/ui/`.
+
+**Cách kiểm tra:**
+
+- `pytest` (109 passed).
+- `uvicorn src.main:app` → tải lên vài ảnh jpg hoặc zip KITTI → Duyệt 2D → Xuất COCO.
+- Có `.venv-mm3d` thì tải zip nuScenes một scene để có thêm bước 3D (đã chạy thử end-to-end trên CPU).
+
+**Còn dở / việc tiếp:**
+
+- Chạy held-out 3D trên GPU (`run3d.py run -m pointpillars ssn centerpoint_pillar centerpoint_voxel --tta`, rồi
+  `eval`). Nếu `ensemble` thắng trên held-out thì giữ làm mặc định cho dự án.
+- Fine-tune YOLOE trên máy 3090 theo `tools2d/README.md`, rồi chấm held-out bằng `tools2d/eval2d.py`.
+
 ## 2026-09-29 (2) · Kiên · nhánh `feat/yoloe-review-sim`
 
 **Làm gì:** BEV cho chế độ Ảnh / Video (`V`): khung bên phải có ảnh camera chiếu xuống mặt đường (homography), điểm

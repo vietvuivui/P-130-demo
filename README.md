@@ -39,6 +39,72 @@ của video tải lên (cắt frame 10 fps, keyframe 2 fps, detect, QA Agent) b�
 màu, rồi mở UI trên workspace riêng `data/demo/workspace` (không đụng dữ liệu thật). Kịch bản trình diễn từng
 bước: [docs/demo-script.md](docs/demo-script.md). `python -m src.demo --reset` để sinh lại từ đầu.
 
+## Web cho end-user: Dự án (tải dữ liệu lên → gán nhãn → duyệt → xuất)
+
+```bash
+uvicorn src.main:app --port 8000      # mở http://localhost:8000 → trang Dự án
+```
+
+Mỗi dự án có một thư mục riêng `data/projects/<id>/`, gồm:
+
+- file tải lên;
+- dữ liệu đã đổi sang nuScenes;
+- workspace nhãn;
+- log.
+
+Các bước chạy nền, lần lượt, trên một GPU. Trang Dự án hiện tiến độ từng bước. Bấm **Duyệt 2D** / **Duyệt 3D** để mở
+UI review quen thuộc trên đúng dự án đó (`/ui/?project=<id>`), rồi **Xuất nuScenes** / **Xuất COCO** để tải về file zip.
+
+| Dữ liệu tải lên | Nhận dạng | Các bước |
+|---|---|---|
+| Video mp4 / mov / avi / mkv / webm | tự động | cắt 10 fps → gán nhãn 2D keyframe 2 fps + QA → lan truyền khi duyệt |
+| Ảnh jpg / png (nhiều file hoặc .zip) | tự động | gán nhãn 2D từng ảnh (hoặc coi là frame liên tiếp của video) |
+| nuScenes (.zip có `v1.0-*/`, `samples/`, `sweeps/`) | `v1.0-*/scene.json` | 2D (CAM_FRONT) + 3D |
+| KITTI object (`velodyne/ image_2/ calib/`) hoặc tracking (`velodyne/0000/ image_02/0000/ calib/0000.txt`, `oxts/`) | cấu trúc thư mục | đổi sang nuScenes (trục, calib, pose từ oxts) → 2D + 3D |
+| LiDAR rời + camera (định dạng dưới) | `calib.json` + `lidar/` | đổi sang nuScenes → 2D + 3D |
+
+Với dữ liệu có LiDAR, bước 3D có hai phần:
+
+- **Dự đoán:** gộp 4 mô hình LiDAR rồi tinh chỉnh theo track, chạy bằng `tools3d/run3d.py predict` trong môi trường
+  `.venv-mm3d`. Máy chưa cài môi trường này thì dự án chỉ có nhãn 2D và trang báo rõ lý do.
+- **Kiểm chứng:** kiểm tra từng box bằng camera để xếp mức rủi ro.
+
+Xuất nuScenes cho ra một zip gồm:
+
+- `sample_annotation.json` + `instance.json`: nhãn chuẩn nuScenes, box cùng `track_id` được nối thành một instance;
+- các bảng gốc, để mở được bằng nuscenes-devkit;
+- `labels3d_nusc.json`: định dạng kết quả detection;
+- log sửa của người duyệt.
+
+**Định dạng "LiDAR rời + camera"** (zip; tên frame giống nhau giữa `lidar/` và các thư mục camera):
+
+```
+calib.json
+lidar/000000.bin | .pcd | .npy     float32 x y z [cường độ]
+CAM_FRONT/000000.jpg               mỗi camera một thư mục, tên = tên camera trong calib.json
+poses.json       (tuỳ chọn)        {"000000": [[4x4 ego -> thế giới]], ...}   có thì gộp được nhiều lần quét + track
+timestamps.json  (tuỳ chọn)        {"000000": 12.30, ...} giây; không có thì dùng frame_rate
+```
+
+```json
+{
+  "frame_rate": 10,
+  "lidar": {"axes": "x_forward", "to_ego": [[1,0,0,0],[0,1,0,0],[0,0,1,1.8],[0,0,0,1]]},
+  "cameras": {
+    "CAM_FRONT": {"intrinsic": [[1266,0,816],[0,1266,491],[0,0,1]],
+                  "lidar_to_camera": [[0,-1,0,0],[0,0,-1,0],[1,0,0,0],[0,0,0,1]]}
+  }
+}
+```
+
+- `axes` là `x_forward` (x trước, y trái, như KITTI / Velodyne) hoặc `x_right` (như nuScenes).
+- `to_ego` mặc định là LiDAR cao 1.8 m, cùng hướng xe.
+- Camera đầu tiên dùng cho gán nhãn 2D.
+
+API: `GET/POST /api/v1/projects`, `GET/DELETE /api/v1/projects/{id}`, `POST /api/v1/projects/{id}/run`,
+`POST /api/v1/projects/{id}/export?format=nuscenes|coco`, `GET /api/v1/projects/{id}/exports/{file}`. Mọi API review
+ở bảng dưới cũng dùng được cho từng dự án với tiền tố `/p/{id}/api/v1/...`.
+
 ## Quick Start (nuScenes thật)
 
 Yêu cầu: Python 3.11, GPU NVIDIA (chạy được trên RTX 3060 6GB; CPU cũng chạy nhưng chậm),
@@ -143,6 +209,7 @@ sinh pre-label box 3D; QA Agent kiểm chứng từng box bằng 6 camera + LiDA
 ```bash
 # 1. Suy luận + chấm mAP/NDS các mô hình trên máy có GPU (môi trường riêng, xem tools3d/README.md)
 .venv-mm3d\Scripts\python tools3d\run3d.py all --dataroot ..\v1.0-trainval
+#    thêm --tta và "ensemble" (gộp 4 mô hình LiDAR + tinh chỉnh theo track): dev mAP 0.537 -> 0.644, xem tools3d/README.md
 # 2. Kiểm chứng bằng camera, tạo frame 3D cho UI (môi trường chính)
 python -m src.cli label3d --model centerpoint_voxel
 python -m src.cli evaluate3d --model centerpoint_voxel   # kết luận kiểm chứng so với nhãn gốc
@@ -228,8 +295,15 @@ src/
     verify3d.py label3d.py review3d.py eval3d.py   phần 3D: kiểm chứng bằng camera, tạo frame, duyệt, đánh giá
     bev.py                 ảnh BEV bằng homography mặt đường: 1 camera (chế độ Ảnh/Video), ghép 6 camera (3D)
   api/routes3d.py          REST API phần 3D
+    projects.py            dự án của end-user: hàng đợi nền, các bước ingest -> 2D -> 3D -> kiểm chứng, tiến độ
+    ingest/                nhận dữ liệu: giải nén an toàn, nhận dạng loại, KITTI / LiDAR+camera -> nuScenes (nusc_writer.py)
+    export_nusc.py         xuất box 3D đã duyệt thành bảng nuScenes (sample_annotation + instance theo track)
+  api/projects_routes.py   REST API dự án (tải lên, tiến độ, chạy lại, xuất, tải về)
+  web/projects.html        trang Dự án (mặc định khi mở /)
   cli.py                   python -m src.cli run | evaluate | ... | label3d | evaluate3d
 tools3d/                   run3d.py + setup.ps1: suy luận và so sánh mô hình 3D trên GPU (môi trường MMDetection3D riêng)
+  refine3d.py              gộp nhiều mô hình 3D + tinh chỉnh theo track (kích thước, vận tốc, hướng, nội suy)
+tools2d/                   fine-tune YOLOE-26L trên nuImages + chấm dev/held-out, hướng dẫn chuyển file giữa hai máy
   demo.py                  python -m src.demo: demo không cần GPU/nuScenes
 scripts/pack_nuscenes_subset.py   chọn ngẫu nhiên / đóng gói vài scene nuScenes (+ workspace) thành zip nhỏ
 scripts/bench_detectors.py        đo tốc độ detector
@@ -245,9 +319,10 @@ tests/                     pytest, dữ liệu tổng hợp (không cần GPU/da
 
 - nuScenes mini chỉ 10 scene → số liệu mang tính minh hoạ quy trình.
 - GT 2D là hộp bao của box 3D chiếu xuống, rộng hơn box sát vật thể → AP@0.7 thấp là bình thường.
-- Chưa có: ẩn danh mặt/biển số (EgoBlur), mask SAM2, VLM verifier, đăng nhập/phân vai.
+- Chưa có: ẩn danh mặt/biển số (EgoBlur), mask SAM2, VLM verifier, đăng nhập/phân vai (web dự án chạy một máy chủ, không đăng nhập).
 - Florence-2 không trả confidence nên box của nó nhận score cố định trong config.
 - 3D chỉ dùng trọng số có sẵn (chưa fine-tune); FCOS3D/PGD/BEVFusion cần GPU, BEVFusion còn phải biên dịch op CUDA.
+  Mô hình 3D học trên LiDAR 32 tia của nuScenes: với LiDAR khác (KITTI 64 tia, cường độ khác thang) độ chính xác giảm.
 - Lan truyền chỉ 2D trên một camera (CAM_FRONT hoặc video tải lên); `track_id` đã có sẵn để gắn box 3D vào sau.
 - Vật bị che hoàn toàn quá `max_coast_images` ảnh thì track dừng; khi hiện lại nó là object mới cần duyệt. Chạy lại `run --overwrite`
   trên frame "auto" sẽ xoá nhãn lan truyền của frame đó (dựng lại từ cache detection).

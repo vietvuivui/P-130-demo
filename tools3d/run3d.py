@@ -9,7 +9,12 @@ Từng bước:
     add-data --dataroot D --src S   chép file các scene val từ thư mục nuScenes khác (vd. v1.0-mini) vào D
     infos  --dataroot D        tạo file info cho các scene val đủ dữ liệu (không cần tạo info cho cả bộ trainval)
     run    --dataroot D -m ... suy luận từng mô hình -> tools3d/work/preds/<mô hình>/.../results_nusc.json
-    eval   --dataroot D        chấm mAP/NDS chuẩn nuScenes trên đúng các scene đã chạy, ghi eval/results/det3d/
+    eval   --dataroot D        chấm mAP/NDS chuẩn nuScenes trên đúng các scene đã chạy, ghi eval/results/det3d/;
+                               thêm "ensemble" (gộp 4 mô hình LiDAR + tinh chỉnh theo track, tools3d/refine3d.py),
+                               chấm riêng trên 3 scene dev (UI) và các scene held-out còn lại
+    predict --dataroot D --version V --out F   dữ liệu chưa gán nhãn (dự án của end-user): suy luận + ensemble,
+                               ghi dự đoán cho mọi keyframe ra F (không cần nhãn)
+    --tta                      thêm 3 lượt lật trục (x, y, cả hai) cho mỗi mô hình LiDAR rồi gộp (chậm hơn ~4 lần)
 
 Chỉ các scene thuộc tập val: mọi trọng số ở đây đều học trên tập train, chấm trên train sẽ bị ảo.
 Kết quả nhỏ để đưa vào UI (dự đoán của 3 scene demo) nằm ở eval/results/det3d/<mô hình>/ui_preds.json.
@@ -29,7 +34,8 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-WORK = ROOT / "tools3d" / "work"
+WORK = ROOT / "tools3d" / "work"  # đổi được bằng --work (mỗi dự án của end-user một thư mục)
+CKPTS = ROOT / "tools3d" / "work" / "ckpts"  # trọng số dùng chung
 OUT = ROOT / "eval" / "results" / "det3d"
 UI_SCENES = ["scene-0035", "scene-0097", "scene-0101"]  # 3 scene val chọn ngẫu nhiên (seed 20260928) cho UI 3D
 CAMERAS = ["CAM_FRONT", "CAM_FRONT_RIGHT", "CAM_FRONT_LEFT", "CAM_BACK", "CAM_BACK_LEFT", "CAM_BACK_RIGHT"]
@@ -103,6 +109,9 @@ MODELS = {
     ),
 }
 DEFAULT_MODELS = ["pointpillars", "ssn", "centerpoint_pillar", "centerpoint_voxel", "fcos3d", "pgd"]
+# ensemble: 4 mô hình LiDAR (thêm 2 mô hình camera không tăng trên bộ dev)
+ENSEMBLE_MODELS = ["centerpoint_voxel", "centerpoint_pillar", "ssn", "pointpillars"]
+FLIPS = {"": (False, False), "@fy": (True, False), "@fx": (False, True), "@fxy": (True, True)}
 
 
 def mim_dir() -> Path:
@@ -165,9 +174,14 @@ def cmd_check(args) -> None:
 
 
 def load_nusc(dataroot: Path, version: str):
-    from nuscenes.nuscenes import NuScenes
+    import nuscenes.nuscenes as nusc_mod
 
-    return NuScenes(version=version, dataroot=str(dataroot), verbose=True)
+    # Không dùng bản đồ; bỏ qua ảnh map để đọc được cả dữ liệu thiếu thư mục maps/ (dự án end-user, dữ liệu tự đổi)
+    orig, nusc_mod.MapMask = nusc_mod.MapMask, lambda *a, **k: None
+    try:
+        return nusc_mod.NuScenes(version=version, dataroot=str(dataroot), verbose=True)
+    finally:
+        nusc_mod.MapMask = orig
 
 
 def complete_val_scenes(nusc, dataroot: Path, max_sweeps: int = 10) -> list[str]:
@@ -256,7 +270,6 @@ def cmd_add_data(args) -> None:
 
 
 def cmd_infos(args) -> None:
-    import mmengine
 
     nusc = load_nusc(args.dataroot, args.version)
     ok = complete_val_scenes(nusc, args.dataroot)
@@ -272,12 +285,22 @@ def cmd_infos(args) -> None:
     if missing:
         raise SystemExit(f"Scene thiếu file hoặc không thuộc val: {', '.join(missing)}")
     tokens = {s["token"] for s in nusc.scene if s["name"] in scenes}
+    n = build_infos(nusc, tokens, args.version, args.dataroot, test=False, max_sweeps=args.max_sweeps)
+    meta = dict(dataroot=str(args.dataroot), version=args.version, scenes=scenes, n_samples=n)
+    (WORK / "infos" / "scenes.json").write_text(json.dumps(meta, indent=1))
+    print(f"Đã tạo info: {len(scenes)} scene, {n} keyframe -> {WORK / 'infos'}")
+
+
+def build_infos(nusc, tokens: set, version: str, dataroot: Path, test: bool, max_sweeps: int = 10) -> int:
+    """File info MMDet3D cho các scene `tokens`. test=True: không đọc nhãn (dữ liệu chưa gán nhãn)."""
+    import mmengine
+
     # _fill_trainval_infos duyệt nusc.sample: đưa cho nó một lớp bọc chỉ có keyframe của scene đã chọn. Không được gán
     # lại nusc.sample, vì nusc.get() tra theo chỉ số trong bảng đầy đủ và sẽ trả nhầm sample (lỗi "assert 1, 37").
     conv = load_mim_module("dataset_converters/nuscenes_converter.py")
     upd = load_mim_module("dataset_converters/update_infos_to_v2.py")
     subset = _SampleSubset(nusc, [s for s in nusc.sample if s["scene_token"] in tokens])
-    _, infos = conv._fill_trainval_infos(subset, set(), tokens, False, max_sweeps=10)
+    _, infos = conv._fill_trainval_infos(subset, set(), tokens, test, max_sweeps=max_sweeps)
     # mmdet3d tách tên file sweep theo os.sep: trên Windows phải chuẩn hoá "\\"
     for info in infos:
         info["lidar_path"] = osp.normpath(info["lidar_path"])
@@ -287,12 +310,10 @@ def cmd_infos(args) -> None:
             cam["data_path"] = osp.normpath(cam["data_path"])
     v1 = WORK / "infos" / "v1" / "nuscenes_infos_val.pkl"
     v1.parent.mkdir(parents=True, exist_ok=True)
-    mmengine.dump(dict(infos=infos, metadata=dict(version=args.version)), str(v1))
+    mmengine.dump(dict(infos=infos, metadata=dict(version=version)), str(v1))
     upd.NuScenes = lambda *a, **k: nusc  # bản gốc nạp lại bảng từ ./data/nuscenes cố định
     upd.update_nuscenes_infos(str(v1), str(WORK / "infos"))
-    meta = dict(dataroot=str(args.dataroot), version=args.version, scenes=scenes, n_samples=len(infos))
-    (WORK / "infos" / "scenes.json").write_text(json.dumps(meta, indent=1))
-    print(f"Đã tạo info: {len(scenes)} scene, {len(infos)} keyframe -> {WORK / 'infos'}")
+    return len(infos)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -303,7 +324,23 @@ def _set_eval(ev, ann: str, data_root: str, prefix: str):
     return ev
 
 
-def run_model(name: str, args) -> dict:
+def _flip_pipeline(pipeline: list, fy: bool, fx: bool) -> list:
+    """Bỏ MultiScaleFlipAug3D (chỉ 1 lượt) và lật cố định: fy = lật trục y ('horizontal'), fx = lật trục x."""
+    out = []
+    for t in pipeline:
+        if t["type"] != "MultiScaleFlipAug3D":
+            out.append(t)
+            continue
+        for inner in t["transforms"]:
+            if inner["type"] == "RandomFlip3D":
+                inner = dict(
+                    inner, sync_2d=False, flip_ratio_bev_horizontal=float(fy), flip_ratio_bev_vertical=float(fx)
+                )
+            out.append(inner)
+    return out
+
+
+def run_model(name: str, args, flip: str = "", write_out: bool = True) -> dict:
     import torch
     from mmengine.config import Config
     from mmengine.runner import Runner
@@ -317,11 +354,12 @@ def run_model(name: str, args) -> dict:
         cfg_path = repo / m["config"]
     else:
         cfg_path = mim_dir() / "configs" / m["config"]
-    ckpt = download(m["url"], WORK / "ckpts")
+    ckpt = download(m["url"], CKPTS)
     cfg = Config.fromfile(str(cfg_path))
     data_root = str(args.dataroot) + os.sep
     ann = str(WORK / "infos" / "nuscenes_infos_val.pkl")
-    prefix = str(WORK / "preds" / name)
+    tag = name + flip
+    prefix = str(WORK / "preds" / tag)
     dl = cfg.test_dataloader
     dl.num_workers = args.workers
     dl.persistent_workers = args.workers > 0
@@ -329,20 +367,38 @@ def run_model(name: str, args) -> dict:
     dl.dataset.ann_file = ann
     cfg.test_evaluator = _set_eval(cfg.test_evaluator, ann, data_root, prefix)
     cfg.val_dataloader = cfg.val_evaluator = cfg.val_cfg = None
+    fy, fx = FLIPS[flip]
+    if flip:
+        dl.dataset.pipeline = _flip_pipeline(dl.dataset.pipeline, fy, fx)
     cfg.load_from = str(ckpt) if ckpt else None  # None: trọng số ngẫu nhiên, chỉ dùng khi thử quy trình
-    cfg.work_dir = str(WORK / "runs" / name)
+    cfg.work_dir = str(WORK / "runs" / tag)
     cfg.launcher = "none"
     if torch.cuda.is_available():
         torch.cuda.reset_peak_memory_stats()
     t0 = time.time()
-    Runner.from_cfg(cfg).test()
+    runner = Runner.from_cfg(cfg)
+    if flip:  # lật box dự đoán về lại hệ gốc trước khi ghi kết quả (phép lật tự nghịch đảo)
+        test_step = runner.model.test_step
+
+        def unflip_test_step(data):
+            outs = test_step(data)
+            for o in outs:
+                boxes = o.pred_instances_3d.bboxes_3d
+                if fx:
+                    boxes.flip("vertical")
+                if fy:
+                    boxes.flip("horizontal")
+            return outs
+
+        runner.model.test_step = unflip_test_step
+    runner.test()
     dt = time.time() - t0
     files = sorted(Path(prefix).rglob("results_nusc.json"), key=lambda p: p.stat().st_mtime)
     if not files:
         raise RuntimeError(f"{name}: không thấy results_nusc.json trong {prefix}")
     n = json.loads((WORK / "infos" / "scenes.json").read_text())["n_samples"]
     info = dict(
-        model=name,
+        model=tag,
         label=m["label"],
         sensor=m["sensor"],
         paper=m["paper"],
@@ -352,9 +408,12 @@ def run_model(name: str, args) -> dict:
         s_per_sample=round(dt / max(n, 1), 3),
         peak_gpu_gb=round(torch.cuda.max_memory_allocated() / 2**30, 2) if torch.cuda.is_available() else None,
     )
-    (OUT / name).mkdir(parents=True, exist_ok=True)
-    (OUT / name / "run.json").write_text(json.dumps(info, indent=1, ensure_ascii=False))
-    print(f"{name}: {dt:.0f}s ({info['s_per_sample']} s/keyframe, GPU {info['peak_gpu_gb']} GB)", flush=True)
+    (WORK / "runs_meta").mkdir(parents=True, exist_ok=True)
+    (WORK / "runs_meta" / f"{tag}.json").write_text(json.dumps(info, indent=1, ensure_ascii=False))
+    if write_out and not flip:
+        (OUT / name).mkdir(parents=True, exist_ok=True)
+        (OUT / name / "run.json").write_text(json.dumps(info, indent=1, ensure_ascii=False))
+    print(f"{tag}: {dt:.0f}s ({info['s_per_sample']} s/keyframe, GPU {info['peak_gpu_gb']} GB)", flush=True)
     return info
 
 
@@ -365,6 +424,9 @@ def cmd_run(args) -> None:
     for name in args.models:
         try:
             run_model(name, args)
+            if args.tta and MODELS[name]["sensor"] == "LiDAR":
+                for flip in list(FLIPS)[1:]:
+                    run_model(name, args, flip)
         except Exception as e:  # một mô hình lỗi (thiếu op, hết VRAM...) không chặn các mô hình khác
             failed[name] = f"{type(e).__name__}: {e}"
             print(f"!! {name} lỗi: {failed[name]}", flush=True)
@@ -443,7 +505,49 @@ def compact_box(b: dict) -> dict:
     )  # fmt: skip
 
 
+def _load_results(path) -> dict:
+    return json.loads(Path(path).read_text())["results"]
+
+
+def _eval_dict(nusc, results: dict, name: str, tokens=None):
+    """Chấm một dict kết quả (sample_token -> box), tuỳ chọn chỉ trên tập sample `tokens`."""
+    import refine3d
+
+    res = refine3d.cap_per_sample({t: b for t, b in results.items() if tokens is None or t in tokens})
+    out_dir = WORK / "eval" / name
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / "results.json"
+    meta = dict(use_camera=False, use_lidar=True, use_radar=False, use_map=False, use_external=False)
+    path.write_text(json.dumps(dict(meta=meta, results=res)))
+    return subset_eval(nusc, str(path), str(out_dir))
+
+
+def _brief(metrics: dict) -> dict:
+    return dict(mAP=round(metrics["mean_ap"], 4), NDS=round(metrics["nd_score"], 4))
+
+
+def _derived_models(args, base: dict[str, dict]) -> dict[str, dict]:
+    """TTA (gộp 4 lượt lật) cho từng mô hình LiDAR có đủ kết quả, ensemble 4 mô hình LiDAR + tinh chỉnh theo track."""
+    import refine3d
+
+    out = {}
+    lidar = {}
+    for name in ENSEMBLE_MODELS:
+        if name not in base:
+            continue
+        variants = [WORK / "runs_meta" / f"{name}{f}.json" for f in list(FLIPS)[1:]]
+        if all(v.is_file() for v in variants):
+            runs = [base[name]] + [_load_results(json.loads(v.read_text())["results"]) for v in variants]
+            out[f"{name}_tta"] = refine3d.fuse({str(i): r for i, r in enumerate(runs)}, min_score=0.01)
+            lidar[name] = out[f"{name}_tta"]
+        else:
+            lidar[name] = base[name]
+    return out, lidar
+
+
 def cmd_eval(args) -> None:
+    import refine3d
+
     nusc = load_nusc(args.dataroot, args.version)
     ui_tokens = {}
     for s in nusc.scene:
@@ -452,7 +556,35 @@ def cmd_eval(args) -> None:
             while tok:
                 ui_tokens[tok] = s["name"]
                 tok = nusc.get("sample", tok)["next"]
-    summary = {}
+    summary, base = {}, {}
+    all_tokens = None
+
+    def record(name, results, run):
+        nonlocal all_tokens
+        all_tokens = all_tokens or set(results)
+        ev, metrics = _eval_dict(nusc, results, name)
+        pr = pr_by_threshold(ev)
+        dev = set(ui_tokens) & set(results)
+        held = set(results) - set(ui_tokens)
+        splits = {}
+        if dev:
+            splits["dev"] = _brief(_eval_dict(nusc, results, name + "_dev", dev)[1])
+        if held:
+            splits["heldout"] = _brief(_eval_dict(nusc, results, name + "_heldout", held)[1])
+        (OUT / name).mkdir(parents=True, exist_ok=True)
+        (OUT / name / "metrics.json").write_text(json.dumps(dict(metrics=metrics, pr=pr, splits=splits), indent=1))
+        # dự đoán của 3 scene demo, bỏ box điểm rất thấp: đủ nhỏ để đưa vào repo và UI
+        ui = {
+            t: [compact_box(b) for b in results[t] if b["detection_score"] >= 0.05] for t in results if t in ui_tokens
+        }
+        (OUT / name / "ui_preds.json").write_text(json.dumps(dict(scenes=UI_SCENES, results=ui), separators=(",", ":")))
+        summary[name] = dict(
+            run, mAP=metrics["mean_ap"], NDS=metrics["nd_score"], ap=metrics["mean_dist_aps"],
+            tp_errors=metrics["tp_errors"], pr=pr, splits=splits,
+        )  # fmt: skip
+        extra = "  ".join(f"{k} {v['mAP']:.3f}/{v['NDS']:.3f}" for k, v in splits.items())
+        print(f"{name:26s} mAP {metrics['mean_ap']:.3f}  NDS {metrics['nd_score']:.3f}   ({extra})", flush=True)
+
     for name in args.models:
         run_file = OUT / name / "run.json"
         if not run_file.is_file():
@@ -461,30 +593,67 @@ def cmd_eval(args) -> None:
         if "error" in run:
             summary[name] = run
             continue
-        ev, metrics = subset_eval(nusc, run["results"], str(WORK / "eval" / name))
-        pr = pr_by_threshold(ev)
-        (OUT / name / "metrics.json").write_text(json.dumps(dict(metrics=metrics, pr=pr), indent=1))
-        # dự đoán của 3 scene demo, bỏ box điểm rất thấp: đủ nhỏ để đưa vào repo và UI
-        res = json.loads(Path(run["results"]).read_text())["results"]
-        ui = {t: [compact_box(b) for b in res[t] if b["detection_score"] >= 0.05] for t in res if t in ui_tokens}
-        (OUT / name / "ui_preds.json").write_text(json.dumps(dict(scenes=UI_SCENES, results=ui), separators=(",", ":")))
-        summary[name] = dict(
-            run,
-            mAP=metrics["mean_ap"],
-            NDS=metrics["nd_score"],
-            ap=metrics["mean_dist_aps"],
-            tp_errors=metrics["tp_errors"],
-            pr=pr,
-        )
-        print(f"{name:20s} mAP {metrics['mean_ap']:.3f}  NDS {metrics['nd_score']:.3f}", flush=True)
+        base[name] = _load_results(run["results"])
+        record(name, base[name], run)
+
+    derived, lidar = _derived_models(args, base)
+    for name, res in derived.items():
+        record(name, res, dict(model=name, label=f"{MODELS[name[:-4]]['label']} + TTA lật", sensor="LiDAR"))
+    if "centerpoint_voxel" in lidar:
+        scenes = refine3d.scenes_from_nusc(nusc, list(lidar["centerpoint_voxel"]))
+        cp = lidar["centerpoint_voxel"]
+        record("centerpoint_voxel_track", refine3d.refine_tracks(cp, scenes),
+               dict(model="centerpoint_voxel_track", label="CenterPoint voxel + track", sensor="LiDAR"))  # fmt: skip
+        if len(lidar) >= 2:
+            fused = refine3d.fuse(lidar, min_score=0.01)
+            label = "Ensemble " + " + ".join(lidar) + " + track"
+            record(
+                "ensemble", refine3d.refine_tracks(fused, scenes), dict(model="ensemble", label=label, sensor="LiDAR")
+            )
     meta = json.loads((WORK / "infos" / "scenes.json").read_text())
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "summary.json").write_text(
         json.dumps(
-            dict(scenes=meta["scenes"], n_samples=meta["n_samples"], models=summary), indent=1, ensure_ascii=False
+            dict(scenes=meta["scenes"], n_samples=meta["n_samples"], dev_scenes=UI_SCENES, models=summary),
+            indent=1, ensure_ascii=False,
         )
-    )
+    )  # fmt: skip
     print(f"Đã ghi {OUT / 'summary.json'}")
+
+
+def cmd_predict(args) -> None:
+    """Dữ liệu chưa gán nhãn: suy luận các mô hình LiDAR, gộp + tinh chỉnh theo track, ghi dự đoán mọi keyframe."""
+    import refine3d
+
+    if not args.out:
+        raise SystemExit("predict cần --out")
+    nusc = load_nusc(args.dataroot, args.version)
+    names = [s["name"] for s in nusc.scene if not args.scenes or s["name"] in args.scenes]
+    tokens = {s["token"] for s in nusc.scene if s["name"] in names}
+    n = build_infos(nusc, tokens, args.version, args.dataroot, test=True, max_sweeps=args.max_sweeps)
+    (WORK / "infos" / "scenes.json").write_text(json.dumps(dict(scenes=names, n_samples=n), indent=1))
+    models = [m for m in args.models if MODELS[m]["sensor"] == "LiDAR"] or ENSEMBLE_MODELS
+    results = {}
+    for name in models:
+        variants = []
+        for flip in list(FLIPS) if args.tta else [""]:
+            info = run_model(name, args, flip, write_out=False)
+            variants.append(_load_results(info["results"]))
+        results[name] = (
+            variants[0]
+            if len(variants) == 1
+            else refine3d.fuse({str(i): r for i, r in enumerate(variants)}, min_score=0.01)
+        )
+    fused = results[models[0]] if len(models) == 1 else refine3d.fuse(results, min_score=0.01)
+    scenes = refine3d.scenes_from_nusc(nusc, [s["token"] for s in nusc.sample if s["scene_token"] in tokens])
+    final = refine3d.cap_per_sample(refine3d.refine_tracks(fused, scenes))
+    final = {t: [compact_box(b) for b in bs if b["detection_score"] >= 0.05] for t, bs in final.items()}
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
+        json.dumps(dict(scenes=names, models=models, tta=bool(args.tta), results=final), separators=(",", ":"))
+    )
+    print(f"Đã ghi dự đoán {len(final)} keyframe ({', '.join(models)}) -> {out}")
 
 
 def main() -> None:
@@ -492,7 +661,7 @@ def main() -> None:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("cmd", choices=["check", "add-data", "infos", "run", "eval", "all"])
+    ap.add_argument("cmd", choices=["check", "add-data", "infos", "run", "eval", "all", "predict"])
     ap.add_argument("--dataroot", type=Path, help="Thư mục nuScenes (chứa v1.0-trainval/, samples/, sweeps/)")
     ap.add_argument("--version", default="v1.0-trainval")
     ap.add_argument("--src", type=Path, help="add-data: thư mục nuScenes nguồn (vd. ..\\v1.0-mini)")
@@ -503,6 +672,12 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=20260928)
     ap.add_argument("--workers", type=int, default=0, help="num_workers của dataloader (Windows: để 0)")
     ap.add_argument("--mmdet3d-repo", help="Repo mmdetection3d đã build op, chỉ cần cho bevfusion")
+    ap.add_argument("--tta", action="store_true", help="Thêm 3 lượt lật trục cho mô hình LiDAR rồi gộp (~4x thời gian)")
+    ap.add_argument("--work", type=Path, help="Thư mục làm việc (mặc định tools3d/work)")
+    ap.add_argument("--out", type=Path, help="predict: file dự đoán đầu ra")
+    ap.add_argument(
+        "--max-sweeps", type=int, default=10, help="Số lần quét LiDAR trước keyframe gộp vào (mô hình học với 10)"
+    )
     args = ap.parse_args()
     if args.cmd != "check" and not args.dataroot:
         ap.error("cần --dataroot")
@@ -510,6 +685,10 @@ def main() -> None:
         ap.error("add-data cần --src")
     if args.dataroot:
         args.dataroot = args.dataroot.resolve()
+    if args.work:
+        global WORK
+        WORK = args.work.resolve()
+    sys.path.insert(0, str(Path(__file__).resolve().parent))  # refine3d.py
     steps = ["check", "infos", "run", "eval"] if args.cmd == "all" else [args.cmd]
     for step in steps:
         print(f"\n===== {step} =====", flush=True)

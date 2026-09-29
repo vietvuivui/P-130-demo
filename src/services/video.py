@@ -146,6 +146,61 @@ def import_video(
     return video
 
 
+def import_images(
+    store: WorkspaceStore, config: AutoLabelConfig, files: list[Path], name: str, detectors: list[str],
+    sequential: bool = False,
+) -> VideoRecord:  # fmt: skip
+    """Bộ ảnh -> record giống video. sequential=True: ảnh là chuỗi liên tục (như frame video 10 fps, keyframe 2 fps, lan
+    truyền được); False: ảnh rời, mỗi ảnh một keyframe, không dùng ảnh lân cận cho QA temporal và không lan truyền."""
+    import cv2
+    import numpy as np
+
+    if not files:
+        raise VideoError("NO_IMAGES", "Không có ảnh nào (jpg, png)")
+    cfg = config.video
+    video = VideoRecord(
+        video_id=new_video_id(name), name=Path(name).name, source="upload" if sequential else "images",
+        track_fps=cfg.track_fps, label_fps=cfg.label_fps if sequential else cfg.track_fps, detectors=detectors,
+        created_at=now_iso(), message="Đang chuẩn bị ảnh",
+    )  # fmt: skip
+    key_every = max(1, round(cfg.track_fps / cfg.label_fps)) if sequential else 1
+    step_s = 1 / cfg.track_fps if sequential else 10.0  # ảnh rời cách nhau 10 s: QA temporal không lấy ảnh bên cạnh
+    out_dir = store.video_dir(video.video_id) / "frames"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        for n, f in enumerate(sorted(files, key=lambda p: p.name)):
+            img = cv2.imdecode(np.fromfile(str(f), np.uint8), cv2.IMREAD_COLOR)
+            if img is None:
+                continue
+            if not video.width:
+                video.height, video.width = img.shape[:2]
+            elif img.shape[:2] != (video.height, video.width):  # khác cỡ: co giữ tỉ lệ, viền đen
+                scale = min(video.width / img.shape[1], video.height / img.shape[0])
+                small = cv2.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))
+                canvas = np.zeros((video.height, video.width, 3), np.uint8)
+                y0, x0 = (video.height - small.shape[0]) // 2, (video.width - small.shape[1]) // 2
+                canvas[y0 : y0 + small.shape[0], x0 : x0 + small.shape[1]] = small
+                img = canvas
+            k = len(video.timeline)
+            fname = f"{k:05d}.jpg"
+            write_jpeg(out_dir / fname, img)
+            video.timeline.append(TimelineEntry(
+                sd_token=f"{video.video_id}-{k:05d}", timestamp=int(round(k * step_s * 1e6)),
+                sample_token=f"{video.video_id}-k{k // key_every:03d}" if k % key_every == 0 else None,
+                path=f"{WORKSPACE_PREFIX}videos/{video.video_id}/frames/{fname}",
+            ))  # fmt: skip
+    except Exception:
+        shutil.rmtree(store.video_dir(video.video_id), ignore_errors=True)
+        raise
+    if not video.timeline:
+        shutil.rmtree(store.video_dir(video.video_id), ignore_errors=True)
+        raise VideoError("NO_IMAGES", "Không đọc được ảnh nào")
+    video.duration_s = round(video.timeline[-1].timestamp / 1e6, 2)
+    video.message = "Đang auto-label"
+    store.save_video(video)
+    return video
+
+
 def _image(entry: TimelineEntry, video: VideoRecord) -> ImageInfo:
     return ImageInfo(
         sd_token=entry.sd_token, path=entry.path, timestamp=entry.timestamp, width=video.width, height=video.height
@@ -232,7 +287,7 @@ def video_summary(video_id: str, frames: list[FrameRecord], record: VideoRecord 
     return VideoSummary(
         video_id=video_id,
         name=record.name if record else video_id,
-        source="upload" if record else "nuscenes",
+        source=record.source if record else "nuscenes",
         status=record.status if record else "ready",
         progress=record.progress if record else 1.0,
         message=record.message if record else None,

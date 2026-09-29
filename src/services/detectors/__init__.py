@@ -42,6 +42,10 @@ def build_detector(name: str, config: AutoLabelConfig) -> Detector:
     raise ValueError(f"Detector không hỗ trợ: {name}")
 
 
+_SHARED: dict[tuple[str, str], Detector] = {}
+_SHARED_LOCK = threading.Lock()
+
+
 class DetectorEnsemble:
     """Chạy các detector trên một lô ảnh, cache kết quả thô theo (model, sample_data token)."""
 
@@ -53,15 +57,23 @@ class DetectorEnsemble:
         self._lock = threading.Lock()
 
     def _get(self, name: str) -> Detector:
-        with self._lock:  # hai request cùng lúc không nạp model hai lần
+        # Model dùng chung giữa các ensemble có cùng cấu hình (mỗi dự án một workspace/cache, nhưng chỉ nạp model một
+        # lần vào GPU)
+        with _SHARED_LOCK:
             if name not in self._detectors:
-                self._detectors[name] = build_detector(name, self.config)
+                key = (name, self._cache_file(name, "_").parent.name)
+                if key not in _SHARED:
+                    _SHARED[key] = build_detector(name, self.config)
+                self._detectors[name] = _SHARED[key]
             return self._detectors[name]
 
     def _cache_file(self, name: str, sd_token: str) -> Path:
         # Khoá theo tên model + cấu hình liên quan, đổi prompt/weights/ngưỡng thì cache tự vô hiệu
         det_cfg = getattr(self.config.detection, name)
-        raw = json.dumps([det_cfg.model_dump(), self.config.prompt_to_class(), self.config.detection.score_threshold])
+        dump = det_cfg.model_dump()
+        if not dump.get("tta_flip"):  # tuỳ chọn mới, tắt thì giữ khoá cũ để cache đã có vẫn dùng được
+            dump.pop("tta_flip", None)
+        raw = json.dumps([dump, self.config.prompt_to_class(), self.config.detection.score_threshold])
         key = f"{name}-{hashlib.sha1(raw.encode()).hexdigest()[:10]}"
         return self.cache_dir / key / f"{sd_token}.json"
 

@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     )
 
     # App
-    app_name: str = "AutoLabel 2D"
+    app_name: str = "AutoLabel 3D"
     app_env: Literal["development", "production", "test"] = "development"
     app_port: int = Field(default=8000, ge=1, le=65535)
     app_host: str = "0.0.0.0"
@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     workspace_dir: str = "./data/workspace"
     autolabel_config: str = "./configs/autolabel.yaml"
     reviewer_name: str = "annotator"
+
+    # Dự án của end-user (trang /ui/projects.html): mỗi dự án một thư mục con
+    projects_dir: str = "./data/projects"
+    # Python của môi trường MMDetection3D (tools3d/setup.ps1); để trống = tự tìm .venv-mm3d trong repo
+    mm3d_python: str = ""
 
 
 @lru_cache

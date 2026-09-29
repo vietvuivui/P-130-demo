@@ -131,7 +131,8 @@ def build_frame(
         box = box_to_lidar(b, l_from_g)
         if math.hypot(box.center[0], box.center[1]) > CLASS_RANGE[label]:
             continue
-        objects.append(Object3D(object_id=str(len(objects) + 1), label=label, score=round(score, 4), box=box))
+        objects.append(Object3D(object_id=str(len(objects) + 1), label=label, score=round(score, 4), box=box,
+                                track_id=b.get("tracking_id")))  # fmt: skip
 
     cams, inputs = {}, []
     images = [(kf[c], data.dataroot / data.sample_data[kf[c]]["filename"]) for c in CAMERAS if c in kf]
@@ -181,6 +182,16 @@ def best_threshold(pr: dict) -> float:
     return float(pr["thresholds"][int(np.argmax(f1))])
 
 
+def auto_min_score(model: str, default: float, det3d_dir: Path = Path("eval/results/det3d")) -> float:
+    """Ngưỡng F1 cao nhất của mô hình trong eval/results/det3d/<model>/metrics.json (tools3d/run3d.py eval), nếu có."""
+    import json
+
+    metrics = det3d_dir / model / "metrics.json"
+    if not metrics.exists():
+        return default
+    return best_threshold(json.loads(metrics.read_text(encoding="utf-8"))["pr"])
+
+
 def save_points(store: WorkspaceStore, frame_id: str, pts: np.ndarray, max_points: int) -> None:
     """Point cloud keyframe (chỉ lần quét chính, không gộp sweep) rút gọn, float32 x y z intensity."""
     if len(pts) > max_points:
@@ -199,6 +210,7 @@ def run_label3d(
     scenes: list[str] | None = None,
     overwrite: bool = False,
     min_score: float | None = None,
+    progress=None,
 ) -> int:
     """Tạo frame 3D cho mọi keyframe có dự đoán. Frame đã có (người có thể đã duyệt) giữ nguyên trừ khi overwrite."""
     ensemble = DetectorEnsemble(verify_config(config), store.root / "cache" / "detections")
@@ -206,6 +218,8 @@ def run_label3d(
     keys = [k for k in data.keyframes(scenes) if k[2] in predictions]
     for n, (scene, index, token) in enumerate(keys):
         fid = f"{scene}_{index:03d}"
+        if progress:
+            progress(n + 1, len(keys))
         if not overwrite and store.load_frame3d(model, fid) is not None:
             continue
         record, pts, gt = build_frame(data, ensemble, config, model, scene, index, token, predictions[token], min_score)

@@ -44,11 +44,34 @@ Chế độ 🧊 3D (`src/web/app3d.js`, ES module, three.js vendored ở `src/w
 theo mô hình, khung 3D / BEV, ảnh camera có box chiếu xuống, card từng box với kết luận kiểm chứng. `app.js` phát sự kiện
 `autolabel:mode` / `autolabel:tab` để hai phần không phụ thuộc nhau.
 
+## Dự án của end-user (web)
+
+1. `POST /api/v1/projects` (multipart) lưu file vào `data/projects/<id>/upload/`, xếp dự án vào hàng đợi.
+2. `ProjectManager` (`src/services/projects.py`) chạy một luồng nền, xử lý từng dự án, từng bước, dưới cùng khoá
+   GPU với video tải lên (`video._PROCESS_LOCK`). Tiến độ ghi vào `project.json`, UI hỏi lại mỗi 2 s. Các bước:
+   - **ingest**: giải nén an toàn (chặn zip-slip), nhận dạng loại (`ingest.detect_kind`). Video / ảnh thành record
+     video như mp4 tải lên. KITTI và "LiDAR + camera" đổi sang bảng nuScenes (`ingest/nusc_writer.py`): LiDAR lưu
+     theo trục nuScenes, cường độ 0–255, calib camera, ego pose (oxts / `poses.json`), sweep = frame trước.
+     Zip nuScenes giữ nguyên.
+   - **label2d**: pipeline 2D như nuScenes (CAM_FRONT) hoặc video.
+   - **predict3d**: tiến trình con `.venv-mm3d/python tools3d/run3d.py predict`, tiến độ đọc từ log mmengine.
+     Không có môi trường 3D thì bỏ qua và ghi lý do.
+   - **verify3d**: `run_label3d` với ngưỡng điểm tự chọn theo F1 của mô hình (`auto_min_score`).
+3. Mỗi dự án có `WorkspaceStore` và dataroot riêng. Router review 2D / 3D được gắn thêm lần nữa ở
+   `/p/{project_id}/api/v1`; dependency `get_store` / `data_source` đọc `project_id` trong đường dẫn. Nhờ vậy UI review
+   dùng nguyên, chỉ đổi tiền tố API theo `?project=`.
+4. Xuất nuScenes (`export_nusc.py`): box đã duyệt thành `sample_annotation` (đổi sang hệ toàn cục, đếm điểm LiDAR);
+   box cùng `track_id` nối thành một `instance` (`first/last_annotation_token`, `prev/next`). Kèm bảng gốc của dataset.
+
 ## Phần 3D
 
 1. `tools3d/run3d.py` (môi trường `.venv-mm3d`, GPU): tìm scene val có đủ file, tạo info MMDet3D, suy luận các mô hình
    có trọng số nuScenes, chấm `DetectionEval` chỉ trên các sample đã chạy → `eval/results/det3d/summary.json`,
    `<model>/ui_preds.json` (3 scene demo).
+   `eval` thêm `ensemble`: gộp 4 mô hình LiDAR theo khoảng cách tâm từng lớp (`refine3d.fuse`), rồi tinh chỉnh theo
+   track (`refine3d.refine_tracks`: kích thước trung vị, vận tốc sai phân có chốt an toàn, sửa hướng lật, nội suy
+   keyframe sót). `--tta` chạy thêm 3 lượt lật trục (thay `MultiScaleFlipAug3D` bằng `RandomFlip3D` cố định, lật ngược
+   kết quả trong `test_step`). Số liệu tách dev (3 scene demo) / held-out.
 2. `python -m src.cli label3d --model M` (môi trường chính): mỗi keyframe gộp LiDAR keyframe + 4 sweep (bù ego-motion),
    đổi box sang hệ LiDAR, chạy YOLOE trên 6 camera (dùng lại cache detection), `verify3d.verify_boxes` kết luận từng box.
    Ghi `frames3d/<model>/<frame>.json`, `lidar3d/<frame>.bin` (float32 xyzi, tối đa 60k điểm), `gt3d/`.
@@ -133,10 +156,14 @@ lan truyền, so với GT cùng `instance_token` ở các keyframe sau (tỉ l�
 | Kiểm chứng 3D | Chiếu box xuống 6 camera + detector 2D + điểm LiDAR, không dùng GT | Port bộ `verify_objects.py` của nhóm 3D; tách được "không thấy vì bị che/tối" khỏi "báo nhầm" |
 | Viewer 3D | three.js vendored, không build step | Giữ nguyên nguyên tắc UI 1 lệnh là chạy, chạy offline |
 | Ảnh BEV | Homography mặt đường (IPM), không dùng mô hình | Không cần GPU hay train; đủ cho mục đích gán nhãn (vạch đường, vị trí trên làn). Vật cao bị kéo nhoè — mô hình BEV học được (LSS/BEVFormer) mới sửa được, không đáng cho công cụ gán nhãn |
+| Tăng độ chính xác 3D | Ensemble 4 mô hình LiDAR + tinh chỉnh theo track (offboard) + TTA lật, không train | Dev mAP 0.537 → 0.644. Gán nhãn được nhìn cả tương lai nên dùng được track hai chiều; mô hình camera làm ensemble tệ đi, chấm lại điểm bằng camera làm mAP giảm (kiểm tra chéo) nên không dùng |
+| Tăng độ chính xác 2D | Fine-tune YOLOE trên nuImages (`tools2d/`) thay vì dò prompt | Đổi prompt / prompt gây nhiễu / lật ảnh không tăng mAP trên dev; nuImages cùng miền, loại ảnh trùng log val để không rò rỉ, chấm quyết định trên held-out |
+| Web end-user | Dự án = thư mục riêng + một luồng nền, router review gắn lại dưới `/p/{id}` | Một GPU, không đăng nhập (theo yêu cầu); dùng lại toàn bộ UI review, không nhân bản code |
+| Định dạng trung gian | Mọi dữ liệu có LiDAR đổi sang bảng nuScenes | Loader, mô hình 3D, kiểm chứng, xuất đều đã viết cho nuScenes; thêm định dạng mới chỉ cần một converter |
 | Demo không GPU | Video tổng hợp + detector theo màu (`detectors/demo.py`) | Chạy được trên máy bất kỳ, có sẵn các tình huống lỗi để trình diễn QA và lan truyền |
 
 ## Chưa làm
 
 - Ẩn danh mặt/biển số (FR-03): EgoBlur cần tải weights có license, chưa tích hợp.
 - Mask SAM2, VLM verifier, isotonic calibration (tuần 4 trong PLAN).
-- Đăng nhập/phân vai (FR-21): hiện chỉ ghi tên người duyệt vào log.
+- Đăng nhập/phân vai (FR-21): hiện chỉ ghi tên người duyệt vào log; web dự án dành cho một máy chủ, một nhóm.

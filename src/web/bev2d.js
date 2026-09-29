@@ -2,7 +2,8 @@
 // Vị trí box: theo điểm LiDAR rơi trong box (nét liền), không có LiDAR thì theo chân vật chạm đường (nét đứt).
 // Dùng chung trạng thái với app.js qua window.AL (S, select, ensureLidar).
 
-const API = '/api/v1';
+const PROJECT = new URLSearchParams(location.search).get('project');
+const API = PROJECT ? `/p/${encodeURIComponent(PROJECT)}/api/v1` : '/api/v1';
 const $ = (id) => document.getElementById(id);
 const RISK = { low: '#0ca30c', medium: '#fab219', high: '#d03b3b' };
 const HUMAN = '#3987e5';
