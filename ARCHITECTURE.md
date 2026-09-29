@@ -1,4 +1,4 @@
-# Architecture — AutoLabel 2D
+# Architecture — AutoLabel 3D (2D + 3D)
 
 ## System Overview
 
@@ -29,7 +29,7 @@ Video mp4 tải lên (`POST /api/v1/videos/upload`, `src/services/video.py`) đi
    (tiêu cự = chiều rộng ảnh).
 3. Frame ID `<video_id>_NNN`, `scene = video_id`: UI và lan truyền coi mỗi video như một scene.
 
-## UI: hai chế độ
+## UI: ba chế độ
 
 | | 🖼 Ảnh | 🎞 Video |
 |---|---|---|
@@ -39,6 +39,28 @@ Video mp4 tải lên (`POST /api/v1/videos/upload`, `src/services/video.py`) đi
 | Lan truyền | Không | Tự chạy khi approve, hoặc nút ↦ / phím `T` |
 
 Khung chỉnh sửa (canvas + panel risk) là một, dùng chung cho cả hai chế độ.
+
+Chế độ 🧊 3D (`src/web/app3d.js`, ES module, three.js vendored ở `src/web/vendor/`) có panel riêng: hàng đợi frame 3D
+theo mô hình, khung 3D / BEV, ảnh camera có box chiếu xuống, card từng box với kết luận kiểm chứng. `app.js` phát sự kiện
+`autolabel:mode` / `autolabel:tab` để hai phần không phụ thuộc nhau.
+
+## Phần 3D
+
+1. `tools3d/run3d.py` (môi trường `.venv-mm3d`, GPU): tìm scene val có đủ file, tạo info MMDet3D, suy luận các mô hình
+   có trọng số nuScenes, chấm `DetectionEval` chỉ trên các sample đã chạy → `eval/results/det3d/summary.json`,
+   `<model>/ui_preds.json` (3 scene demo).
+2. `python -m src.cli label3d --model M` (môi trường chính): mỗi keyframe gộp LiDAR keyframe + 4 sweep (bù ego-motion),
+   đổi box sang hệ LiDAR, chạy YOLOE trên 6 camera (dùng lại cache detection), `verify3d.verify_boxes` kết luận từng box.
+   Ghi `frames3d/<model>/<frame>.json`, `lidar3d/<frame>.bin` (float32 xyzi, tối đa 60k điểm), `gt3d/`.
+3. `routes3d.py` phục vụ UI; thao tác ghi `corrections3d.jsonl`; export ra box hệ toàn cục định dạng nuScenes detection.
+4. `python -m src.cli evaluate3d` so kết luận kiểm chứng với GT (khớp tâm < 2 m).
+5. Người vẽ thêm box (`ADD_BOX`, `source: human`) cho vật mô hình bỏ sót và sửa box (`EDIT_BOX`, box mô hình giữ ở
+   `original_box`). Việc đặt lên mặt đường / co khít điểm LiDAR chạy ngay trên trình duyệt với point cloud đã tải.
+6. Ảnh BEV (`bev.py`): độ cao mặt đường z0 = mode của z các điểm LiDAR thấp quanh xe; mỗi camera có homography
+   H = K·[r1 r2 z0·r3+t] từ mặt đường sang ảnh; mỗi ô BEV lấy màu từ camera nhìn nó gần trục quang học nhất. Cache PNG
+   theo frame ở `workspace/bev3d/`.
+7. BEV của chế độ Ảnh / Video (`bev2d.js`): một camera, mặt đường z = 0 của hệ ego; `/frames/{id}/bev/meta` trả
+   cam_from_ego + homography, trình duyệt đổi điểm LiDAR (u, v, độ sâu) về hệ ego và đặt box 2D lên mặt đường.
 
 ## QA Agent
 
@@ -107,6 +129,10 @@ lan truyền, so với GT cùng `instance_token` ở các keyframe sau (tỉ l�
 | Ngưỡng giữ box | `min_score: 0.30` sau fusion | Precision 0.34 → 0.51, box bị gắn cờ 260 → 88 trên 40 keyframe, không cần train — `eval/precision_tuning.ipynb` |
 | Video tải lên | Cắt thành frame + keyframe giống nuScenes | Dùng lại nguyên pipeline, QA Agent, review và lan truyền; không cần code riêng cho video |
 | Xử lý video tải lên | `BackgroundTasks` trong process FastAPI | Đủ cho 1 người duyệt / demo; nhiều người thì chuyển sang hàng đợi job (RQ/Celery) |
+| Mô hình 3D | Trọng số MMDetection3D có sẵn, chạy trong venv riêng | Không cần train; stack mmcv/torch cũ không trộn với môi trường chính (torch mới cho YOLOE) |
+| Kiểm chứng 3D | Chiếu box xuống 6 camera + detector 2D + điểm LiDAR, không dùng GT | Port bộ `verify_objects.py` của nhóm 3D; tách được "không thấy vì bị che/tối" khỏi "báo nhầm" |
+| Viewer 3D | three.js vendored, không build step | Giữ nguyên nguyên tắc UI 1 lệnh là chạy, chạy offline |
+| Ảnh BEV | Homography mặt đường (IPM), không dùng mô hình | Không cần GPU hay train; đủ cho mục đích gán nhãn (vạch đường, vị trí trên làn). Vật cao bị kéo nhoè — mô hình BEV học được (LSS/BEVFormer) mới sửa được, không đáng cho công cụ gán nhãn |
 | Demo không GPU | Video tổng hợp + detector theo màu (`detectors/demo.py`) | Chạy được trên máy bất kỳ, có sẵn các tình huống lỗi để trình diễn QA và lan truyền |
 
 ## Chưa làm

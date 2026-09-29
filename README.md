@@ -1,4 +1,4 @@
-# AutoLabel 2D — Auto-label nuScenes + QA Agent đa tín hiệu + Review by exception
+# AutoLabel 3D — Auto-label nuScenes 2D + 3D, QA Agent đa tín hiệu, Review by exception
 
 > Gán nhãn 2D cho xe tự lái tốn thời gian vì người phải soát từng box → model open-vocab tự sinh box,
 > QA Agent kiểm chứng chéo bằng LiDAR và các frame camera lân cận để chấm rủi ro, người chỉ tập trung
@@ -82,11 +82,12 @@ gọn (~60 MB) cũng dùng để gửi cho thành viên chưa tải đủ 48 GB 
 
 ## UI
 
-Thanh trên cùng có hai chế độ:
+Thanh trên cùng có ba chế độ:
 
 - **🖼 Ảnh** — duyệt từng frame như MVP: hàng đợi sắp theo risk, review by exception. Không lan truyền.
 - **🎞 Video** — danh sách video (mỗi scene nuScenes là một video; mp4 tải lên bằng nút *⬆ Tải lên mp4*),
   timeline riêng cho video đang mở, lan truyền nhãn giữa các frame.
+- **🧊 3D** — duyệt box 3D do mô hình LiDAR / camera sinh ra (chọn mô hình ở góc trên), xem mục *Phần 3D* bên dưới.
 
 Chế độ Ảnh:
 
@@ -114,13 +115,72 @@ Chế độ Video:
 - **Tải lên mp4**: server cắt frame ngay, auto-label + QA chạy nền; danh sách hiện tiến độ và báo khi xong.
   Video không có LiDAR/calibration nên các check LiDAR tự bỏ qua, risk dựa trên score, temporal và hình học.
 
+**BEV** (`V`, cả chế độ Ảnh và Video): khung bên phải nhìn từ trên xuống. Ảnh camera được chiếu xuống mặt đường bằng
+homography (nuScenes: ngoại tham số thật của camera; video tải lên: giả định camera cao 1.5 m, nhìn thẳng), trên đó là
+điểm LiDAR và từng box 2D đặt lên mặt đường: có điểm LiDAR trong box thì theo độ sâu LiDAR (nét liền), không thì theo
+chân vật chạm đường (nét đứt); bề ngang theo box, chiều dài theo cỡ trung bình của lớp. Bấm box trên BEV để chọn, sửa
+box trên ảnh thì BEV cập nhật ngay; kéo để di chuyển, lăn chuột để zoom.
+
 Phím tắt: `↑/↓` chọn object · `K` keep · `D` delete · `C` đổi lớp · `E` sửa box · `B` vẽ box mới ·
 `A` approve low-risk · `Enter` approve frame · `N/P` frame kế/trước · `L` LiDAR · `G` GT; chế độ Video thêm
 `T` lan truyền · `Space` phát/dừng.
 
+## Phần 3D
+
+Mô hình 3D đã huấn luyện sẵn trên nuScenes (MMDetection3D: PointPillars, SSN, CenterPoint, FCOS3D, PGD, BEVFusion)
+sinh pre-label box 3D; QA Agent kiểm chứng từng box bằng 6 camera + LiDAR, không dùng nhãn gốc
+(`src/services/verify3d.py`, port từ `scripts/verify_objects.py` của nhóm 3D):
+
+| Kết luận | Mức | Ý nghĩa |
+|---|---|---|
+| `DUNG` | low | detector 2D thấy đúng lớp ở đúng chỗ box chiếu xuống |
+| `DUNG VAT, BOX LECH` | medium | cùng lớp nhưng box chiếu lệch (IoU thấp) |
+| `CAMERA KHONG XAC NHAN` | medium | ảnh rõ, detector không thấy, nhưng có điểm LiDAR trong box |
+| `CHUA DU THONG TIN` | medium | bị che / tối / quá xa, không kết luận được |
+| `SAI LOP` | high | detector thấy vật khác lớp ở đúng chỗ đó |
+| `NGHI BAO NHAM` | high | ảnh rõ, không có vật, không có điểm LiDAR |
+
+```bash
+# 1. Suy luận + chấm mAP/NDS các mô hình trên máy có GPU (môi trường riêng, xem tools3d/README.md)
+.venv-mm3d\Scripts\python tools3d\run3d.py all --dataroot ..\v1.0-trainval
+# 2. Kiểm chứng bằng camera, tạo frame 3D cho UI (môi trường chính)
+python -m src.cli label3d --model centerpoint_voxel
+python -m src.cli evaluate3d --model centerpoint_voxel   # kết luận kiểm chứng so với nhãn gốc
+```
+
+UI 3D: khung 3D (xoay/zoom, điểm LiDAR màu theo độ cao, box màu theo mức rủi ro), BEV nhìn từ trên, ảnh camera có
+box chiếu xuống (camera tốt nhất tự chọn, `1`–`6` đổi camera). Hàng đợi frame sắp theo rủi ro; từng box: Keep / Delete /
+đổi lớp / sửa box; *Approve low-risk* rồi approve frame; tab Metrics có số liệu 3D và bảng so sánh mô hình; Export ra
+định dạng kết quả nuScenes (hệ toàn cục).
+
+- **Ảnh BEV** (`I`): 6 camera ghép thành ảnh nhìn từ trên xuống bằng homography mặt đường
+  (`src/services/bev.py`), trải dưới point cloud. Thấy được vạch kẻ đường, lề, vị trí xe trên làn quanh cả xe thay vì
+  nhìn từng camera một. Chỉ đúng cho mặt đường: vật cao bị kéo dài ra xa camera; xa hơn 25 m ảnh mờ dần.
+- **Vẽ thêm box** (`B`, cho vật mô hình bỏ sót): chọn lớp, kéo trên mặt đường từ đuôi tới đầu vật (hoặc bấm một điểm để
+  đặt box cỡ trung bình của lớp, cùng hướng với xe gần nhất). Box tự đặt đáy lên mặt đường và lấy chiều cao theo điểm
+  LiDAR; `F` co khít đám điểm LiDAR (giữ cạnh gần xe khi vật chỉ lộ một mặt). Box hiện ngay trên ảnh camera để so.
+- **Sửa box** (`E`): kéo trong box để di chuyển, chấm góc để đổi cỡ, chấm vàng để xoay; hoặc phím `←↑→↓` (theo màn hình),
+  `Q/E` xoay, `[ ]` dài, `; '` rộng, `- =` cao, `Shift` bước lớn; hoặc gõ số trong thẻ sửa. `Enter` lưu, `Esc` huỷ.
+  Box gốc của mô hình được giữ trong `original_box` và log để đo mô hình lệch bao nhiêu.
+
+Phím: `↑/↓` chọn box · `K` `D` `C` `E` · `B` vẽ box · `A` · `Enter` · `G` GT · `V` đổi khung 3D/BEV · `I` ảnh BEV ·
+`L` ẩn/hiện LiDAR · `N/P` frame.
+
 ## Kết quả đánh giá
 
 Xem [eval/results/autolabel2d_eval.md](eval/results/autolabel2d_eval.md).
+
+3D ([eval/compare_3d.ipynb](eval/compare_3d.ipynb)): trọng số có sẵn, 27 scene val nuScenes (1076 keyframe), RTX 4050.
+Hai cột cuối là kết quả QA Agent 3D trên 3 scene demo, dùng ngưỡng điểm riêng của từng mô hình.
+
+| Mô hình | Cảm biến | mAP | NDS | s/keyframe | Tự duyệt (đúng) | Bắt box sai |
+|---|---|---|---|---|---|---|
+| **CenterPoint voxel** (mặc định) | LiDAR | **0.573** | **0.647** | 0.62 | 51% (93%) | 86% |
+| CenterPoint pillar | LiDAR | 0.521 | 0.605 | 0.41 | 48% (92%) | 87% |
+| SSN | LiDAR | 0.451 | 0.569 | 0.59 | 43% (92%) | 91% |
+| PointPillars | LiDAR | 0.470 | 0.562 | 0.85 | 54% (95%) | 88% |
+| PGD | Camera | 0.394 | 0.446 | 2.71 | 59% (87%) | 74% |
+| FCOS3D | Camera | 0.329 | 0.411 | 2.72 | 53% (80%) | 72% |
 
 ## API
 
@@ -130,6 +190,7 @@ Xem [eval/results/autolabel2d_eval.md](eval/results/autolabel2d_eval.md).
 | GET | `/api/v1/frames/{id}` | Frame + object + kết quả QA |
 | GET | `/api/v1/frames/{id}/image?offset=` | Ảnh keyframe (0) hoặc sweep (±1, ±2) |
 | GET | `/api/v1/frames/{id}/lidar`, `/gt` | Điểm LiDAR đã chiếu, GT 2D |
+| GET | `/api/v1/frames/{id}/bev`, `/bev/meta` | Ảnh camera chiếu xuống mặt đường (PNG) và homography / ngoại tham số để đặt box lên BEV |
 | POST | `/api/v1/frames/{id}/actions` | `KEEP` / `DELETE` / `CHANGE_CLASS` / `EDIT_BOX` / `ADD_BOX` |
 | POST | `/api/v1/frames/{id}/approve-low-risk` | Duyệt theo lô nhóm low |
 | POST | `/api/v1/frames/{id}/approve`, `/reopen` | Approve frame (chặn nếu còn object chờ) / mở lại |
@@ -140,6 +201,12 @@ Xem [eval/results/autolabel2d_eval.md](eval/results/autolabel2d_eval.md).
 | GET | `/api/v1/videos/{id}` | Timeline của một video: danh sách frame kèm thời điểm và trạng thái |
 | POST | `/api/v1/videos/upload` | Tải lên mp4 (multipart `file`); cắt frame ngay, auto-label chạy nền |
 | POST | `/api/v1/export` | Xuất dataset các frame đã approve |
+| GET | `/api/v1/3d/models`, `/3d/frames?model=` | Mô hình 3D có frame; hàng đợi frame 3D |
+| GET | `/api/v1/3d/frames/{m}/{f}` (+ `/points`, `/gt`, `/image/{camera}`) | Frame 3D, point cloud float32 xyzi, GT, ảnh |
+| POST | `/api/v1/3d/frames/{m}/{f}/actions`, `/approve-low-risk`, `/approve`, `/reopen` | Duyệt box 3D: `KEEP` / `DELETE` / `CHANGE_CLASS` / `EDIT_BOX` / `ADD_BOX` |
+| GET | `/api/v1/3d/frames/{m}/{f}/bev?range=40&res=0.1` | Ảnh BEV ghép 6 camera (PNG RGBA), header `X-Ground-Z` |
+| GET | `/api/v1/3d/metrics?model=`, `/3d/corrections`, `/3d/compare` | Số liệu duyệt 3D, log, bảng so sánh mô hình |
+| POST | `/api/v1/3d/export?model=` | Xuất box 3D đã duyệt (định dạng nuScenes detection) |
 
 ## Cấu trúc
 
@@ -158,7 +225,11 @@ src/
     store.py exporter.py evaluation.py
   api/routes.py            REST API
   web/                     UI review (HTML/JS/CSS)
-  cli.py                   python -m src.cli run | evaluate | detect-sweeps | propagate | eval-propagation
+    verify3d.py label3d.py review3d.py eval3d.py   phần 3D: kiểm chứng bằng camera, tạo frame, duyệt, đánh giá
+    bev.py                 ảnh BEV bằng homography mặt đường: 1 camera (chế độ Ảnh/Video), ghép 6 camera (3D)
+  api/routes3d.py          REST API phần 3D
+  cli.py                   python -m src.cli run | evaluate | ... | label3d | evaluate3d
+tools3d/                   run3d.py + setup.ps1: suy luận và so sánh mô hình 3D trên GPU (môi trường MMDetection3D riêng)
   demo.py                  python -m src.demo: demo không cần GPU/nuScenes
 scripts/pack_nuscenes_subset.py   chọn ngẫu nhiên / đóng gói vài scene nuScenes (+ workspace) thành zip nhỏ
 scripts/bench_detectors.py        đo tốc độ detector
@@ -166,6 +237,7 @@ scripts/simulate_review.py        người duyệt mô phỏng theo GT (đo côn
 eval/compare_detectors.ipynb      so sánh detector (matplotlib)
 eval/precision_tuning.ipynb       tăng precision không cần train (ngưỡng min_score, ensemble)
 eval/review_simulation.ipynb      công duyệt 40 keyframe: có / không lan truyền
+eval/compare_3d.ipynb             so sánh mô hình 3D: mAP/NDS, tốc độ, AP từng lớp, P/R theo ngưỡng, kết quả kiểm chứng
 tests/                     pytest, dữ liệu tổng hợp (không cần GPU/dataset)
 ```
 
@@ -175,6 +247,7 @@ tests/                     pytest, dữ liệu tổng hợp (không cần GPU/da
 - GT 2D là hộp bao của box 3D chiếu xuống, rộng hơn box sát vật thể → AP@0.7 thấp là bình thường.
 - Chưa có: ẩn danh mặt/biển số (EgoBlur), mask SAM2, VLM verifier, đăng nhập/phân vai.
 - Florence-2 không trả confidence nên box của nó nhận score cố định trong config.
+- 3D chỉ dùng trọng số có sẵn (chưa fine-tune); FCOS3D/PGD/BEVFusion cần GPU, BEVFusion còn phải biên dịch op CUDA.
 - Lan truyền chỉ 2D trên một camera (CAM_FRONT hoặc video tải lên); `track_id` đã có sẵn để gắn box 3D vào sau.
 - Vật bị che hoàn toàn quá `max_coast_images` ảnh thì track dừng; khi hiện lại nó là object mới cần duyệt. Chạy lại `run --overwrite`
   trên frame "auto" sẽ xoá nhãn lan truyền của frame đó (dựng lại từ cache detection).

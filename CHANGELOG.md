@@ -30,6 +30,64 @@ Quy tắc:
 
 ---
 
+## 2026-09-29 (2) · Kiên · nhánh `feat/yoloe-review-sim`
+
+**Làm gì:** BEV cho chế độ Ảnh / Video (`V`): khung bên phải có ảnh camera chiếu xuống mặt đường (homography), điểm
+LiDAR và các box 2D đặt lên mặt đường (theo LiDAR, không có thì theo chân vật). Bấm box trên BEV để chọn; sửa box trên
+ảnh thì BEV cập nhật ngay. Video tải lên không có calibration: giả định camera cao 1.5 m, nhìn thẳng (UI ghi rõ).
+
+**File chính:** `src/web/bev2d.js` (mới), `src/services/bev.py`, `src/api/routes.py`, `src/web/app.js` (`draw()` gọi
+BEV, `window.AL`), `src/web/index.html`, `tests/test_api/test_bev2d.py`.
+
+**Ảnh hưởng tới người khác:** API thêm `GET /frames/{id}/bev` và `/bev/meta`; `draw()` trong app.js tách thành
+`drawCanvas()` + vẽ BEV. Không đổi schema.
+
+**Cách kiểm tra:** `pytest` (99 passed); UI chế độ Ảnh → `V`.
+
+**Còn dở / việc tiếp:** chưa vẽ / sửa box trực tiếp trên BEV của chế độ 2D (chỉ chọn).
+
+## 2026-09-29 · Kiên · nhánh `feat/yoloe-review-sim`
+
+**Làm gì:** UI 3D vẽ thêm box cho vật mô hình bỏ sót (`B`) và sửa box (`E`: kéo / phím / gõ số), tự đặt lên mặt đường
+và co khít điểm LiDAR (`F`). Thêm ảnh BEV ghép 6 camera bằng homography mặt đường (`I`), trải dưới point cloud để gán
+nhãn nhìn được quanh xe thay vì từng camera. Thử co khít trên một xe CenterPoint bỏ sót: tâm lệch 0.16 m so với nhãn gốc,
+rộng 1.66 / 1.60 m, cao 1.76 / 1.85 m, dài 3.37 / 3.79 m (LiDAR chỉ thấy một mặt xe).
+
+**File chính:** `src/services/bev.py` (mới), `src/services/review3d.py`, `src/models/schemas3d.py`,
+`src/api/routes3d.py`, `src/web/app3d.js`, `src/web/index.html`, `tests/test_services/test_bev.py`.
+
+**Ảnh hưởng tới người khác:** `Action3DRequest` thêm `EDIT_BOX` / `ADD_BOX` (trường `box`, `object_id` thành tuỳ
+chọn); `Object3D` thêm `original_box`; log 3D thêm `source`, `final_box`; metrics 3D thêm `added`, `edited`; API thêm
+`GET /3d/frames/{m}/{f}/bev`. Sửa hướng khung nhìn cho đúng hệ LiDAR nuScenes (x phải, y trước).
+
+**Cách kiểm tra:** `pytest` (97 passed); mở UI → 🧊 3D → `I` bật ảnh BEV, `B` vẽ box, `F` co khít, `Enter` lưu.
+
+**Còn dở / việc tiếp:** box người vẽ chưa qua QA Agent (coi là đã duyệt); chưa lan truyền box 3D sang keyframe sau.
+
+## 2026-09-28 (7) · Kiên · nhánh `feat/yoloe-review-sim`
+
+**Làm gì:** Thêm phần 3D vào sản phẩm. UI có chế độ 🧊 3D (khung 3D three.js + BEV + ảnh camera chiếu box, duyệt
+Keep/Delete/đổi lớp, approve, metrics, export nuScenes). QA Agent 3D kiểm chứng box bằng 6 camera + LiDAR (port
+`verify_objects.py` của Việt). `tools3d/run3d.py` chạy và chấm mAP/NDS 6–8 mô hình MMDetection3D (PointPillars, SSN,
+CenterPoint pillar/voxel, FCOS3D, PGD, BEVFusion) trên các scene val có trên máy.
+
+**File chính:** `src/services/{verify3d,label3d,review3d,eval3d}.py`, `src/models/schemas3d.py`, `src/api/routes3d.py`,
+`src/web/app3d.js` + `src/web/vendor/` (three.js), `tools3d/`, `scripts/pack_nuscenes_subset.py` (`--split`,
+`--all-cameras`, `--lidar-sweeps`).
+
+**Ảnh hưởng tới người khác:** config thêm khối `verify3d` (có mặc định, không bắt buộc); API thêm `/api/v1/3d/*`;
+CLI thêm `label3d`, `evaluate3d`; requirements thêm `scipy`. Phần 2D không đổi.
+
+**Cách kiểm tra:** `pytest` (91 passed); `powershell -ExecutionPolicy Bypass -File tools3d\setup.ps1` rồi
+`.venv-mm3d\Scripts\python tools3d\run3d.py all --dataroot ..\v1.0-trainval`; sau đó `python -m src.cli label3d
+--model pointpillars` và mở UI → 🧊 3D.
+
+**Kết quả (2026-09-29):** 6 mô hình trên 27 scene val (1076 keyframe). CenterPoint voxel tốt nhất (mAP 0.573, NDS
+0.647 so với PointPillars 0.470 / 0.562) và còn nhanh hơn → đặt làm mặc định trong UI. Chi tiết trong
+`eval/compare_3d.ipynb`. `label3d` dùng ngưỡng điểm riêng cho từng mô hình (`--min-score auto`).
+
+**Còn dở / việc tiếp:** UI 3D chưa vẽ thêm box (vật mô hình bỏ sót); BEVFusion trên Windows chưa thử.
+
 ## 2026-09-28 (6) · Kiên · nhánh `feat/label-propagation`
 
 **Làm gì:** Chạy được trên dữ liệu chưa gán nhãn: bảng nuScenes không có `sample_annotation.json` vẫn auto-label

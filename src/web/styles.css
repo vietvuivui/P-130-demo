@@ -275,3 +275,55 @@ input[type=text], select { font: inherit; padding: 6px 8px; border: 1px solid va
 .tl-mark.editing { color: #fff; background: var(--medium); border-color: var(--medium); }
 .tl-card.from-current { box-shadow: inset 0 -3px 0 var(--accent); }
 .drop-hint { position: absolute; inset: 12px; border: 2px dashed var(--accent); border-radius: var(--radius); display: grid; place-items: center; color: #fff; font-weight: 600; background: rgba(42, 120, 214, .25); z-index: 5; pointer-events: none; }
+
+/* ---- chế độ 3D ---- */
+.m3-model-box { padding: 0 12px 8px; display: grid; gap: 6px; }
+.m3-model-box select { width: 100%; }
+.m3-model-info { font-size: 12px; line-height: 1.5; }
+.m3-stage { position: relative; flex: 1 1 58%; min-height: 240px; background: var(--stage); border-radius: var(--radius); overflow: hidden; }
+.m3-stage canvas { display: block; width: 100%; height: 100%; }
+.m3-hint { position: absolute; left: 10px; bottom: 8px; font-size: 11px; color: #94a3b8; pointer-events: none; }
+.m3-tip { position: absolute; pointer-events: none; background: rgba(15, 23, 42, .92); color: #fff; font-size: 12px; padding: 6px 8px; border-radius: 6px; max-width: 320px; line-height: 1.4; }
+.m3-seg { display: inline-flex; gap: 4px; }
+.m3-cams { flex: 0 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 8px; height: min(32vh, 300px); }
+.m3-cam-main { position: relative; background: var(--stage); border-radius: var(--radius); overflow: hidden; }
+.m3-cam-main canvas { width: 100%; height: 100%; display: block; }
+.m3-cam-label { position: absolute; left: 8px; top: 6px; font-size: 11px; font-weight: 600; color: #fff; background: rgba(15, 23, 42, .7); padding: 2px 6px; border-radius: 4px; font-family: var(--mono); }
+.m3-cam-strip { display: grid; grid-template-rows: repeat(6, 1fr); gap: 4px; min-height: 0; }
+.m3-thumb { position: relative; border-radius: 4px; overflow: hidden; cursor: pointer; border: 2px solid transparent; background: var(--stage); min-height: 0; }
+.m3-thumb.active { border-color: var(--accent); }
+.m3-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.m3-thumb span { position: absolute; left: 3px; bottom: 2px; font-size: 9px; color: #fff; background: rgba(15, 23, 42, .75); padding: 0 4px; border-radius: 3px; font-family: var(--mono); }
+.m3-thumb b { position: absolute; right: 3px; top: 2px; font-size: 9px; color: #fff; background: var(--accent); padding: 0 4px; border-radius: 3px; }
+.verdict { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); white-space: nowrap; }
+.verdict.low { color: var(--low); border-color: var(--low); }
+.verdict.medium { color: #9a6700; border-color: var(--medium); }
+.verdict.high { color: var(--high); border-color: var(--high); }
+.m3-comment { color: var(--text-2); margin-top: 5px; line-height: 1.4; }
+.m3-progress-bar { height: 100%; width: 0; background: var(--meter-fill); border-radius: 3px; transition: width .2s; }
+.data-table td.best { font-weight: 700; color: var(--accent); }
+/* chế độ 3D: trang Metrics chỉ hiện phần 3D */
+body.mode3d #tab-metrics .page > :not(#metrics3d) { display: none; }
+
+/* 3D: vẽ / sửa box */
+.m3-edit { border: 2px solid #22d3ee; border-radius: var(--radius); padding: 10px; margin-bottom: 12px; background: var(--surface); }
+.m3-edit h4 { margin: 0 0 6px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.m3-edit .m3-edit-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 8px 0; }
+.m3-edit label { display: grid; gap: 2px; font-size: 11px; color: var(--text-2); }
+.m3-edit input { width: 100%; font-family: var(--mono); font-size: 12px; padding: 3px 4px; }
+.m3-edit .m3-edit-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.m3-edit .m3-edit-keys { margin-top: 6px; font-size: 11px; color: var(--text-2); line-height: 1.6; }
+#m3-draw.active { background: #22d3ee; color: #0b1020; border-color: #22d3ee; }
+.m3-stage.drawing canvas { cursor: crosshair; }
+.done-tag.added { color: #0891b2; }
+
+/* BEV trong chế độ Ảnh / Video */
+.stage-row { display: flex; gap: 10px; flex: 1; min-height: 0; }
+.stage-row > .canvas-wrap { flex: 1 1 auto; min-width: 0; }
+.bev2d-wrap { flex: 0 0 34%; min-width: 260px; display: flex; flex-direction: column; background: var(--stage); border-radius: var(--radius); overflow: hidden; }
+.bev2d-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px; color: #e2e8f0; font-size: 12px; }
+.bev2d-head .toggle { color: #cbd5e1; }
+.bev2d-wrap canvas { flex: 1; min-height: 0; width: 100%; display: block; cursor: grab; touch-action: none; }
+.bev2d-foot { display: flex; flex-direction: column; gap: 2px; padding: 4px 10px 6px; font-size: 11px; }
+.bev2d-foot .muted { color: #94a3b8; }
+@media (max-width: 900px) { .stage-row { flex-direction: column; } .bev2d-wrap { flex: none; height: 360px; min-width: 0; } }

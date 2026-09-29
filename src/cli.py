@@ -9,6 +9,10 @@ Lan truyền nhãn trên video:
 python -m src.cli detect-sweeps --scenes scene-0061    # detect mọi ảnh CAM_FRONT 12Hz của scene (GPU, có cache)
 python -m src.cli propagate scene-0061_000             # lan truyền từ frame đã approve sang các keyframe sau
 python -m src.cli eval-propagation                     # thí nghiệm keyframe hoàn hảo -> eval/results/
+
+Phần 3D (dự đoán từ tools3d/run3d.py trên máy có GPU):
+python -m src.cli label3d --model pointpillars          # kiểm chứng box 3D bằng camera, tạo frame 3D để duyệt
+python -m src.cli evaluate3d --model pointpillars       # kết luận kiểm chứng so với nhãn gốc -> eval/results/det3d/
 """
 
 from __future__ import annotations
@@ -139,6 +143,57 @@ def cmd_eval_propagation(args) -> None:
     print(report)
 
 
+def _preds_file(model: str, path: str | None) -> Path:
+    p = Path(path) if path else Path("eval/results/det3d") / model / "ui_preds.json"
+    if not p.is_file():
+        raise SystemExit(f"Không thấy {p}: chạy tools3d/run3d.py trên máy có GPU rồi chép eval/results/det3d/ về")
+    return p
+
+
+def cmd_label3d(args) -> None:
+    from src.services.label3d import run_label3d
+    from src.services.nuscenes_data import NuScenesMini
+    from src.services.store import WorkspaceStore
+
+    settings = get_settings()
+    config = load_autolabel_config(settings.autolabel_config)
+    preds = json.loads(_preds_file(args.model, args.preds).read_text())["results"]
+    min_score = _min_score3d(args.model, args.min_score, config.verify3d.min_score)
+    data = NuScenesMini(settings.nuscenes_dataroot, settings.nuscenes_version)
+    n = run_label3d(
+        WorkspaceStore(settings.workspace_dir), data, config, args.model, preds, args.scenes, args.overwrite, min_score
+    )
+    print(f"Xong {n} frame 3D ({args.model}, ngưỡng {min_score}) -> {settings.workspace_dir}/frames3d/{args.model}")
+
+
+def _min_score3d(model: str, arg: str, default: float) -> float:
+    """--min-score số cụ thể, hoặc "auto": ngưỡng F1 cao nhất trong eval/results/det3d/<model>/metrics.json."""
+    from src.services.label3d import best_threshold
+
+    if arg != "auto":
+        return float(arg)
+    metrics = Path("eval/results/det3d") / model / "metrics.json"
+    if not metrics.exists():
+        return default
+    return best_threshold(json.loads(metrics.read_text(encoding="utf-8"))["pr"])
+
+
+def cmd_evaluate3d(args) -> None:
+    from src.services.eval3d import evaluate_verification
+    from src.services.store import WorkspaceStore
+
+    store = WorkspaceStore(get_settings().workspace_dir)
+    for model in args.model or store.models3d():
+        res = evaluate_verification(store, model)
+        out = Path(args.out) / model
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "verify_eval.json").write_text(json.dumps(res, indent=1, ensure_ascii=False), encoding="utf-8")
+        print(
+            f"{model}: {res['n_boxes']} box, tự duyệt {res['auto_share']:.0%} (đúng {res['auto_precision']:.1%}), "
+            f"bắt {res['error_recall']:.0%} box sai"
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m src.cli")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -165,6 +220,21 @@ def main() -> None:
     pr.add_argument("--max-frames", type=int, help="Số keyframe tối đa đi tới (mặc định theo config)")
     pr.add_argument("--detectors", nargs="*", help="Detector đã chạy cho workspace (mặc định theo config)")
     pr.set_defaults(func=cmd_propagate)
+
+    l3 = sub.add_parser("label3d", help="Kiểm chứng dự đoán của mô hình 3D bằng camera, tạo frame 3D để duyệt")
+    l3.add_argument("--model", required=True, help="Tên mô hình, ví dụ pointpillars (thư mục eval/results/det3d/)")
+    l3.add_argument("--preds", help="File dự đoán chuẩn nuScenes (mặc định eval/results/det3d/<model>/ui_preds.json)")
+    l3.add_argument("--scenes", nargs="*", help="Tên scene (mặc định: mọi scene có dự đoán)")
+    l3.add_argument("--overwrite", action="store_true")
+    l3.add_argument(
+        "--min-score", default="auto", help="Ngưỡng điểm giữ box; auto = ngưỡng F1 cao nhất của mô hình trên tập val"
+    )
+    l3.set_defaults(func=cmd_label3d)
+
+    e3 = sub.add_parser("evaluate3d", help="Kết luận kiểm chứng 3D so với nhãn gốc")
+    e3.add_argument("--model", nargs="*", help="Mặc định: mọi mô hình có frame 3D")
+    e3.add_argument("--out", default="eval/results/det3d")
+    e3.set_defaults(func=cmd_evaluate3d)
 
     ep = sub.add_parser("eval-propagation", help="Thí nghiệm keyframe hoàn hảo: lan truyền GT, so với GT")
     ep.add_argument("--scenes", nargs="*", help="Tên scene (mặc định: mọi scene có trong workspace)")

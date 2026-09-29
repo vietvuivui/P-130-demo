@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from src.models.schemas import FrameRecord, VideoRecord
+from src.models.schemas3d import Frame3DRecord
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_\-]+$")
 WORKSPACE_PREFIX = "@workspace/"
@@ -122,6 +123,36 @@ class WorkspaceStore:
     def resolve(self, path: str) -> Path:
         """Đường dẫn ảnh của frame video tải lên được lưu dạng '@workspace/...' (tương đối so với workspace)."""
         return self.root / path.removeprefix(WORKSPACE_PREFIX)
+
+    # ---- phần 3D: frames3d/<mô hình>/<frame_id>.json, point cloud rút gọn cho UI ở lidar3d/<frame_id>.bin ----
+
+    def frame3d_path(self, model: str, frame_id: str) -> Path:
+        return self.root / "frames3d" / self.check_id(model) / f"{self.check_id(frame_id)}.json"
+
+    def models3d(self) -> list[str]:
+        d = self.root / "frames3d"
+        return sorted(p.name for p in d.iterdir() if p.is_dir() and any(p.glob("*.json"))) if d.is_dir() else []
+
+    def frame3d_ids(self, model: str) -> list[str]:
+        d = self.root / "frames3d" / self.check_id(model)
+        return sorted(p.stem for p in d.glob("*.json")) if d.is_dir() else []
+
+    def load_frame3d(self, model: str, frame_id: str) -> Frame3DRecord | None:
+        try:
+            path = self.frame3d_path(model, frame_id)
+        except ValueError:
+            return None
+        return Frame3DRecord.model_validate_json(path.read_text(encoding="utf-8")) if path.exists() else None
+
+    def save_frame3d(self, record: Frame3DRecord) -> None:
+        with self._lock:
+            self._write_json(self.frame3d_path(record.model, record.frame_id), record.model_dump_json())
+
+    def list_frames3d(self, model: str) -> list[Frame3DRecord]:
+        return [f for f in (self.load_frame3d(model, fid) for fid in self.frame3d_ids(model)) if f is not None]
+
+    def points_path(self, frame_id: str) -> Path:
+        return self.root / "lidar3d" / f"{self.check_id(frame_id)}.bin"
 
     # ---- correction log ----
 

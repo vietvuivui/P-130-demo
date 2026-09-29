@@ -8,6 +8,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.api.routes import resume_videos, router
+from src.api.routes3d import router3d
 from src.config import get_settings
 
 WEB_DIR = Path(__file__).parent / "web"
@@ -40,6 +41,7 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api/v1")
+app.include_router(router3d, prefix="/api/v1")
 
 
 @app.middleware("http")

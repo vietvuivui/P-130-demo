@@ -6,6 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+import numpy as np
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
@@ -175,6 +176,54 @@ def get_image(
 def get_lidar(frame_id: str, store: WorkspaceStore = Depends(get_store)):
     _load(store, frame_id)
     return store.load_aux("lidar", frame_id) or {"u": [], "v": [], "d": []}
+
+
+def _cam_from_ego(frame: FrameRecord) -> tuple[np.ndarray, bool]:
+    """Ngoại tham số camera so với hệ ego (mặt đường z = 0). Video tải lên / thiếu bảng: giả định, estimated=True."""
+    from src.services import bev
+
+    if not frame.image.path.startswith("@workspace"):
+        s = get_settings()
+        try:
+            data = _nuscenes(s.nuscenes_dataroot, s.nuscenes_version)
+            return np.linalg.inv(data._ego_from_sensor(frame.image.sd_token)), False
+        except (FileNotFoundError, KeyError):
+            pass
+    return bev.nominal_cam_from_ego(), True
+
+
+@router.get("/frames/{frame_id}/bev/meta")
+def get_bev_meta(frame_id: str, store: WorkspaceStore = Depends(get_store)):
+    """Thông số để UI đặt box 2D / điểm LiDAR lên ảnh BEV: ngoại tham số, homography mặt đường -> ảnh, vùng phủ."""
+    from src.services import bev
+
+    frame = _load(store, frame_id)
+    cam_from_ego, estimated = _cam_from_ego(frame)
+    homo = bev.ground_homography(np.asarray(frame.intrinsic, float), cam_from_ego, 0.0)
+    return {
+        "cam_from_ego": np.round(cam_from_ego, 6).tolist(), "estimated": estimated,
+        "homography": (homo / np.linalg.norm(homo)).round(10).tolist(), "x_range": list(bev.BEV2D_X),
+        "y_range": list(bev.BEV2D_Y), "res": 0.1,
+        "camera_height": round(float(np.linalg.inv(cam_from_ego)[2, 3]), 3),
+    }  # fmt: skip
+
+
+@router.get("/frames/{frame_id}/bev")
+def get_bev(frame_id: str, store: WorkspaceStore = Depends(get_store), dataroot: Path = Depends(get_dataroot)):
+    """Ảnh camera của frame chiếu xuống mặt đường (homography), PNG RGBA; phía trước ở trên."""
+    from src.services import bev
+
+    frame = _load(store, frame_id)
+    cache = store.root / "bev2d" / f"{store.check_id(frame_id)}.png"
+    if not cache.exists():
+        img = bev.load_rgb(image_path(dataroot, frame, 0, workspace=store.root))
+        if img is None:
+            raise _error(404, "IMAGE_NOT_FOUND", "Không tìm thấy file ảnh trong dataroot")
+        cam_from_ego, _ = _cam_from_ego(frame)
+        data = bev.to_png(bev.bev_camera(img, np.asarray(frame.intrinsic, float), cam_from_ego))
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_bytes(data)
+    return FileResponse(cache, media_type="image/png", headers={"Cache-Control": "max-age=3600"})
 
 
 @router.get("/frames/{frame_id}/gt")

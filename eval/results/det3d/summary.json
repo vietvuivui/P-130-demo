@@ -1,0 +1,424 @@
+{
+ "scenes": [
+  "scene-0003",
+  "scene-0012",
+  "scene-0013",
+  "scene-0014",
+  "scene-0015",
+  "scene-0016",
+  "scene-0017",
+  "scene-0018",
+  "scene-0035",
+  "scene-0036",
+  "scene-0038",
+  "scene-0039",
+  "scene-0092",
+  "scene-0093",
+  "scene-0094",
+  "scene-0095",
+  "scene-0096",
+  "scene-0097",
+  "scene-0098",
+  "scene-0099",
+  "scene-0100",
+  "scene-0101",
+  "scene-0102",
+  "scene-0103",
+  "scene-0553",
+  "scene-0796",
+  "scene-0916"
+ ],
+ "n_samples": 1076,
+ "models": {
+  "pointpillars": {
+   "model": "pointpillars",
+   "label": "PointPillars (FPN)",
+   "sensor": "LiDAR",
+   "paper": {
+    "mAP": 39.7,
+    "NDS": 53.2
+   },
+   "results": "C:\\Users\\Admin\\OneDrive\\Desktop\\AI20K\\Final\\P-130\\tools3d\\work\\preds\\pointpillars\\pred_instances_3d\\results_nusc.json",
+   "seconds": 913.3,
+   "n_samples": 1076,
+   "s_per_sample": 0.849,
+   "peak_gpu_gb": 1.74,
+   "mAP": 0.46997596136293723,
+   "NDS": 0.5622106133582616,
+   "ap": {
+    "car": 0.8294063854787433,
+    "truck": 0.3552096159093794,
+    "bus": 0.5050116525694653,
+    "trailer": 0.6276059567639892,
+    "construction_vehicle": 0.21242352526492314,
+    "pedestrian": 0.7761836026970212,
+    "motorcycle": 0.12211227411892588,
+    "bicycle": 0.2846650998241384,
+    "traffic_cone": 0.5764958437661949,
+    "barrier": 0.41064565723659163
+   },
+   "tp_errors": {
+    "trans_err": 0.3936816107273115,
+    "scale_err": 0.2684387082212063,
+    "orient_err": 0.5198053285611831,
+    "vel_err": 0.29986224945219525,
+    "attr_err": 0.24598577627017326
+   },
+   "pr": {
+    "thresholds": [
+     0.05,
+     0.1,
+     0.2,
+     0.3,
+     0.4,
+     0.5,
+     0.6
+    ],
+    "precision": [
+     0.1244,
+     0.3012,
+     0.5994,
+     0.7716,
+     0.8771,
+     0.9345,
+     0.9653
+    ],
+    "recall": [
+     0.9423,
+     0.8988,
+     0.7735,
+     0.6337,
+     0.4973,
+     0.3705,
+     0.2677
+    ],
+    "n_gt": 25631
+   }
+  },
+  "ssn": {
+   "model": "ssn",
+   "label": "SSN (SECFPN)",
+   "sensor": "LiDAR",
+   "paper": {
+    "mAP": 40.9,
+    "NDS": 54.4
+   },
+   "results": "C:\\Users\\Admin\\OneDrive\\Desktop\\AI20K\\Final\\P-130\\tools3d\\work\\preds\\ssn\\pred_instances_3d\\results_nusc.json",
+   "seconds": 630.1,
+   "n_samples": 1076,
+   "s_per_sample": 0.586,
+   "peak_gpu_gb": 0.57,
+   "mAP": 0.4507700870367176,
+   "NDS": 0.5687942549206408,
+   "ap": {
+    "car": 0.8255169206164699,
+    "truck": 0.4414309382703271,
+    "bus": 0.6467049059084546,
+    "trailer": 0.3864562955684604,
+    "construction_vehicle": 0.34076081689908777,
+    "pedestrian": 0.7119568783688686,
+    "motorcycle": 0.0875465173357744,
+    "bicycle": 0.2313413553209498,
+    "traffic_cone": 0.43283904550664726,
+    "barrier": 0.40314719657213716
+   },
+   "tp_errors": {
+    "trans_err": 0.3279806409121155,
+    "scale_err": 0.26233197358781085,
+    "orient_err": 0.4068163059327591,
+    "vel_err": 0.33540983415844905,
+    "attr_err": 0.23336913138604445
+   },
+   "pr": {
+    "thresholds": [
+     0.05,
+     0.1,
+     0.2,
+     0.3,
+     0.4,
+     0.5,
+     0.6
+    ],
+    "precision": [
+     0.1387,
+     0.3223,
+     0.6281,
+     0.8151,
+     0.8986,
+     0.9426,
+     0.966
+    ],
+    "recall": [
+     0.931,
+     0.8542,
+     0.6839,
+     0.5176,
+     0.3681,
+     0.2574,
+     0.1775
+    ],
+    "n_gt": 25631
+   }
+  },
+  "centerpoint_pillar": {
+   "model": "centerpoint_pillar",
+   "label": "CenterPoint (pillar 0.2)",
+   "sensor": "LiDAR",
+   "paper": {
+    "mAP": 48.7,
+    "NDS": 59.6
+   },
+   "results": "C:\\Users\\Admin\\OneDrive\\Desktop\\AI20K\\Final\\P-130\\tools3d\\work\\preds\\centerpoint_pillar\\pred_instances_3d\\results_nusc.json",
+   "seconds": 441.9,
+   "n_samples": 1076,
+   "s_per_sample": 0.411,
+   "peak_gpu_gb": 0.48,
+   "mAP": 0.521347632100502,
+   "NDS": 0.6046835278468032,
+   "ap": {
+    "car": 0.8567567991617752,
+    "truck": 0.5096369478906229,
+    "bus": 0.65174855326281,
+    "trailer": 0.5083441904984367,
+    "construction_vehicle": 0.2808376485888926,
+    "pedestrian": 0.8432957462119317,
+    "motorcycle": 0.26098905037285336,
+    "bicycle": 0.23651617259648294,
+    "traffic_cone": 0.7092479967124439,
+    "barrier": 0.35610321570877057
+   },
+   "tp_errors": {
+    "trans_err": 0.29771526157163203,
+    "scale_err": 0.25822986229318823,
+    "orient_err": 0.3941770862339428,
+    "vel_err": 0.36438839672457074,
+    "attr_err": 0.2453922752111436
+   },
+   "pr": {
+    "thresholds": [
+     0.05,
+     0.1,
+     0.2,
+     0.3,
+     0.4,
+     0.5,
+     0.6
+    ],
+    "precision": [
+     0.1873,
+     0.1873,
+     0.4025,
+     0.5773,
+     0.7055,
+     0.7968,
+     0.8632
+    ],
+    "recall": [
+     0.9397,
+     0.9397,
+     0.9015,
+     0.8517,
+     0.7928,
+     0.7116,
+     0.5913
+    ],
+    "n_gt": 25631
+   }
+  },
+  "centerpoint_voxel": {
+   "model": "centerpoint_voxel",
+   "label": "CenterPoint (voxel 0.075, backbone SECOND)",
+   "sensor": "LiDAR",
+   "paper": {
+    "mAP": 56.5,
+    "NDS": 65.2
+   },
+   "results": "C:\\Users\\Admin\\OneDrive\\Desktop\\AI20K\\Final\\P-130\\tools3d\\work\\preds\\centerpoint_voxel\\pred_instances_3d\\results_nusc.json",
+   "seconds": 671.6,
+   "n_samples": 1076,
+   "s_per_sample": 0.624,
+   "peak_gpu_gb": 0.5,
+   "mAP": 0.5727386440727613,
+   "NDS": 0.6465406031214709,
+   "ap": {
+    "car": 0.8607342240668809,
+    "truck": 0.4996079857178824,
+    "bus": 0.6730525284464529,
+    "trailer": 0.31316229147062524,
+    "construction_vehicle": 0.3140431256022418,
+    "pedestrian": 0.8818441701942001,
+    "motorcycle": 0.49045673848226085,
+    "bicycle": 0.46505301659521575,
+    "traffic_cone": 0.812652993900851,
+    "barrier": 0.4167793662510009
+   },
+   "tp_errors": {
+    "trans_err": 0.2676888226916735,
+    "scale_err": 0.2417716123131967,
+    "orient_err": 0.35208465019070484,
+    "vel_err": 0.37081989578276425,
+    "attr_err": 0.16592220817075867
+   },
+   "pr": {
+    "thresholds": [
+     0.05,
+     0.1,
+     0.2,
+     0.3,
+     0.4,
+     0.5,
+     0.6
+    ],
+    "precision": [
+     0.255,
+     0.255,
+     0.4845,
+     0.6393,
+     0.7405,
+     0.81,
+     0.8646
+    ],
+    "recall": [
+     0.9465,
+     0.9465,
+     0.9099,
+     0.8706,
+     0.8237,
+     0.7532,
+     0.6303
+    ],
+    "n_gt": 25631
+   }
+  },
+  "fcos3d": {
+   "model": "fcos3d",
+   "label": "FCOS3D (camera)",
+   "sensor": "Camera",
+   "paper": {
+    "mAP": 32.1,
+    "NDS": 39.3
+   },
+   "results": "C:\\Users\\Admin\\OneDrive\\Desktop\\AI20K\\Final\\P-130\\tools3d\\work\\preds\\fcos3d\\pred_instances_3d\\results_nusc.json",
+   "seconds": 2929.1,
+   "n_samples": 1076,
+   "s_per_sample": 2.722,
+   "peak_gpu_gb": 0.55,
+   "mAP": 0.3294407160194947,
+   "NDS": 0.4110205372080965,
+   "ap": {
+    "car": 0.48779640979828537,
+    "truck": 0.2374286125411676,
+    "bus": 0.4188324114220562,
+    "trailer": 0.11844927548846897,
+    "construction_vehicle": 0.1583884841443276,
+    "pedestrian": 0.4377038476702128,
+    "motorcycle": 0.2617710042928487,
+    "bicycle": 0.259236251872159,
+    "traffic_cone": 0.6446965445596037,
+    "barrier": 0.270104318405817
+   },
+   "tp_errors": {
+    "trans_err": 0.6892966844943471,
+    "scale_err": 0.23654780823746804,
+    "orient_err": 0.5104500070218316,
+    "vel_err": 1.728165679458517,
+    "attr_err": 0.10070370826286168
+   },
+   "pr": {
+    "thresholds": [
+     0.05,
+     0.1,
+     0.2,
+     0.3,
+     0.4,
+     0.5,
+     0.6
+    ],
+    "precision": [
+     0.233,
+     0.4087,
+     0.6626,
+     0.8244,
+     0.9164,
+     0.9663,
+     0.9884
+    ],
+    "recall": [
+     0.8329,
+     0.7804,
+     0.6551,
+     0.4452,
+     0.1932,
+     0.0547,
+     0.01
+    ],
+    "n_gt": 25631
+   }
+  },
+  "pgd": {
+   "model": "pgd",
+   "label": "PGD (camera)",
+   "sensor": "Camera",
+   "paper": {
+    "mAP": 35.8,
+    "NDS": 42.5
+   },
+   "results": "C:\\Users\\Admin\\OneDrive\\Desktop\\AI20K\\Final\\P-130\\tools3d\\work\\preds\\pgd\\pred_instances_3d\\results_nusc.json",
+   "seconds": 2919.0,
+   "n_samples": 1076,
+   "s_per_sample": 2.713,
+   "peak_gpu_gb": 0.56,
+   "mAP": 0.39353981497368423,
+   "NDS": 0.4457411726294165,
+   "ap": {
+    "car": 0.5398328985334762,
+    "truck": 0.29616144517755993,
+    "bus": 0.42229566103752414,
+    "trailer": 0.3758704783148583,
+    "construction_vehicle": 0.20440157816083765,
+    "pedestrian": 0.4593986298111683,
+    "motorcycle": 0.33091106423657757,
+    "bicycle": 0.32577482951782977,
+    "traffic_cone": 0.6880736295583577,
+    "barrier": 0.2926779353886525
+   },
+   "tp_errors": {
+    "trans_err": 0.6178691836474973,
+    "scale_err": 0.256517759928768,
+    "orient_err": 0.4450665597041729,
+    "vel_err": 1.300476472332218,
+    "attr_err": 0.19083384529381814
+   },
+   "pr": {
+    "thresholds": [
+     0.05,
+     0.1,
+     0.2,
+     0.3,
+     0.4,
+     0.5,
+     0.6
+    ],
+    "precision": [
+     0.5555,
+     0.7605,
+     0.9103,
+     0.9967,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "recall": [
+     0.7568,
+     0.6026,
+     0.1786,
+     0.0117,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "n_gt": 25631
+   }
+  }
+ }
+}

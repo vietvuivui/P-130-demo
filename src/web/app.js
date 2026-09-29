@@ -304,6 +304,11 @@ function drawBox(b, color, { lw = 2, dash = null, label = null, alpha = 1, textC
 }
 
 function draw() {
+  drawCanvas();
+  window.bev2d?.draw(); // khung BEV (bev2d.js) theo cùng frame / box đang chọn / box đang sửa
+}
+
+function drawCanvas() {
   const f = S.frame;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (!f) return;
@@ -849,6 +854,13 @@ async function setMode(mode) {
   S.viewMode = mode;
   storageSet('viewMode', mode);
   document.querySelectorAll('.mode').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
+  // Chế độ 3D có panel riêng (app3d.js); tab Review hiển thị panel của chế độ đang chọn
+  const reviewTab = document.querySelector('.tab.active')?.dataset.tab === 'review';
+  $('tab-review').classList.toggle('hidden', mode === '3d' || !reviewTab);
+  $('tab-review3d').classList.toggle('hidden', mode !== '3d' || !reviewTab);
+  $('metrics3d').classList.toggle('hidden', mode !== '3d');
+  window.dispatchEvent(new CustomEvent('autolabel:mode', { detail: mode }));
+  if (mode === '3d') return;
   const video = mode === 'video';
   $('queue-panel').classList.toggle('hidden', video);
   $('video-panel').classList.toggle('hidden', !video);
@@ -1159,7 +1171,10 @@ setInterval(() => { $('timer').textContent = fmtTime(elapsed()); }, 500);
 
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
-  ['review', 'log', 'metrics'].forEach((t) => $('tab-' + t).classList.toggle('hidden', t !== tab));
+  ['review', 'log', 'metrics'].forEach((t) => $('tab-' + t).classList.toggle('hidden', t !== tab || (t === 'review' && S.viewMode === '3d')));
+  $('tab-review3d').classList.toggle('hidden', !(tab === 'review' && S.viewMode === '3d'));
+  window.dispatchEvent(new CustomEvent('autolabel:tab', { detail: tab }));
+  if (S.viewMode === '3d' && tab !== 'log') return;
   if (tab === 'log') loadLog().catch((e) => toast(e.message, true));
   if (tab === 'metrics') loadMetrics().catch((e) => toast(e.message, true));
   if (tab === 'review') { fitCanvas(); draw(); }
@@ -1200,6 +1215,7 @@ document.addEventListener('keydown', (e) => {
     n: () => stepFrame(1),
     p: () => stepFrame(-1),
     l: () => $('show-lidar').click(),
+    v: () => $('show-bev2d').click(),
     g: () => $('show-gt').click(),
     t: propagateCurrent,
     ' ': () => S.viewMode === 'video' && togglePlay(),
@@ -1260,6 +1276,8 @@ $('metrics-refresh').addEventListener('click', loadMetrics);
 $('btn-export').addEventListener('click', doExport);
 $('reviewer').addEventListener('change', (e) => storageSet('reviewer', e.target.value.trim()));
 new ResizeObserver(() => { fitCanvas(); draw(); }).observe($('canvas-wrap'));
+// cho bev2d.js (module) dùng chung trạng thái
+window.AL = { get S() { return S; }, select, ensureLidar };
 
 (async function init() {
   try {
@@ -1268,7 +1286,8 @@ new ResizeObserver(() => { fitCanvas(); draw(); }).observe($('canvas-wrap'));
     S.autoProp = storageGet('autoProp', '1') === '1';
     $('auto-prop').checked = S.autoProp;
     $('add-class').innerHTML = classOptions('car');
-    await setMode(storageGet('viewMode', 'image') === 'video' ? 'video' : 'image');
+    const saved = storageGet('viewMode', 'image');
+    await setMode(['video', '3d'].includes(saved) ? saved : 'image');
   } catch (err) {
     toast('Không tải được dữ liệu: ' + err.message, true);
   }

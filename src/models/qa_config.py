@@ -156,6 +156,24 @@ class VideoCfg(BaseModel):
     max_sweep_gap_s: float = 0.25
 
 
+class Verify3DCfg(BaseModel):
+    # Box 3D dưới ngưỡng điểm này không đưa vào duyệt (như ngưỡng 0.3 nhóm 3D dùng)
+    min_score: float = 0.3
+    # Ngưỡng điểm của box 2D dùng để kiểm chứng
+    det_conf: float = 0.2
+    # Prompt "đối thủ": vật dễ nhầm với các lớp (lan can cố định, cột, biển báo...). Box của chúng bị bỏ
+    distractors: list[str] = Field(
+        default_factory=lambda: [
+            "fence", "guardrail", "pole", "traffic sign", "fire hydrant", "trash can", "bollard",
+            "mailbox", "stroller", "wheelchair", "kick scooter",
+        ]
+    )  # fmt: skip
+    # Số lần quét LiDAR liền trước gộp thêm (nếu có trên đĩa) khi đếm điểm trong box / tính mức che
+    lidar_sweeps: int = 4
+    # Số điểm tối đa gửi lên UI mỗi keyframe
+    max_points_ui: int = 60000
+
+
 class AutoLabelConfig(BaseModel):
     camera: str = "CAM_FRONT"
     sweep_offsets: list[int] = [-2, -1, 1, 2]
@@ -165,6 +183,7 @@ class AutoLabelConfig(BaseModel):
     qa: QACfg = QACfg()
     propagation: PropagationCfg = PropagationCfg()
     video: VideoCfg = VideoCfg()
+    verify3d: Verify3DCfg = Verify3DCfg()
 
     def prompt_to_class(self) -> dict[str, str]:
         """Map mỗi prompt văn bản về lớp nội bộ."""

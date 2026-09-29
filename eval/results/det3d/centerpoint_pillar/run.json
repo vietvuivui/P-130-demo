@@ -1,0 +1,14 @@
+{
+ "model": "centerpoint_pillar",
+ "label": "CenterPoint (pillar 0.2)",
+ "sensor": "LiDAR",
+ "paper": {
+  "mAP": 48.7,
+  "NDS": 59.6
+ },
+ "results": "C:\\Users\\Admin\\OneDrive\\Desktop\\AI20K\\Final\\P-130\\tools3d\\work\\preds\\centerpoint_pillar\\pred_instances_3d\\results_nusc.json",
+ "seconds": 441.9,
+ "n_samples": 1076,
+ "s_per_sample": 0.411,
+ "peak_gpu_gb": 0.48
+}
