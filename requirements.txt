@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Core (API, QA Agent, review UI) — đủ để chạy server, test và CI, không cần GPU
 fastapi>=0.115.0
 uvicorn[standard]>=0.34.0

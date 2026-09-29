@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Chỉ cần cho bước auto-label (python -m src.cli run). Cài torch theo CUDA của máy trước:
 #   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
 -r requirements.txt
@@ -7,4 +8,4 @@ ultralytics>=8.4        # YOLO-World, YOLO26, YOLOE-26
 transformers>=4.51      # Grounding DINO, Florence-2
 timm                    # Florence-2
 einops                  # Florence-2
-open-image-models>=0.4  # detector biển số (làm mờ trước khi hiển thị, FR-03); kéo theo onnxruntime
+open-image-models>=0.4  # license plate detector for anonymization (FR-03), pulls onnxruntime
