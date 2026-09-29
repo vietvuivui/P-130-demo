@@ -28,6 +28,31 @@ BASE_WEIGHTS = "yoloe-26l-seg.pt"  # trọng số gốc (open-vocab, có nhánh 
 DET_YAML = "yoloe-26l.yaml"  # cùng kiến trúc, không có nhánh mask (nuImages có mask nhưng pipeline chỉ dùng box)
 
 
+def resume_trainer():
+    """YOLOEPETrainer dựng lại mô hình từ yaml + trọng số rồi gộp text embedding vào đầu phân lớp lần nữa: với checkpoint
+    đã fine-tune (đầu phân lớp đã gộp và đã học) việc đó làm hỏng mô hình (mAP về 0 khi chạy tiếp). Khi resume, dùng
+    thẳng mô hình trong checkpoint."""
+    from copy import deepcopy
+
+    from ultralytics.models.yolo.yoloe import YOLOEPETrainer
+
+    class Trainer(YOLOEPETrainer):
+        def get_model(self, cfg=None, weights=None, verbose=True):
+            if self.args.resume and weights is not None and not isinstance(weights, (str, Path)):
+                model = deepcopy(weights).float()
+                for p in model.parameters():
+                    p.requires_grad_(True)  # đóng băng lại theo args.freeze ở _setup_train
+                if (
+                    getattr(model, "criterion", 1) is None
+                ):  # checkpoint lưu criterion=None; YOLOEModel chỉ tạo lại khi thiếu
+                    del model.criterion
+                model.train()
+                return model
+            return super().get_model(cfg, weights, verbose)
+
+    return Trainer
+
+
 def build(weights: str):
     from ultralytics import YOLOE
 
@@ -53,7 +78,12 @@ def linear_probe_freeze(model) -> list[str]:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("stage", choices=["baseline", "lp", "full"])
-    ap.add_argument("--data", required=True, help="data.yaml của nuimages_to_yolo.py")
+    ap.add_argument("--data", default=None, help="data.yaml của nuimages_to_yolo.py")
+    ap.add_argument(
+        "--resume",
+        default=None,
+        help="chạy tiếp từ runs/yoloe_ft/<tên>/weights/last.pt (máy tắt / cập nhật Windows giữa chừng)",
+    )
     ap.add_argument("--weights", default=BASE_WEIGHTS)
     ap.add_argument("--imgsz", type=int, default=1280, help="1280 giống lúc suy luận; hết VRAM thì 960 + batch nhỏ")
     ap.add_argument("--epochs", type=int, default=None, help="mặc định lp 10, full 30")
@@ -67,6 +97,15 @@ def main() -> None:
 
     from ultralytics.models.yolo.yoloe import YOLOEPETrainer
 
+    if args.resume:  # mọi tham số (dữ liệu, epoch, lr, freeze...) lấy lại từ checkpoint
+        from ultralytics import YOLOE
+
+        model = YOLOE(args.resume)
+        model.train(resume=True, trainer=resume_trainer())
+        print(f"Xong. Checkpoint tốt nhất theo nuImages val: {model.trainer.best}")
+        return
+    if not args.data:
+        ap.error("cần --data (hoặc --resume)")
     name = args.name or f"{args.stage}-{args.imgsz}"
     if args.stage == "baseline":
         # zero-shot: trọng số gốc + tên lớp làm prompt, chấm trên nuImages val bằng đúng validator của lúc train

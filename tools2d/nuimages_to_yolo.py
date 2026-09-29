@@ -2,13 +2,15 @@
 
 Chạy ở máy huấn luyện, từ thư mục gốc của repo:
 
-    python tools2d/nuimages_to_yolo.py --dataroot D:/nuimages --out D:/nuimages_yolo \
-        --exclude-nuscenes D:/v1.0-trainval
+    python tools2d/nuimages_to_yolo.py --dataroot D:/nuimages --out D:/nuimages_yolo
 
     --dataroot          thư mục có v1.0-train/, v1.0-val/ (bảng json) và samples/ (ảnh keyframe)
     --out               dataset YOLO: images/{train,val}, labels/{train,val}, data.yaml
-    --exclude-nuscenes  bỏ mọi ảnh nuImages chụp cùng xe, cùng ngày với một scene val của nuScenes (chống rò rỉ:
-                        mô hình không được thấy đúng con đường / đúng xe của tập dùng để chấm cuối)
+    chống rò rỉ         mặc định bỏ mọi ảnh nuImages chụp cùng xe, cùng ngày với một scene val của nuScenes (danh sách
+                        đi kèm: tools2d/nuscenes_val_logs.json), để mô hình không thấy đúng con đường / đúng xe của tập
+                        dùng để chấm cuối. Không cần có nuScenes trên máy huấn luyện.
+    --exclude-nuscenes  đọc lại danh sách log val từ bảng nuScenes có trên máy (thay cho file đi kèm)
+    --no-exclude        không loại (chỉ để so sánh)
     --link              hardlink | symlink | copy (mặc định hardlink: không tốn thêm ổ, cần cùng ổ đĩa)
     --limit N           chỉ lấy N ảnh mỗi tập (thử nhanh)
 
@@ -144,12 +146,19 @@ def main() -> None:
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--config", type=Path, default=ROOT / "configs" / "autolabel.yaml")
     ap.add_argument("--exclude-nuscenes", type=Path, default=None)
+    ap.add_argument("--no-exclude", action="store_true")
     ap.add_argument("--link", choices=["hardlink", "symlink", "copy"], default="hardlink")
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args()
 
     classes, cat_map = class_names(args.config)
-    exclude = nuscenes_val_logs(args.exclude_nuscenes) if args.exclude_nuscenes else set()
+    if args.no_exclude:
+        exclude = set()
+    elif args.exclude_nuscenes:
+        exclude = nuscenes_val_logs(args.exclude_nuscenes)
+    else:
+        bundled = Path(__file__).with_name("nuscenes_val_logs.json")
+        exclude = {tuple(x) for x in json.loads(bundled.read_text(encoding="utf-8"))["logs"]}
     if exclude:
         print(f"Loại ảnh cùng xe + cùng ngày với {len(exclude)} log val của nuScenes")
     stats = {}

@@ -16,13 +16,37 @@ khi suy luận không cải thiện được đáng kể (xem `eval/results/det2
 
 | Dữ liệu | Dùng để |
 |---|---|
-| nuImages train (bỏ mọi ảnh chụp cùng xe, cùng ngày với một scene val của nuScenes: `--exclude-nuscenes`) | học |
+| nuImages train (tự bỏ mọi ảnh chụp cùng xe, cùng ngày với một scene val của nuScenes, `tools2d/nuscenes_val_logs.json`) | học |
 | nuImages val | chọn checkpoint (best.pt), dừng sớm |
 | nuScenes val — 3 scene dev (scene-0035/0097/0101) | chỉ để xem, đã nhìn nhiều khi làm UI |
 | nuScenes val — các scene held-out còn lại | **con số quyết định**: chỉ dùng trọng số mới khi held-out tốt hơn |
 
 Siêu tham số lấy theo hướng dẫn của Ultralytics cho YOLOE (AdamW, lr 1e-3 cho linear probe, weight decay 0.025).
 Không dò siêu tham số trên nuScenes.
+
+## Cách nhanh: một script trên máy GPU (Windows)
+
+```powershell
+git clone -b kien https://github.com/AI20K-Build-Phase-Cohort-4/P-130.git; cd P-130
+# đặt nuimages-v1.0-all-metadata.tgz + nuimages-v1.0-all-samples.tgz vào D:\nuimages rồi:
+powershell -ExecutionPolicy Bypass -File tools2d\train_pc.ps1 setup
+powershell -ExecutionPolicy Bypass -File tools2d\train_pc.ps1 data
+powershell -ExecutionPolicy Bypass -File tools2d\train_pc.ps1 convert
+powershell -ExecutionPolicy Bypass -File tools2d\train_pc.ps1 smoke      # vài phút: bắt lỗi môi trường trước
+powershell -ExecutionPolicy Bypass -File tools2d\train_pc.ps1 baseline
+powershell -ExecutionPolicy Bypass -File tools2d\train_pc.ps1 lp
+powershell -ExecutionPolicy Bypass -File tools2d\train_pc.ps1 full
+powershell -ExecutionPolicy Bypass -File tools2d\train_pc.ps1 package
+```
+
+- Máy tắt hoặc Windows khởi động lại giữa chừng: `train_pc.ps1 resume -Run lp-1280` (hoặc `full-1280`) chạy tiếp từ
+  `last.pt`, giữ nguyên dữ liệu, lr, số epoch và các lớp đóng băng.
+- Chống rò rỉ không cần nuScenes trên máy GPU: danh sách 15 log (xe, ngày) chứa 150 scene val nằm sẵn trong
+  `tools2d/nuscenes_val_logs.json`.
+- `-Batch -1` (mặc định) để Ultralytics tự chọn batch theo VRAM. Lỗi hết bộ nhớ thì thêm `-Batch 8` (hoặc 4).
+- Parsec không cần cho việc huấn luyện. Lỗi 6023 kèm 11002 là do mạng dùng NAT nhiều tầng (CGNAT hoặc hai router);
+  11010 là router tắt UPnP. Chuyển file thì dùng croc / Drive ở bảng dưới; điều khiển máy từ xa thì Chrome Remote Desktop
+  hoặc Tailscale + Remote Desktop chạy được qua CGNAT.
 
 ## 1. Chuẩn bị máy huấn luyện (vd. RTX 3090, không chung mạng LAN với máy chạy web)
 
@@ -43,8 +67,7 @@ nuscenes.org → Download → nuImages, rồi tải:
 
 - `nuimages-v1.0-all-metadata.tgz`: bảng json;
 - `nuimages-v1.0-all-samples.tgz`: ảnh keyframe, khoảng 15 GB. **Không cần** file sweeps.
-- Thêm `v1.0-trainval_meta.tgz` của nuScenes (chỉ bảng json, không có ảnh): tuỳ chọn `--exclude-nuscenes` dùng nó
-  để loại ảnh trùng log với tập val.
+- Không cần tải nuScenes lên máy huấn luyện: danh sách log val để chống rò rỉ đã nằm sẵn trong repo.
 
 Giải nén vào cùng một thư mục, ví dụ `D:\nuimages\` gồm `v1.0-train\`, `v1.0-val\`, `samples\`.
 
@@ -69,7 +92,7 @@ Luôn kiểm tra toàn vẹn ở hai đầu và so hai chuỗi:
 ## 2. Đổi nuImages sang dataset YOLO
 
 ```powershell
-python tools2d/nuimages_to_yolo.py --dataroot D:\nuimages --out D:\nuimages_yolo --exclude-nuscenes D:\v1.0-trainval
+python tools2d/nuimages_to_yolo.py --dataroot D:\nuimages --out D:\nuimages_yolo
 ```
 
 - Ảnh được hardlink, nên không tốn thêm dung lượng ổ khi cùng ổ đĩa.
