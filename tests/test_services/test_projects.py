@@ -160,3 +160,11 @@ def _zip_bytes(tmp_path):
     with zipfile.ZipFile(z, "w") as zf:
         zf.writestr("notes.txt", "không phải dữ liệu")
     return z.read_bytes()
+
+
+def test_models3d_names_are_validated(tmp_path, config):
+    with pytest.raises(ValueError):
+        ProjectManager(tmp_path / "p", lambda: config, models3d=["centerpoint_voxel", "x; rm -rf /"])
+    assert ProjectManager(tmp_path / "q", lambda: config, models3d=["centerpoint_pillar"]).models3d == [
+        "centerpoint_pillar"
+    ]

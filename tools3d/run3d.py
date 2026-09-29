@@ -391,7 +391,13 @@ def run_model(name: str, args, flip: str = "", write_out: bool = True) -> dict:
             return outs
 
         runner.model.test_step = unflip_test_step
-    runner.test()
+    try:
+        runner.test()
+    finally:
+        # runner / model được tạo mới cho mỗi lượt nên không bị dùng lại; vẫn gỡ bản vá để không lật nhầm nếu sau này
+        # có ai tái sử dụng model trong cùng tiến trình
+        if flip:
+            del runner.model.test_step
     dt = time.time() - t0
     files = sorted(Path(prefix).rglob("results_nusc.json"), key=lambda p: p.stat().st_mtime)
     if not files:

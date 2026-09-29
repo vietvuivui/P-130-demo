@@ -107,6 +107,11 @@ class ProjectManager:
         self.root.mkdir(parents=True, exist_ok=True)
         self.config_loader = config_loader  # () -> AutoLabelConfig
         self.mm3d_python = mm3d_python
+        # Lệnh 3D chạy bằng subprocess với danh sách tham số (không qua shell), và các giá trị này chỉ đến từ cấu hình
+        # máy chủ (.env / code), không từ người dùng; vẫn kiểm tra để một cấu hình sai không thành tham số lạ
+        for name in models3d or []:
+            if not re.fullmatch(r"[a-z0-9_]+", name):
+                raise ValueError(f"Tên mô hình 3D không hợp lệ: {name!r}")
         self.models3d = models3d  # None: 4 mô hình LiDAR của ensemble (run3d.py ENSEMBLE_MODELS)
         self.predict_args = predict_args or []
         self._lock = threading.RLock()
