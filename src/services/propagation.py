@@ -458,6 +458,9 @@ def apply_propagation(
             result.suppressed += 1
             continue
 
+        if t.last_match is None and idx is None and not cfg.emit_coasting:
+            # Không ghi box thuần dự đoán (không detection nào đỡ); track vẫn sống để bắt lại vật ở ảnh sau
+            continue
         base = objects[idx] if idx is not None else None
         if base is not None:
             bbox = list(base.bbox)

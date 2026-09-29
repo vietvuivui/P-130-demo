@@ -1,0 +1,132 @@
+{
+  "n_frames": 40,
+  "camera": "CAM_FRONT",
+  "version": "v1.0-trainval",
+  "detectors": [
+    "yolo_world"
+  ],
+  "map50": {
+    "iou": 0.5,
+    "map": 0.3113,
+    "n_classes": 6,
+    "per_class": {
+      "barrier": {
+        "ap": 0.0,
+        "n_gt": 26
+      },
+      "bus": {
+        "ap": 0.5351,
+        "n_gt": 15
+      },
+      "car": {
+        "ap": 0.5186,
+        "n_gt": 93
+      },
+      "motorcycle": {
+        "ap": 0.0,
+        "n_gt": 1
+      },
+      "pedestrian": {
+        "ap": 0.5363,
+        "n_gt": 52
+      },
+      "truck": {
+        "ap": 0.2779,
+        "n_gt": 24
+      }
+    }
+  },
+  "map70": {
+    "iou": 0.7,
+    "map": 0.2076,
+    "n_classes": 6,
+    "per_class": {
+      "barrier": {
+        "ap": 0.0,
+        "n_gt": 26
+      },
+      "bus": {
+        "ap": 0.5351,
+        "n_gt": 15
+      },
+      "car": {
+        "ap": 0.383,
+        "n_gt": 93
+      },
+      "motorcycle": {
+        "ap": 0.0,
+        "n_gt": 1
+      },
+      "pedestrian": {
+        "ap": 0.0495,
+        "n_gt": 52
+      },
+      "truck": {
+        "ap": 0.2779,
+        "n_gt": 24
+      }
+    }
+  },
+  "qa": {
+    "match_iou": 0.5,
+    "objects_evaluated": 310,
+    "objects_need_fix": 194,
+    "flag_recall": 0.7835,
+    "flag_precision": 0.7917,
+    "low_risk_share": 0.3806,
+    "low_risk_error_rate": 0.3559,
+    "by_level": {
+      "low": {
+        "n": 118,
+        "needs_fix": 42,
+        "error_rate": 0.3559
+      },
+      "medium": {
+        "n": 188,
+        "needs_fix": 149,
+        "error_rate": 0.7926
+      },
+      "high": {
+        "n": 4,
+        "needs_fix": 3,
+        "error_rate": 0.75
+      }
+    },
+    "by_issue": {
+      "ASPECT_RATIO_ABNORMAL": {
+        "n": 8,
+        "needs_fix": 3,
+        "precision": 0.375
+      },
+      "BOX_TOO_LARGE": {
+        "n": 1,
+        "needs_fix": 0,
+        "precision": 0.0
+      },
+      "CLASS_CONFLICT": {
+        "n": 7,
+        "needs_fix": 6,
+        "precision": 0.8571
+      },
+      "FLICKER": {
+        "n": 76,
+        "needs_fix": 67,
+        "precision": 0.8816
+      },
+      "LOW_CONFIDENCE": {
+        "n": 145,
+        "needs_fix": 118,
+        "precision": 0.8138
+      },
+      "NO_LIDAR_SUPPORT": {
+        "n": 2,
+        "needs_fix": 1,
+        "precision": 0.5
+      }
+    },
+    "fn_total": 65,
+    "fn_recovered_by_track": 0,
+    "track_proposals": 0,
+    "track_proposal_precision": null
+  }
+}

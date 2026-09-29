@@ -1,0 +1,174 @@
+{
+ "mo_ta": "YOLOE-26L-seg zero-shot trên CAM_FRONT. dev = 119 keyframe của scene-0035/0097/0101; held = 40 keyframe scene-0031/0065 (chỉ chấm cấu hình được chọn). mAP50 theo GT chiếu từ box 3D; P/R ở min_score 0.30. Sinh bởi thí nghiệm ngày 2026-09-29; kết luận: giữ nguyên cấu hình base.",
+ "bien_the": {
+  "base": "cấu hình hiện tại: prompt của configs/autolabel.yaml, imgsz 1280",
+  "nusc": "prompt mở rộng theo định nghĩa lớp nuScenes (sedan, lorry, jersey barrier, ...)",
+  "nusc_distr": "nusc + các prompt gây nhiễu (verify3d.distractors) để hút box sai lớp",
+  "nusc_flip": "nusc + thêm lượt ảnh lật ngang (tta_flip)",
+  "base_1600": "prompt gốc, imgsz 1600 (độ phân giải gốc của ảnh)"
+ },
+ "ket_qua": {
+  "dev:base": {
+   "mAP50": 0.3952,
+   "P": 0.5678,
+   "R": 0.5799,
+   "F1": 0.5738,
+   "ap": {
+    "barrier": 0.12,
+    "bicycle": 0.192,
+    "bus": 0.797,
+    "car": 0.772,
+    "construction_vehicle": 0.0,
+    "motorcycle": 0.287,
+    "pedestrian": 0.245,
+    "traffic_cone": 0.491,
+    "truck": 0.652
+   },
+   "n_gt": {
+    "car": 440,
+    "pedestrian": 173,
+    "bicycle": 13,
+    "truck": 46,
+    "motorcycle": 8,
+    "bus": 22,
+    "traffic_cone": 203,
+    "barrier": 157,
+    "construction_vehicle": 14
+   }
+  },
+  "dev:nusc": {
+   "mAP50": 0.3916,
+   "P": 0.5489,
+   "R": 0.579,
+   "F1": 0.5635,
+   "ap": {
+    "barrier": 0.12,
+    "bicycle": 0.192,
+    "bus": 0.797,
+    "car": 0.77,
+    "construction_vehicle": 0.0,
+    "motorcycle": 0.287,
+    "pedestrian": 0.245,
+    "traffic_cone": 0.491,
+    "truck": 0.622
+   },
+   "n_gt": {
+    "car": 440,
+    "pedestrian": 173,
+    "bicycle": 13,
+    "truck": 46,
+    "motorcycle": 8,
+    "bus": 22,
+    "traffic_cone": 203,
+    "barrier": 157,
+    "construction_vehicle": 14
+   }
+  },
+  "dev:nusc_distr": {
+   "mAP50": 0.3917,
+   "P": 0.5494,
+   "R": 0.579,
+   "F1": 0.5638,
+   "ap": {
+    "barrier": 0.12,
+    "bicycle": 0.192,
+    "bus": 0.797,
+    "car": 0.77,
+    "construction_vehicle": 0.0,
+    "motorcycle": 0.287,
+    "pedestrian": 0.245,
+    "traffic_cone": 0.491,
+    "truck": 0.622
+   },
+   "n_gt": {
+    "car": 440,
+    "pedestrian": 173,
+    "bicycle": 13,
+    "truck": 46,
+    "motorcycle": 8,
+    "bus": 22,
+    "traffic_cone": 203,
+    "barrier": 157,
+    "construction_vehicle": 14
+   }
+  },
+  "dev:nusc_flip": {
+   "mAP50": 0.3813,
+   "P": 0.5175,
+   "R": 0.592,
+   "F1": 0.5522,
+   "ap": {
+    "barrier": 0.122,
+    "bicycle": 0.213,
+    "bus": 0.714,
+    "car": 0.776,
+    "construction_vehicle": 0.0,
+    "motorcycle": 0.208,
+    "pedestrian": 0.253,
+    "traffic_cone": 0.507,
+    "truck": 0.638
+   },
+   "n_gt": {
+    "car": 440,
+    "pedestrian": 173,
+    "bicycle": 13,
+    "truck": 46,
+    "motorcycle": 8,
+    "bus": 22,
+    "traffic_cone": 203,
+    "barrier": 157,
+    "construction_vehicle": 14
+   }
+  },
+  "held:base": {
+   "mAP50": 0.4516,
+   "P": 0.5058,
+   "R": 0.6161,
+   "F1": 0.5556,
+   "ap": {
+    "barrier": 0.447,
+    "bus": 0.696,
+    "car": 0.677,
+    "motorcycle": 0.0,
+    "pedestrian": 0.501,
+    "truck": 0.388
+   },
+   "n_gt": {
+    "barrier": 26,
+    "truck": 24,
+    "car": 93,
+    "pedestrian": 52,
+    "motorcycle": 1,
+    "bus": 15
+   }
+  },
+  "dev:base_1600": {
+   "mAP50": 0.3651,
+   "P": 0.52,
+   "R": 0.5548,
+   "F1": 0.5369,
+   "ap": {
+    "barrier": 0.13,
+    "bicycle": 0.115,
+    "bus": 0.735,
+    "car": 0.764,
+    "construction_vehicle": 0.0,
+    "motorcycle": 0.325,
+    "pedestrian": 0.18,
+    "traffic_cone": 0.403,
+    "truck": 0.634
+   },
+   "n_gt": {
+    "car": 440,
+    "pedestrian": 173,
+    "bicycle": 13,
+    "truck": 46,
+    "motorcycle": 8,
+    "bus": 22,
+    "traffic_cone": 203,
+    "barrier": 157,
+    "construction_vehicle": 14
+   }
+  }
+ }
+}

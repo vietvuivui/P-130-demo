@@ -93,6 +93,10 @@ class NuScenesMini:
 
     @cached_property
     def sample_annotation(self) -> dict[str, dict]:
+        # Dữ liệu chưa gán nhãn (split test, hoặc log tự thu theo định dạng nuScenes) có thể không có bảng này:
+        # vẫn auto-label được, chỉ không có GT để đối chiếu / đánh giá
+        if not (self.table_dir / "sample_annotation.json").exists():
+            return {}
         return self._load("sample_annotation")
 
     @cached_property

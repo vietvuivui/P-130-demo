@@ -75,9 +75,9 @@ def fake_nuscenes(root):
                     tables["ego_pose"].append({"token": f"ep-{tok}"})
     by_tok = {sd["token"]: sd for sd in tables["sample_data"]}
     for chain in chains.values():
-        for a, b in zip(chain, chain[1:] + [""], strict=True):
+        for prev, a, b in zip([""] + chain[:-1], chain, chain[1:] + [""], strict=True):
             by_tok[a]["next"] = b
-            by_tok[a]["prev"] = ""
+            by_tok[a]["prev"] = prev
     for name, rows in tables.items():
         (t / f"{name}.json").write_text(json.dumps(rows))
     for sd in tables["sample_data"]:
@@ -149,3 +149,16 @@ def test_random_scenes_only_where_images_exist_and_window(tmp_path):
         zf.extractall(tmp_path / "x")
     sub = NuScenesMini(tmp_path / "x" / "autolabel_subset" / "nuscenes")
     assert len(sub.keyframes()) == 1 and sub.camera_timeline("scene-A", "CAM_FRONT")
+
+
+def test_pack_for_3d_all_cameras_lidar_sweeps_and_split(tmp_path):
+    data = tmp_path / "nuscenes"
+    fake_nuscenes(data)
+    info = pack_subset.pack(data, "v1.0-mini", ["scene-A"], tmp_path / "3d.zip", all_cameras=True, lidar_sweeps=1)
+    assert info["images"] == 5  # CAM_FRONT 2 keyframe + 1 sweep, CAM_BACK 2 keyframe
+    assert info["lidar"] == 3  # 2 LiDAR keyframe + 1 lần quét liền trước keyframe thứ hai
+    with zipfile.ZipFile(tmp_path / "3d.zip") as zf:
+        names = zf.namelist()
+    assert sum("sweeps/LIDAR_TOP" in n for n in names) == 1
+    assert sum("samples/CAM_BACK" in n for n in names) == 2
+    assert pack_subset.pick_random_scenes(data, "v1.0-mini", 5, seed=0, allowed={"scene-B"}) == ["scene-B"]

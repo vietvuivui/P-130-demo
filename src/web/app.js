@@ -1,11 +1,14 @@
 /* AutoLabel 2D — UI review by exception (không cần build, gọi thẳng FastAPI) */
 'use strict';
 
-const API = '/api/v1';
+// ?project=<id>: làm việc trong một dự án (data/projects/<id>), API cùng đường dẫn nhưng có tiền tố /p/<id>
+const PROJECT = new URLSearchParams(location.search).get('project');
+const API = PROJECT ? `/p/${encodeURIComponent(PROJECT)}/api/v1` : '/api/v1';
 const LEVELS = ['high', 'medium', 'low'];
 const LEVEL_NAME = { low: 'Low', medium: 'Medium', high: 'High' };
 const RISK_COLOR = { low: '#0ca30c', medium: '#fab219', high: '#d03b3b' };
 const HUMAN_COLOR = '#3987e5';
+const STATUS_TEXT = { auto: 'Chưa mở', editing: 'Đang sửa', approved: 'Đã duyệt', rejected: 'Bị trả lại' };
 
 const S = {
   cfg: null,
@@ -22,6 +25,8 @@ const S = {
   showLidar: false,
   showGt: false,
   showLow: true,
+  showMask: true,
+  minScore: 0, // FR-06: ẩn box model có score thấp hơn (chỉ đổi cách xem)
   lowOpen: false,
   mode: 'view', // view | edit | add
   editBox: null,
@@ -76,11 +81,13 @@ function toast(msg, error = false) {
   toastTimer = setTimeout(() => t.classList.add('hidden'), error ? 5000 : 2200);
 }
 
+// mỗi dự án nhớ chế độ / video đang mở riêng; tên người duyệt dùng chung
+const storageKey = (k) => (PROJECT && k !== 'reviewer' ? `pj.${PROJECT}.${k}` : k);
 function storageGet(k, fallback) {
-  try { return localStorage.getItem(k) ?? fallback; } catch { return fallback; }
+  try { return localStorage.getItem(storageKey(k)) ?? fallback; } catch { return fallback; }
 }
 function storageSet(k, v) {
-  try { localStorage.setItem(k, v); } catch { /* bỏ qua: private mode */ }
+  try { localStorage.setItem(storageKey(k), v); } catch { /* bỏ qua: private mode */ }
 }
 
 const reviewer = () => $('reviewer').value.trim() || S.cfg?.reviewer || 'annotator';
@@ -134,7 +141,7 @@ function renderQueue() {
   const list = $('queue-list');
   list.innerHTML = S.queue.map((f) => {
     const lv = riskLevel(f.frame_risk);
-    const statusText = { auto: 'Chưa mở', editing: 'Đang sửa', approved: 'Đã duyệt' }[f.status];
+    const statusText = STATUS_TEXT[f.status];
     return `<li class="queue-item ${S.frame?.frame_id === f.frame_id ? 'active' : ''}" data-id="${esc(f.frame_id)}">
       <div class="qi-top"><span class="qi-id">${esc(f.frame_id)}</span>${f.propagated_from && f.status === 'auto' ? `<span class="prop-tag" title="Nhãn lan truyền từ ${esc(f.propagated_from)}">↦</span>` : ''}<span class="status-pill ${f.status}">${statusText}</span></div>
       <div class="risk-meter" title="Frame risk ${fx(f.frame_risk)} (${LEVEL_NAME[lv]})"><span style="width:${Math.max(4, f.frame_risk * 100)}%;background:${RISK_COLOR[lv]}"></span></div>
@@ -209,6 +216,72 @@ function renderAll() {
   renderPanel();
   renderFilmstrip();
   renderQueue();
+  renderRejectBanner();
+  refreshHistory();
+}
+
+// ---------- trả lại frame (FR-15), hoàn tác / làm lại (FR-09) ----------
+
+function renderRejectBanner() {
+  const f = S.frame;
+  const box = $('reject-banner');
+  const show = f && f.reject_reason && f.status !== 'approved';
+  box.classList.toggle('hidden', !show);
+  if (show) {
+    const when = (f.rejected_at || '').replace('T', ' ').replace('+00:00', ' UTC');
+    box.innerHTML = `<b>Bị trả lại</b> bởi ${esc(f.rejected_by || '?')} · ${esc(when)}<br>${esc(f.reject_reason)}`;
+  }
+}
+
+let historyToken = 0;
+async function refreshHistory() {
+  const f = S.frame;
+  const token = ++historyToken;
+  if (!f) { $('btn-undo').disabled = $('btn-redo').disabled = true; return; }
+  try {
+    const h = await api(`/frames/${encodeURIComponent(f.frame_id)}/history`);
+    if (token !== historyToken) return; // đã mở frame khác
+    const locked = S.frame?.status === 'approved';
+    $('btn-undo').disabled = locked || !h.undo;
+    $('btn-redo').disabled = locked || !h.redo;
+    $('btn-undo').title = `Hoàn tác (Ctrl+Z) · còn ${h.undo} bước`;
+    $('btn-redo').title = `Làm lại (Ctrl+Y) · còn ${h.redo} bước`;
+  } catch { /* máy chủ cũ không có lịch sử */ }
+}
+
+async function undoRedo(dir) {
+  if (!S.frame || S.frame.status === 'approved') return;
+  if (S.mode !== 'view') cancelEdit();
+  try {
+    S.frame = await api(`/frames/${encodeURIComponent(S.frame.frame_id)}/${dir}`, { method: 'POST', body: { reviewer: reviewer() } });
+    if (!getObj(S.selected)) S.selected = null;
+    toast(dir === 'undo' ? 'Đã hoàn tác' : 'Đã làm lại');
+    renderAll();
+    refreshLists();
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
+function openReject() {
+  if (!S.frame) return;
+  $('reject-box').classList.remove('hidden');
+  $('reject-reason').focus();
+}
+
+async function sendReject() {
+  const reason = $('reject-reason').value.trim();
+  if (reason.length < 3) { toast('Ghi lý do trả lại (ít nhất 3 ký tự)', true); $('reject-reason').focus(); return; }
+  try {
+    S.frame = await api(`/frames/${encodeURIComponent(S.frame.frame_id)}/reject`, { method: 'POST', body: { reason, reviewer: reviewer() } });
+    $('reject-reason').value = '';
+    $('reject-box').classList.add('hidden');
+    toast(`Đã trả lại ${S.frame.frame_id}`);
+    renderAll();
+    refreshLists();
+  } catch (err) {
+    toast(err.message, true);
+  }
 }
 
 function renderHeader() {
@@ -216,7 +289,7 @@ function renderHeader() {
   $('frame-id').textContent = f ? f.frame_id : '—';
   const pill = $('frame-status');
   pill.className = 'status-pill ' + (f?.status || '');
-  pill.textContent = f ? { auto: 'Chưa mở', editing: 'Đang sửa', approved: 'Đã duyệt' }[f.status] : '';
+  pill.textContent = f ? STATUS_TEXT[f.status] : '';
   let where = '';
   if (f && S.viewMode === 'video' && S.video) {
     const i = S.video.frames.findIndex((x) => x.frame_id === f.frame_id);
@@ -281,6 +354,23 @@ function depthColor(d) {
   return `hsl(${Math.round(t * 230)}, 90%, 55%)`;
 }
 
+const belowScore = (o) => o.source !== 'human' && o.score < S.minScore;
+
+// Mask sơ bộ của model (FR-04): chỉ khi người chưa sửa / vẽ lại box (mask không còn khớp box mới)
+function drawMask(o, color, sel) {
+  const m = o.mask;
+  if (!m || m.length < 6 || ['EDIT_BOX', 'ADD_BOX'].includes(o.review.action)) return;
+  ctx.save();
+  ctx.globalAlpha = sel ? 0.35 : 0.2;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(m[0], m[1]);
+  for (let i = 2; i < m.length; i += 2) ctx.lineTo(m[i], m[i + 1]);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
 function drawBox(b, color, { lw = 2, dash = null, label = null, alpha = 1, textColor = '#fff' } = {}) {
   const k = px();
   ctx.save();
@@ -304,6 +394,11 @@ function drawBox(b, color, { lw = 2, dash = null, label = null, alpha = 1, textC
 }
 
 function draw() {
+  drawCanvas();
+  window.bev2d?.draw(); // khung BEV (bev2d.js) theo cùng frame / box đang chọn / box đang sửa
+}
+
+function drawCanvas() {
   const f = S.frame;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (!f) return;
@@ -334,14 +429,19 @@ function draw() {
     return;
   }
 
+  let shown = 0, total = 0;
   for (const o of f.objects) {
     if (o.review.status === 'deleted') continue;
+    total++;
     const lv = levelOf(o);
     const pending = o.review.status === 'pending';
     if (pending && lv === 'low' && !S.showLow && o.object_id !== S.selected) continue;
+    if (belowScore(o) && o.object_id !== S.selected) continue;
+    shown++;
     const sel = o.object_id === S.selected;
     if (sel && S.mode === 'edit') continue;
     const color = o.source === 'human' ? HUMAN_COLOR : RISK_COLOR[lv];
+    if (S.showMask) drawMask(o, color, sel);
     // Nhãn đầy đủ chỉ cho box đang chọn / high / người vẽ; medium chỉ hiện #id để ảnh không bị che kín
     const full = `${pending ? '' : '✓ '}#${o.object_id} ${finalLabel(o)}${o.source === 'human' ? '' : ' ' + scoreText(o)}`;
     let tag = null;
@@ -354,6 +454,8 @@ function draw() {
       alpha: sel || S.selected == null ? 1 : 0.85,
     });
   }
+
+  $('min-score-count').textContent = S.minScore > 0 ? ` · ${shown}/${total} box` : '';
 
   if (S.editBox) {
     drawBox(S.editBox, '#7c5cd6', { lw: 3, dash: S.mode === 'add' ? [6, 4] : null });
@@ -849,6 +951,13 @@ async function setMode(mode) {
   S.viewMode = mode;
   storageSet('viewMode', mode);
   document.querySelectorAll('.mode').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
+  // Chế độ 3D có panel riêng (app3d.js); tab Review hiển thị panel của chế độ đang chọn
+  const reviewTab = document.querySelector('.tab.active')?.dataset.tab === 'review';
+  $('tab-review').classList.toggle('hidden', mode === '3d' || !reviewTab);
+  $('tab-review3d').classList.toggle('hidden', mode !== '3d' || !reviewTab);
+  $('metrics3d').classList.toggle('hidden', mode !== '3d');
+  window.dispatchEvent(new CustomEvent('autolabel:mode', { detail: mode }));
+  if (mode === '3d') return;
   const video = mode === 'video';
   $('queue-panel').classList.toggle('hidden', video);
   $('video-panel').classList.toggle('hidden', !video);
@@ -1109,7 +1218,7 @@ function meterCell(v) {
 async function loadMetrics() {
   const m = await api('/metrics');
   const tiles = [
-    ['Frame đã duyệt', `${m.frames.approved}/${m.frames.total}`, `${m.frames.editing} đang sửa`],
+    ['Frame đã duyệt', `${m.frames.approved}/${m.frames.total}`, `${m.frames.editing} đang sửa · ${m.frames.rejected ?? 0} bị trả lại`],
     ['M4 · tỉ lệ nhãn phải sửa', pct(m.m4_correction_rate), `${m.model_objects_fixed}/${m.model_objects_reviewed} object máy sinh`],
     ['Flag recall', pct(m.flag_recall), 'object bị sửa đã được agent gắn cờ'],
     ['Flag precision', pct(m.flag_precision), 'object gắn cờ thật sự bị sửa'],
@@ -1130,7 +1239,26 @@ async function loadMetrics() {
   $('issue-table').innerHTML = '<thead><tr><th>Issue</th><th class="num">Gắn cờ</th><th class="num">Bị sửa</th><th>Precision</th></tr></thead><tbody>' +
     (issues.map(([c, v]) => `<tr><td><code>${esc(c)}</code></td><td class="num">${v.flagged}</td><td class="num">${v.fixed}</td><td>${meterCell(v.rate)}</td></tr>`).join('') ||
       '<tr><td colspan="4" class="muted">Chưa có object gắn issue nào được duyệt</td></tr>') + '</tbody>';
+  renderProductivity(m.productivity, '', API + '/report.csv');
   loadExports();
+}
+
+// Năng suất người duyệt + throughput auto-label (FR-27); link CSV (FR-19). Dùng chung với app3d.js qua window.AL
+function renderProductivity(prod, p, csvBase) {
+  $(p + 'csv-frames').href = csvBase + (csvBase.includes('?') ? '&' : '?') + 'kind=frames';
+  $(p + 'csv-summary').href = csvBase + (csvBase.includes('?') ? '&' : '?') + 'kind=summary';
+  const n = (v, d = 1) => (v == null ? '—' : Number(v).toFixed(d));
+  const rows = prod?.reviewers || [];
+  $(p + 'prod-table').innerHTML = '<thead><tr><th>Người duyệt</th><th class="num">Frame duyệt</th><th class="num">Object đã xử lý</th><th class="num">Trả lại</th><th class="num">Hoàn tác</th><th class="num">Thời gian duyệt</th><th class="num">Frame/giờ</th><th>Phiên</th></tr></thead><tbody>' +
+    (rows.map((r) => `<tr><td>${esc(r.reviewer)}</td><td class="num">${r.frames_approved}</td><td class="num">${r.objects_handled}</td>
+      <td class="num">${r.frames_rejected}</td><td class="num">${r.undo_redo}</td><td class="num">${fmtTime(r.review_time_s)}</td>
+      <td class="num"><b>${n(r.frames_per_hour)}</b></td>
+      <td class="prod-sessions">${r.sessions.map((s) => `${esc(s.start.slice(0, 16).replace('T', ' '))}: ${s.frames} frame, ${n(s.frames_per_hour)}/giờ`).join('<br>') || '—'}</td></tr>`).join('') ||
+      '<tr><td colspan="8" class="muted">Chưa có frame nào được approve</td></tr>') + '</tbody>';
+  const inf = prod?.inference || [];
+  $(p + 'infer-table').innerHTML = '<thead><tr><th>Phiên auto-label</th><th>Thiết bị</th><th class="num">Frame</th><th class="num">s / frame</th><th class="num">Frame/giờ</th></tr></thead><tbody>' +
+    (inf.map((r) => `<tr><td><code>${esc(r.run)}</code></td><td>${esc(r.device || '—')}</td><td class="num">${r.frames}</td><td class="num">${n(r.s_per_frame, 2)}</td><td class="num"><b>${n(r.frames_per_hour, 0)}</b></td></tr>`).join('') ||
+      '<tr><td colspan="5" class="muted">Chưa có số đo (frame auto-label trước bản này không ghi thời gian; chạy lại <code>run --overwrite</code> hoặc tạo dự án mới)</td></tr>') + '</tbody>';
 }
 
 async function loadExports() {
@@ -1159,7 +1287,10 @@ setInterval(() => { $('timer').textContent = fmtTime(elapsed()); }, 500);
 
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
-  ['review', 'log', 'metrics'].forEach((t) => $('tab-' + t).classList.toggle('hidden', t !== tab));
+  ['review', 'log', 'metrics'].forEach((t) => $('tab-' + t).classList.toggle('hidden', t !== tab || (t === 'review' && S.viewMode === '3d')));
+  $('tab-review3d').classList.toggle('hidden', !(tab === 'review' && S.viewMode === '3d'));
+  window.dispatchEvent(new CustomEvent('autolabel:tab', { detail: tab }));
+  if (S.viewMode === '3d' && tab !== 'log') return;
   if (tab === 'log') loadLog().catch((e) => toast(e.message, true));
   if (tab === 'metrics') loadMetrics().catch((e) => toast(e.message, true));
   if (tab === 'review') { fitCanvas(); draw(); }
@@ -1192,6 +1323,12 @@ document.addEventListener('keydown', (e) => {
   if (!S.frame) return;
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   if (S.playTimer && key !== ' ') stopPlay();
+  if ((e.ctrlKey || e.metaKey) && (key === 'z' || key === 'y')) {
+    e.preventDefault();
+    undoRedo(key === 'y' || e.shiftKey ? 'redo' : 'undo');
+    return;
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
 
   // Điều hướng: dùng được cả khi frame đã approve
   const nav = {
@@ -1200,8 +1337,10 @@ document.addEventListener('keydown', (e) => {
     n: () => stepFrame(1),
     p: () => stepFrame(-1),
     l: () => $('show-lidar').click(),
+    v: () => $('show-bev2d').click(),
     g: () => $('show-gt').click(),
     t: propagateCurrent,
+    r: openReject,
     ' ': () => S.viewMode === 'video' && togglePlay(),
     '+': () => zoomBy(1.5),
     '=': () => zoomBy(1.5),
@@ -1247,8 +1386,20 @@ $('queue-filter').addEventListener('click', (e) => {
 $('show-lidar').addEventListener('change', async (e) => { S.showLidar = e.target.checked; if (S.showLidar) await ensureLidar(); draw(); });
 $('show-gt').addEventListener('change', async (e) => { S.showGt = e.target.checked; if (S.showGt) await ensureGt(); draw(); });
 $('show-low').addEventListener('change', (e) => { S.showLow = e.target.checked; draw(); });
+$('show-mask').addEventListener('change', (e) => { S.showMask = e.target.checked; draw(); });
+$('min-score').addEventListener('input', (e) => {
+  S.minScore = Number(e.target.value);
+  $('min-score-val').textContent = S.minScore.toFixed(2);
+  draw();
+});
 $('toggle-low').addEventListener('click', () => { S.lowOpen = !S.lowOpen; renderPanel(); });
 $('btn-approve-low').addEventListener('click', approveLow);
+$('btn-undo').addEventListener('click', () => undoRedo('undo'));
+$('btn-redo').addEventListener('click', () => undoRedo('redo'));
+$('btn-reject').addEventListener('click', openReject);
+$('reject-send').addEventListener('click', sendReject);
+$('reject-cancel').addEventListener('click', () => $('reject-box').classList.add('hidden'));
+$('reject-reason').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendReject(); });
 $('btn-propagate').addEventListener('click', propagateCurrent);
 $('auto-prop').addEventListener('change', (e) => { S.autoProp = e.target.checked; storageSet('autoProp', S.autoProp ? '1' : '0'); });
 $('btn-add').addEventListener('click', () => (S.mode === 'add' ? cancelEdit() : startAdd()));
@@ -1260,6 +1411,24 @@ $('metrics-refresh').addEventListener('click', loadMetrics);
 $('btn-export').addEventListener('click', doExport);
 $('reviewer').addEventListener('change', (e) => storageSet('reviewer', e.target.value.trim()));
 new ResizeObserver(() => { fitCanvas(); draw(); }).observe($('canvas-wrap'));
+// cho bev2d.js (module) dùng chung trạng thái
+window.AL = { get S() { return S; }, select, ensureLidar, renderProductivity };
+
+// Dự án: hiện tên + link quay lại, ẩn chế độ không có dữ liệu (không LiDAR -> không 3D)
+async function initProject() {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(PROJECT)}`);
+  if (!r.ok) throw new Error(`Không tìm thấy dự án ${PROJECT}`);
+  const p = await r.json();
+  document.title = `${p.name} — AutoLabel 3D`;
+  document.body.classList.add('in-project');
+  $('project-link').classList.remove('hidden');
+  $('project-name').textContent = p.name;
+  const modes = ['image', 'video'];
+  const done3d = p.steps.some((s) => s.name === 'predict3d' && s.status === 'done');
+  if (p.stats?.has_lidar && done3d) modes.push('3d');
+  document.querySelectorAll('.mode').forEach((b) => b.classList.toggle('hidden', !modes.includes(b.dataset.mode)));
+  return modes;
+}
 
 (async function init() {
   try {
@@ -1268,7 +1437,11 @@ new ResizeObserver(() => { fitCanvas(); draw(); }).observe($('canvas-wrap'));
     S.autoProp = storageGet('autoProp', '1') === '1';
     $('auto-prop').checked = S.autoProp;
     $('add-class').innerHTML = classOptions('car');
-    await setMode(storageGet('viewMode', 'image') === 'video' ? 'video' : 'image');
+    let modes = ['image', 'video', '3d'];
+    if (PROJECT) modes = await initProject();
+    const urlMode = new URLSearchParams(location.search).get('mode');
+    const saved = modes.includes(urlMode) ? urlMode : storageGet('viewMode', modes[0]);
+    await setMode(modes.includes(saved) ? saved : modes[0]);
   } catch (err) {
     toast('Không tải được dữ liệu: ' + err.message, true);
   }

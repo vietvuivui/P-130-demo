@@ -1,0 +1,14 @@
+{
+ "model": "fcos3d",
+ "label": "FCOS3D (camera)",
+ "sensor": "Camera",
+ "paper": {
+  "mAP": 32.1,
+  "NDS": 39.3
+ },
+ "results": "C:\\Users\\Admin\\OneDrive\\Desktop\\AI20K\\Final\\P-130\\tools3d\\work\\preds\\fcos3d\\pred_instances_3d\\results_nusc.json",
+ "seconds": 2929.1,
+ "n_samples": 1076,
+ "s_per_sample": 2.722,
+ "peak_gpu_gb": 0.55
+}

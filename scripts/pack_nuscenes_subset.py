@@ -1,9 +1,10 @@
-"""Đóng gói vài scene nuScenes + workspace đã auto-label thành một file zip nhỏ để mở UI trên máy khác.
+"""Chọn / đóng gói vài scene nuScenes (+ workspace đã auto-label) thành một file zip nhỏ.
 
-Dùng ở nơi có sẵn dataset và GPU (Kaggle, Colab, máy 3090), sau khi đã chạy `python -m src.cli run --scenes ...`:
+Dùng để test nhanh trên một lượng nhỏ dữ liệu, hoặc gửi cho thành viên chưa tải đủ dataset. Đóng gói kèm kết quả
+auto-label (sau khi đã chạy `python -m src.cli run --scenes ...`):
 
-    python scripts/pack_nuscenes_subset.py --dataroot /kaggle/input/nuscenes --version v1.0-mini \\
-        --scenes scene-0061 scene-0103 --out /kaggle/working/autolabel_subset.zip
+    python scripts/pack_nuscenes_subset.py --dataroot ../v1.0-trainval --version v1.0-trainval \\
+        --scenes scene-0031 scene-0065 --out ../autolabel_subset.zip
 
 Lấy mẫu ngẫu nhiên một lượng nhỏ để test (chỉ chọn trong các scene có ảnh trên máy, hợp với bản trainval mới tải
 vài phần blob), mỗi scene cắt một đoạn ngẫu nhiên 10 keyframe:
@@ -15,6 +16,8 @@ Nội dung zip (thư mục gốc `autolabel_subset/`):
     nuscenes/<version>/*.json          bảng nuScenes đã lọc theo scene (loader của repo đọc được như bản đầy đủ)
     nuscenes/samples|sweeps/<CAMERA>/  ảnh camera của các scene đó: keyframe 2Hz + sweep 12Hz (cho timeline, lan truyền)
     nuscenes/samples/LIDAR_TOP/        chỉ khi --with-lidar: point cloud keyframe, để chạy lại `run` trên máy
+    nuscenes/samples/CAM_*/            chỉ khi --all-cameras: ảnh keyframe của đủ 6 camera (phần 3D)
+    nuscenes/sweeps/LIDAR_TOP/         chỉ khi --lidar-sweeps N: N lần quét LiDAR liền trước mỗi keyframe
     workspace/                         frame đã auto-label, LiDAR đã chiếu, GT 2D, cache detection, correction log
     eval/                              báo cáo trong eval/results nếu có
     README.txt                         cách dùng
@@ -24,6 +27,11 @@ Trên máy: giải nén vào thư mục repo, thêm vào `.env`
     NUSCENES_VERSION=<version>
     WORKSPACE_DIR=./autolabel_subset/workspace
 rồi `uvicorn src.main:app` (chỉ cần `pip install -r requirements.txt`, không cần GPU).
+
+Phần 3D: chỉ chọn trong tập val của nuScenes (mô hình 3D có sẵn đều đã học trên tập train), kèm đủ 6 camera và LiDAR:
+
+    python scripts/pack_nuscenes_subset.py --dataroot ../v1.0-trainval --version v1.0-trainval \\
+        --random 3 --split val --seed 20260928 --with-lidar --all-cameras --out ../nusc3d.zip
 """
 
 from __future__ import annotations
@@ -43,6 +51,27 @@ WHOLE_TABLES = ("attribute", "category", "sensor", "visibility", "log", "map", "
 # Bảng rất lớn ở bản trainval (sample_data 1.3 GB, ego_pose 0.6 GB, sample_annotation 0.6 GB): đọc kiểu stream,
 # giữ lại đúng các dòng cần, để máy 8–16 GB RAM vẫn chạy được
 BIG_TABLES = ("sample_data", "ego_pose", "sample_annotation")
+CAMERAS = ("CAM_FRONT", "CAM_FRONT_RIGHT", "CAM_BACK_RIGHT", "CAM_BACK", "CAM_BACK_LEFT", "CAM_FRONT_LEFT")
+
+
+def split_scenes(split: str) -> set[str]:
+    """Tên scene của một split chính thức nuScenes (train / val / mini_val ...), lấy từ nuscenes-devkit.
+
+    Chỉ đọc file splits.py của devkit (import cả gói devkit kéo theo sklearn, matplotlib, pyquaternion...).
+    """
+    import importlib.util
+
+    spec = importlib.util.find_spec("nuscenes")
+    if spec is None or not spec.submodule_search_locations:
+        raise SystemExit("Cần nuscenes-devkit cho --split: pip install --no-deps nuscenes-devkit")
+    src = (Path(next(iter(spec.submodule_search_locations))) / "utils" / "splits.py").read_text(encoding="utf-8")
+    ns: dict = {}
+    exec(src.replace("from nuscenes import NuScenes", "NuScenes = None"), ns)  # noqa: S102
+    create_splits_scenes = ns["create_splits_scenes"]
+    splits = create_splits_scenes()
+    if split not in splits:
+        raise SystemExit(f"Split {split!r} không có; chọn một trong {', '.join(sorted(splits))}")
+    return set(splits[split])
 
 
 def _iter_json_array(path: Path, chunk: int = 1 << 22) -> Iterator[dict]:
@@ -97,8 +126,13 @@ def _channels(table_dir: Path) -> dict[str, str]:
     return {r["token"]: channel_of_sensor[r["sensor_token"]] for r in _load(table_dir, "calibrated_sensor")}
 
 
-def pick_random_scenes(dataroot: Path, version: str, n: int, seed: int, camera: str = "CAM_FRONT") -> list[str]:
-    """Chọn ngẫu nhiên n scene trong số scene có ảnh keyframe đầu và cuối trên máy (bản tải thiếu blob vẫn chọn được)."""
+def pick_random_scenes(
+    dataroot: Path, version: str, n: int, seed: int, camera: str = "CAM_FRONT", allowed: set[str] | None = None
+) -> list[str]:
+    """Chọn ngẫu nhiên n scene trong số scene có ảnh keyframe đầu và cuối trên máy (bản tải thiếu blob vẫn chọn được).
+
+    allowed: chỉ chọn trong các scene này (ví dụ tập val).
+    """
     table_dir = dataroot / version
     scenes = _load(table_dir, "scene")
     if scenes is None:
@@ -116,7 +150,9 @@ def pick_random_scenes(dataroot: Path, version: str, n: int, seed: int, camera: 
     available = sorted(
         s["name"]
         for s in scenes
-        if on_disk(s["first_sample_token"]) and on_disk(s.get("last_sample_token") or s["first_sample_token"])
+        if (allowed is None or s["name"] in allowed)
+        and on_disk(s["first_sample_token"])
+        and on_disk(s.get("last_sample_token") or s["first_sample_token"])
     )
     if not available:
         raise SystemExit(f"Không scene nào có ảnh {camera} trong {dataroot} (đã giải nén blob chưa?)")
@@ -138,10 +174,14 @@ def filter_tables(
     camera: str = "CAM_FRONT",
     window: int | None = None,
     seed: int = 0,
+    all_cameras: bool = False,
+    lidar_sweeps: int = 0,
 ) -> tuple[dict[str, list[dict]], list[str], list[str]]:
-    """Lọc bảng theo scene. Trả về (bảng đã lọc, file ảnh camera, file LiDAR keyframe).
+    """Lọc bảng theo scene. Trả về (bảng đã lọc, file ảnh camera, file LiDAR).
 
     window: chỉ giữ một đoạn ngẫu nhiên `window` keyframe liên tiếp của mỗi scene (scene rút gọn, loader vẫn đọc được).
+    all_cameras: thêm ảnh keyframe của 5 camera còn lại (camera chính vẫn lấy cả sweep).
+    lidar_sweeps: thêm N lần quét LiDAR liền trước mỗi keyframe (mô hình 3D gộp nhiều lần quét).
     """
     all_scenes = _load(table_dir, "scene")
     if all_scenes is None:
@@ -176,6 +216,7 @@ def filter_tables(
     channel_of_cs = _channels(table_dir)
 
     sample_data, cam_files, lidar_files = [], [], []
+    lidar_all: dict[str, dict] = {}
     for sd in _iter(table_dir, "sample_data"):
         if sd["sample_token"] not in sample_tokens:
             continue
@@ -183,10 +224,27 @@ def filter_tables(
         if channel == camera:
             sample_data.append(sd)
             cam_files.append(sd["filename"])
-        elif channel == "LIDAR_TOP" and sd["is_key_frame"]:
-            # LiDAR keyframe dùng cho QA (chiếu điểm lên ảnh); sweep LiDAR không cần
+        elif all_cameras and channel in CAMERAS and sd["is_key_frame"]:
             sample_data.append(sd)
-            lidar_files.append(sd["filename"])
+            cam_files.append(sd["filename"])
+        elif channel == "LIDAR_TOP":
+            lidar_all[sd["token"]] = sd
+    # LiDAR keyframe dùng cho QA (chiếu điểm lên ảnh); sweep chỉ lấy khi cần gộp nhiều lần quét
+    keep_lidar = set()
+    for tok, sd in lidar_all.items():
+        if not sd["is_key_frame"]:
+            continue
+        keep_lidar.add(tok)
+        prev = sd["prev"]
+        for _ in range(lidar_sweeps):
+            if not prev or prev not in lidar_all:
+                break
+            keep_lidar.add(prev)
+            prev = lidar_all[prev]["prev"]
+    for tok in keep_lidar:
+        sample_data.append(lidar_all[tok])
+        lidar_files.append(lidar_all[tok]["filename"])
+    lidar_files.sort()
     _cut_chain(sample_data, ("prev", "next"))
 
     ego_tokens = {sd["ego_pose_token"] for sd in sample_data}
@@ -236,9 +294,10 @@ def workspace_files(workspace: Path, scene_names: list[str], sd_tokens: set[str]
     return out
 
 
-def readme(version: str, scene_names: list[str], camera: str, with_lidar: bool) -> str:
-    return f"""AutoLabel 2D — gói nuScenes rút gọn
-Scene: {", ".join(scene_names)} · camera {camera} · version {version}{" · có LiDAR keyframe" if with_lidar else ""}
+def readme(version: str, scene_names: list[str], camera: str, with_lidar: bool, all_cameras: bool = False) -> str:
+    extra = (" · có LiDAR" if with_lidar else "") + (" · đủ 6 camera (keyframe)" if all_cameras else "")
+    return f"""AutoLabel — gói nuScenes rút gọn
+Scene: {", ".join(scene_names)} · camera {camera} · version {version}{extra}
 
 1. Giải nén vào thư mục gốc của repo (cạnh src/), được thư mục {ROOT_NAME}/
 2. Thêm vào file .env của repo:
@@ -261,8 +320,13 @@ def pack(
     eval_dir: Path | None = None,
     window: int | None = None,
     seed: int = 0,
+    all_cameras: bool = False,
+    lidar_sweeps: int = 0,
 ) -> dict:
-    tables, cam_files, lidar_files = filter_tables(dataroot / version, scene_names, camera, window, seed)
+    tables, cam_files, lidar_files = filter_tables(
+        dataroot / version, scene_names, camera, window, seed, all_cameras, lidar_sweeps
+    )
+    with_lidar = with_lidar or lidar_sweeps > 0
     files = cam_files + (lidar_files if with_lidar else [])
     missing = [f for f in files if not (dataroot / f).is_file()]
     if missing:
@@ -282,7 +346,7 @@ def pack(
             zf.write(p, f"{ROOT_NAME}/workspace/{p.relative_to(workspace).as_posix()}")
         for p in ev_files:
             zf.write(p, f"{ROOT_NAME}/eval/{p.name}")
-        zf.writestr(f"{ROOT_NAME}/README.txt", readme(version, scene_names, camera, with_lidar))
+        zf.writestr(f"{ROOT_NAME}/README.txt", readme(version, scene_names, camera, with_lidar, all_cameras))
     n_frames = sum(1 for p in ws_files if p.parent.name == "frames")
     return {
         "zip": out,
@@ -308,8 +372,14 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--camera", default="CAM_FRONT")
     ap.add_argument("--with-lidar", action="store_true", help="Kèm point cloud keyframe (to hơn ~40 MB/scene)")
     ap.add_argument("--eval-dir", type=Path, default=Path("eval/results"))
+    ap.add_argument("--split", help="Chỉ chọn --random trong split nuScenes này (val cho phần 3D)")
+    ap.add_argument("--all-cameras", action="store_true", help="Kèm ảnh keyframe của đủ 6 camera (phần 3D)")
+    ap.add_argument("--lidar-sweeps", type=int, default=0, help="Kèm N lần quét LiDAR trước mỗi keyframe")
     args = ap.parse_args(argv)
-    scenes = args.scenes or pick_random_scenes(args.dataroot, args.version, args.random, args.seed, args.camera)
+    allowed = split_scenes(args.split) if args.split else None
+    scenes = args.scenes or pick_random_scenes(
+        args.dataroot, args.version, args.random, args.seed, args.camera, allowed
+    )
     if args.random:
         print(f"Chọn ngẫu nhiên (seed {args.seed}): {', '.join(scenes)}")
     info = pack(
@@ -323,6 +393,8 @@ def main(argv: list[str] | None = None) -> None:
         args.eval_dir,
         args.window,
         args.seed,
+        args.all_cameras,
+        args.lidar_sweeps,
     )
     print(
         f"Đã ghi {info['zip']} ({info['size_mb']} MB): {info['keyframes']} keyframe, {info['images']} ảnh "

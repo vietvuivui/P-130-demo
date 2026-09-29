@@ -1,0 +1,24 @@
+{
+  "device": "CPU (x86_64, 2 threads)",
+  "n_images": 24,
+  "detectors": {
+    "yolo_world": {
+      "mean_s": 3.75,
+      "median_s": 3.75,
+      "imgsz": 1280,
+      "weights": "yolov8l-worldv2.pt"
+    },
+    "yolo26": {
+      "mean_s": 2.137,
+      "median_s": 2.127,
+      "imgsz": 1280,
+      "weights": "yolo26l.pt"
+    },
+    "yoloe": {
+      "mean_s": 3.309,
+      "median_s": 3.301,
+      "imgsz": 1280,
+      "weights": "yoloe-26l-seg.pt"
+    }
+  }
+}

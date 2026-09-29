@@ -116,6 +116,11 @@ def propagate_from(
         raise PropagationError(
             "NOT_APPROVED", "Chỉ lan truyền từ frame đã approve (mọi quyết định của người đã chốt)", 409
         )
+    video = store.load_video(keyframe.scene) if keyframe.scene.startswith("vid-") else None
+    if video is not None and video.source == "images":
+        resp = PropagateResponse(keyframe_id=keyframe_id, tracks_started=0)
+        resp.stop_reason = "Bộ ảnh rời: các ảnh không liên tiếp nhau nên không lan truyền"
+        return resp
     cfg = config.propagation
     max_frames = max_frames or cfg.max_keyframes
     images = _timeline_after(source, keyframe)

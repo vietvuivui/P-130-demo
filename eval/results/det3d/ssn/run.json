@@ -1,0 +1,14 @@
+{
+ "model": "ssn",
+ "label": "SSN (SECFPN)",
+ "sensor": "LiDAR",
+ "paper": {
+  "mAP": 40.9,
+  "NDS": 54.4
+ },
+ "results": "C:\\Users\\Admin\\OneDrive\\Desktop\\AI20K\\Final\\P-130\\tools3d\\work\\preds\\ssn\\pred_instances_3d\\results_nusc.json",
+ "seconds": 630.1,
+ "n_samples": 1076,
+ "s_per_sample": 0.586,
+ "peak_gpu_gb": 0.57
+}

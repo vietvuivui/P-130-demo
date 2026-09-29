@@ -7,12 +7,26 @@ sweep_offsets: [-2, -1, 1, 2]
 
 detection:
   # Chạy 1 hoặc nhiều model; nhiều model thì được fuse và sinh thêm CLASS_CONFLICT giữa các model
-  detectors: [yolo_world]
+  # Mặc định YOLOE-26 (open-vocab); so sánh với YOLO-World / YOLO26: eval/compare_detectors.ipynb
+  detectors: [yoloe]
   # Ngưỡng thấp để ưu tiên recall: box thừa xoá rẻ, box thiếu phải vẽ tay nên đắt
   score_threshold: 0.10
+  # Ngưỡng giữ box sau khi gộp (trước QA Agent). Đổi không phải detect lại, chỉ cần `run --overwrite`.
+  # 0.30 chọn bằng eval/precision_tuning.ipynb: precision 0.34 -> 0.51, box bị gắn cờ 260 -> 88 trên 40 keyframe.
+  # Tracker lan truyền vẫn dùng detection đầy đủ (từ score_threshold) ở các ảnh sweep
+  min_score: 0.30
+  min_score_per_class: {}
   fusion_iou: 0.55
   yolo_world:
     weights: yolov8l-worldv2.pt
+    imgsz: 1280
+  # Open-vocab thế hệ mới (YOLO26 + MobileCLIP2); so sánh: eval/compare_detectors.ipynb
+  yoloe:
+    weights: yoloe-26l-seg.pt
+    imgsz: 1280
+  # Tập lớp đóng COCO: không nhận barrier / traffic_cone / trailer / construction_vehicle
+  yolo26:
+    weights: yolo26l.pt
     imgsz: 1280
   grounding_dino:
     model_id: IDEA-Research/grounding-dino-tiny
@@ -169,6 +183,10 @@ propagation:
   # c_prop dưới ngưỡng này -> dừng lan truyền object đó. Để thấp: object detector tạm không thấy vẫn được
   # đưa ra (kèm PROP_COASTING) cho người xem; mất dấu thật thì đã có max_coast_images cắt
   stop_below: 0.15
+  # Track mà detector không thấy ở chính keyframe đích (box chỉ là dự đoán theo vận tốc) có được ghi ra không.
+  # Đo bằng eval/review_simulation.ipynb (2 scene nuScenes, người duyệt mô phỏng theo GT): chỉ ~17% box loại này đúng, người phải xoá
+  # phần còn lại nên lan truyền không đỡ công. Tắt thì track vẫn chạy tiếp và bắt lại vật khi detector thấy lại.
+  emit_coasting: false
   # Số keyframe tối đa đi tới trong một lần lan truyền
   max_keyframes: 20
   # Detector ở frame đích gán lớp khác lớp lan truyền với score >= ngưỡng -> PROP_CLASS_DIFFERS
@@ -182,3 +200,16 @@ video:
   max_seconds: 120
   max_upload_mb: 500
   max_sweep_gap_s: 0.25   # frame lân cận xa hơn ngần này (s) không dùng cho check temporal
+
+# Làm mờ mặt người + biển số trên mọi ảnh gửi tới trình duyệt và ảnh trong file xuất KITTI (FR-03).
+# Biển số: detector chuyên dụng (open-image-models, trong requirements-ml.txt); mặt: YOLOE "human face" + vùng đầu
+# của người đủ lớn. Thiếu thư viện thì ảnh gửi nguyên (log cảnh báo một lần). Ảnh đã làm mờ được cache ở workspace/anon/.
+privacy:
+  enabled: true
+  plate_conf: 0.25
+  plate_tiles: true
+  face_prompts: [human face]
+  face_conf: 0.25
+  person_conf: 0.3
+  min_person_px: 40
+  pad: 0.2
