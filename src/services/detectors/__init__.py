@@ -15,6 +15,14 @@ from src.services.detectors.fusion import fuse_detections
 
 def build_detector(name: str, config: AutoLabelConfig) -> Detector:
     # Import lười để phần còn lại của app không cần torch
+    if name == "yolo26":
+        from src.services.detectors.yolo26 import Yolo26Detector
+
+        return Yolo26Detector(config)
+    if name == "yoloe26":
+        from src.services.detectors.yoloe26 import YoloE26Detector
+
+        return YoloE26Detector(config)
     if name == "yolo_world":
         from src.services.detectors.yolo_world import YoloWorldDetector
 
@@ -34,6 +42,15 @@ def build_detector(name: str, config: AutoLabelConfig) -> Detector:
     raise ValueError(f"Detector không hỗ trợ: {name}")
 
 
+def detector_classes(name: str, config: AutoLabelConfig) -> set[str] | None:
+    """Lớp nội bộ mà detector có thể sinh ra; None = mọi lớp trong taxonomy (model open-vocab). Không cần torch."""
+    if name == "yolo26":
+        from src.services.detectors.yolo26 import coco_class_map
+
+        return set(coco_class_map(config).values())
+    return None
+
+
 class DetectorEnsemble:
     """Chạy các detector trên một lô ảnh, cache kết quả thô theo (model, sample_data token)."""
 
@@ -41,6 +58,8 @@ class DetectorEnsemble:
         self.config = config
         self.names = names or config.detection.detectors
         self.cache_dir = cache_dir
+        # Lớp mỗi model phủ: fusion chỉ tính phiếu của model nhận được lớp đó
+        self.coverage = {name: detector_classes(name, config) for name in self.names}
         self._detectors: dict[str, Detector] = {}
         self._lock = threading.Lock()
 
@@ -65,7 +84,7 @@ class DetectorEnsemble:
             if not cache.exists():
                 return None
             per_model[name] = [Detection.model_validate(d) for d in json.loads(cache.read_text())]
-        return fuse_detections(per_model, self.config.detection.fusion_iou)
+        return fuse_detections(per_model, self.config.detection.fusion_iou, self.coverage)
 
     def detect_batch(self, images: list[tuple[str, Path]]) -> list[list[Detection]]:
         """images: list (sd_token, path). Trả về detection đã fuse cho từng ảnh."""
@@ -86,4 +105,4 @@ class DetectorEnsemble:
                 cache = self._cache_file(name, images[i][0])
                 cache.parent.mkdir(parents=True, exist_ok=True)
                 cache.write_text(json.dumps([d.model_dump() for d in dets]))
-        return [fuse_detections(dets, self.config.detection.fusion_iou) for dets in per_image]
+        return [fuse_detections(dets, self.config.detection.fusion_iou, self.coverage) for dets in per_image]

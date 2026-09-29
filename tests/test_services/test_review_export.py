@@ -3,7 +3,7 @@ import json
 import pytest
 
 from src.models.schemas import ReviewActionRequest
-from src.services import review
+from src.services import qc, review
 from src.services.exporter import NothingToExportError, export_dataset
 from tests.conftest import make_frame
 
@@ -98,6 +98,14 @@ def test_export_only_approved(store, config):
     other = make_frame("scene-0001_001")
     store.save_frame(other)
 
+    # Nhãn cuối #3 (box 100x30 px đổi thành traffic_cone) còn cảnh báo QC chưa xử lý -> frame không được xuất
+    with pytest.raises(NothingToExportError, match="lỗi QC"):
+        export_dataset(store, config)
+    f = store.load_frame("scene-0001_000")
+    [finding] = qc.open_findings(qc.load_frame_findings(store, f, config))
+    qc.ack_finding(f, [finding], finding.key, finding.fingerprint, "tester", "cone nằm ngang", review.now_iso())
+    store.save_frame(f)
+
     res = export_dataset(store, config)
     assert res.n_frames == 1 and res.n_objects == 3
     out = store.exports_dir / res.export_id
@@ -108,3 +116,5 @@ def test_export_only_approved(store, config):
     assert coco["annotations"][0]["bbox"] == [100, 400, 200, 120]  # xywh
     manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["frames_skipped_not_approved"] == 1
+    cone = next(a for a in coco["annotations"] if a["object_id"] == "3")
+    assert cone["qc_acknowledged"] == ["ASPECT_RATIO_ABNORMAL"]

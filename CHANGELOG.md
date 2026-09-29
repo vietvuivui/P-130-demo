@@ -30,6 +30,86 @@ Quy tắc:
 
 ---
 
+## 2026-09-29 (2) · Huy · nhánh `Huy`
+
+**Làm gì:** Đổi detector mặc định từ YOLO-World sang **YOLOE-26-L** (https://huggingface.co/openvision/yoloe26-l-seg,
+open-vocab, đủ 10 lớp bằng prompt). Thêm detector tuỳ chọn **YOLO26-L** (https://github.com/ultralytics/yolo26, COCO).
+Fusion nhiều model chỉ tính phiếu của model nhận được lớp đó. Thêm script tải weights có kiểm SHA256. Đo trên 79
+keyframe nuScenes: [eval/results/detector_comparison.md](eval/results/detector_comparison.md).
+
+**File chính:**
+- Mới: `src/services/detectors/yoloe26.py`, `src/services/detectors/yolo26.py`, `scripts/download_weights.py`,
+  `tests/test_services/test_detectors_yolo26.py`, `eval/results/detector_comparison.md`.
+- Sửa: `src/services/detectors/__init__.py` (`detector_classes`, `DetectorEnsemble.coverage`),
+  `src/services/detectors/fusion.py` (tham số `coverage`), `src/models/qa_config.py`, `configs/autolabel.yaml`,
+  `requirements-ml.txt`, `.gitignore` (`weights/`), README, ARCHITECTURE.
+
+**Ảnh hưởng tới người khác:**
+- **Config:** `detection.detectors` mặc định `[yoloe26]`; thêm mục `detection.yoloe26`, `detection.yolo26`.
+  Muốn dùng lại model cũ: `detectors: [yolo_world]` hoặc `--detectors yolo_world` (cache cũ vẫn dùng được).
+- **Weights mới** phải có trước khi `run`: `python scripts/download_weights.py` (≈ 330 MB vào `weights/`:
+  yoloe-26l-seg.pt, mobileclip2_b.ts; `--all` thêm yolo26l.pt). Cần `ultralytics>=8.4`. File Hugging Face của
+  openvision là cùng model đã fuse Conv+BN (đã kiểm pickle + so kết quả), script nhận nó làm nguồn dự phòng.
+- `fuse_detections(per_model, iou, coverage=None)`: không truyền `coverage` thì hành vi như cũ.
+- Workspace đang có vẫn là nhãn YOLO-World; frame "auto" gán nhãn lại bằng model mới:
+  `python -m src.cli run --scenes <scene...> --overwrite`. Notebook Kaggle vẫn đặt `DETECTORS = ["yolo_world"]`.
+
+**Cách kiểm tra:** `pytest` → 114 passed; `python scripts/download_weights.py --check`;
+`python -m src.cli run --scenes scene-0061 --overwrite` rồi `python -m src.cli evaluate`.
+
+**Còn dở / việc tiếp:**
+- YOLOE-26-L một mình: mAP@0.5 0.281 so với 0.320 của YOLO-World — mạnh hơn ở bus / barrier, yếu hơn ở traffic_cone
+  (0.151 so với 0.490), motorcycle, pedestrian.
+- Tỉ lệ lỗi lọt trong nhóm low 0.459 (YOLO-World 0.277): chỉnh lại ngưỡng risk cho điểm số của model mới trước khi
+  bật "Approve all low-risk".
+- Chưa thử `imgsz` 640 cho YOLOE-26-L (model train ở 640; 1280 giúp vật nhỏ nhưng chưa đo).
+
+## 2026-09-29 · Huy · nhánh `Huy`
+
+**Làm gì:** Thêm phần QC gồm ba luồng. (1) **QC nhãn cuối**: sau mỗi thao tác của người, box người vẽ / đã sửa /
+đổi lớp được kiểm lại hình học + LiDAR, cả frame được kiểm box trùng và box khác lớp chồng khít. Approve bị chặn khi
+còn lỗi: sửa (có nút áp đề xuất) hoặc xác nhận cảnh báo kèm lý do. (2) **Audit ngẫu nhiên** phần duyệt theo lô (object)
+và frame (vật bị sót), ước lượng tỉ lệ lỗi bằng khoảng Wilson 95%; mẫu sai thì frame mở lại. (3) **Quick Check** file
+nhãn ngoài (COCO / JSONL), không ghi gì. Checklist READY trước khi xuất; export bỏ frame còn lỗi QC, thêm
+`qa_report.md`, `qc_log.jsonl`, manifest có trạng thái READY + SHA256 từng file + commit.
+
+**File chính:**
+- Mới: `src/services/qc/` (`checks.py`, `quick_check.py`, `audit.py`, `report.py`),
+  `tests/test_services/test_qc_*.py`, `tests/test_api/test_qc_api.py`.
+- Sửa: `src/api/routes.py`, `src/services/exporter.py`, `src/services/store.py`, `src/models/schemas.py`,
+  `src/models/qa_config.py`, `configs/autolabel.yaml`, `src/cli.py`, `src/web/*` (tab QC, khối QC trong panel review).
+
+**Ảnh hưởng tới người khác:**
+- **Approve đổi hành vi:** `POST /frames/{id}/approve` trả 409 `QC_FINDINGS` (kèm danh sách `findings`) khi nhãn cuối
+  còn lỗi QC chưa xử lý. Tắt bằng `qc.gate_on_approve: false`. `review.approve_frame` (gọi thẳng service) không đổi.
+- **Export đổi hành vi:** frame đã approve mà còn lỗi QC không được xuất (liệt kê trong `frames_skipped_qc`).
+  `POST /export?require_ready=true` trả 409 `NOT_READY` khi checklist chưa đạt. File export thêm `qc_log.jsonl`,
+  `qa_report.md`; `labels.jsonl` / `coco.json` thêm `qc_acknowledged` cho từng object, `labels.jsonl` thêm
+  `width` / `height`.
+- API mới: `GET /frames/{id}/qc`, `POST /frames/{id}/qc/ack`, `GET /qc/report`, `POST /qc/quick-check`,
+  `GET /qc/audit`, `POST /qc/audit/sample`, `POST /qc/audit/{id}`. `/config` thêm mục `qc`.
+- Schema: `FrameRecord` thêm `qc_acks`, `qc_manual` (mặc định rỗng, frame cũ đọc được); `IssueGroup` thêm `"qc"`
+  (issue `AUDIT_FAILED`); `ExportResponse` thêm `release_status`, `frames_skipped_qc`; thêm `QCFinding`, `QCAck`,
+  `AuditItem`, `QuickCheck*`.
+- Config thêm mục `qc:` (ngưỡng box trùng, cặp lớp được phép chồng, Quick Check, cỡ mẫu + ngưỡng audit).
+- Workspace thêm `qc/audit.json`, `qc/qc_log.jsonl`.
+- 2 test cũ (`test_review_flow_and_export`, `test_export_only_approved`) được sửa theo hành vi mới: kịch bản đổi box
+  100×30 px thành `traffic_cone` nay bị QC bắt `ASPECT_RATIO_ABNORMAL`, test xác nhận cảnh báo rồi mới approve / xuất.
+
+**Cách kiểm tra:**
+- `pytest` → 110 passed (82 cũ + 28 mới); `ruff check src tests` sạch.
+- `python -m src.cli qc-report` (exit 1 nếu chưa READY); `python -m src.cli quick-check <file.json>` (exit 1 nếu có lỗi).
+- UI: sửa một box thành dẹt / vẽ trùng lên box có sẵn → khối "QC Nhãn cuối" hiện ở đầu panel, nút approve khoá;
+  tab QC → lấy mẫu audit, bấm `Y` / `X`; Quick Check một file `coco.json` đã xuất → 0 lỗi mở.
+- Đã chạy E2E trên bản sao workspace nuScenes thật (79 keyframe) bằng Edge headless: chặn approve → áp đề xuất →
+  xác nhận cảnh báo → audit → READY → xuất.
+
+**Còn dở / việc tiếp:**
+- Ngưỡng `POSSIBLY_MISSING` (score 0.5) chưa có số đo precision (thiếu GT "vật bị sót" thật); trên GT nuScenes báo
+  ~0.6 gợi ý / frame.
+- Audit chưa phân tầng theo lớp / scene; cỡ mẫu mặc định 50 object, 10 frame.
+- Quick Check chưa nhận KITTI `.txt` (dữ liệu dự án là nuScenes); thêm parser ở `quick_check.parse_labels` nếu cần.
+
 ## 2026-09-28 · Việt · nhánh `viet`
 
 **Làm gì:** Notebook Colab chạy liền một mạch: PointPillars (MMDetection3D, 10 sweep) tạo box 3D trên `mini_val` và chấm

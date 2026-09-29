@@ -6,11 +6,23 @@ camera: CAM_FRONT
 sweep_offsets: [-2, -1, 1, 2]
 
 detection:
-  # Chạy 1 hoặc nhiều model; nhiều model thì được fuse và sinh thêm CLASS_CONFLICT giữa các model
-  detectors: [yolo_world]
+  # Chạy 1 hoặc nhiều model; nhiều model thì được fuse và sinh thêm CLASS_CONFLICT giữa các model (fusion chỉ tính
+  # phiếu của model nhận được lớp đó). Mặc định: YOLOE-26-L (open-vocab, đủ 10 lớp bằng prompt).
+  # Tải weights: python scripts/download_weights.py. Chọn khác: [yolo26, yoloe26], [yolo_world], ...
+  # So sánh các lựa chọn trên nuScenes: eval/results/detector_comparison.md
+  detectors: [yoloe26]
   # Ngưỡng thấp để ưu tiên recall: box thừa xoá rẻ, box thiếu phải vẽ tay nên đắt
   score_threshold: 0.10
   fusion_iou: 0.55
+  # https://github.com/ultralytics/yolo26 — COCO 80 lớp, chỉ giữ lớp trùng prompt của taxonomy
+  yolo26:
+    weights: weights/yolo26l.pt
+    imgsz: 1280
+  # https://huggingface.co/openvision/yoloe26-l-seg — open-vocab, prompt lấy từ `classes` bên dưới
+  yoloe26:
+    weights: weights/yoloe-26l-seg.pt
+    imgsz: 1280
+    text_encoder: weights/mobileclip2_b.ts
   yolo_world:
     weights: yolov8l-worldv2.pt
     imgsz: 1280
@@ -137,6 +149,40 @@ qa:
     levels:
       medium: 0.30
       high: 0.60
+
+# QC nhãn cuối: QA Agent chỉ chấm box detector lúc pipeline chạy; phần này kiểm lại nhãn SAU khi người sửa
+# (khi approve frame và trước khi xuất), kiểm file nhãn từ ngoài (Quick Check), và audit ngẫu nhiên phần duyệt theo lô.
+qc:
+  # Chặn approve frame khi nhãn cuối còn lỗi QC chưa sửa / chưa xác nhận
+  gate_on_approve: true
+  # Cạnh box ngắn hơn ngần này (px) -> INVALID_BOX. Bằng ngưỡng của thao tác sửa box (review.py). Không đặt cao hơn:
+  # vật bị mép ảnh cắt chỉ còn 2-4 px là nhãn hợp lệ (đo trên GT nuScenes: 4 box như vậy ở mép phải)
+  min_box_px: 2
+  # Hai box cùng lớp IoU >= ngưỡng -> DUPLICATE_BOX (một vật bị gán hai lần, hay gặp sau ADD_BOX / nhận box nội suy)
+  duplicate_iou: 0.7
+  # Hai box khác lớp IoU >= ngưỡng -> OVERLAP_CROSS_CLASS (một vật bị gán hai lớp)
+  cross_class_iou: 0.85
+  # Cặp lớp được phép chồng lên nhau (người ngồi trên xe đạp / xe máy được gán riêng trong nuScenes)
+  cross_class_allowed:
+    - [pedestrian, bicycle]
+    - [pedestrian, motorcycle]
+  quick_check:
+    max_file_mb: 20
+    # Detection keyframe score >= ngưỡng, có mặt ở >= qa.temporal.min_support sweep, mà file không có box nào
+    # khớp (IoU >= missing_match_iou, không xét lớp) -> POSSIBLY_MISSING kèm box đề xuất
+    missing_min_score: 0.5
+    missing_match_iou: 0.3
+    # Nhãn khớp detection (IoU >= 0.5) nhưng detector gán lớp khác với score >= ngưỡng -> MODEL_DISAGREES
+    disagree_min_score: 0.6
+  audit:
+    # Lấy mẫu ngẫu nhiên object đã duyệt theo lô (BATCH_APPROVE) cho người xem lại từng cái. Đạt khi cận trên
+    # Wilson 95% của tỉ lệ lỗi <= max_error_upper (hoặc đã audit hết). n=50, 0 lỗi -> cận trên 7.1%
+    object_sample_size: 50
+    object_max_error_upper: 0.10
+    # Lấy mẫu frame đã approve để kiểm vật bị sót (FN). n=10, 0 lỗi -> cận trên 27.8%. 0 = không bắt buộc
+    frame_sample_size: 10
+    frame_max_error_upper: 0.30
+    confidence_z: 1.96
 
 # Lan truyền nhãn trên video (FR-11 → FR-13): mang quyết định của người ở một keyframe đã approve
 # sang các keyframe sau, bằng cách track qua mọi ảnh camera 12Hz nằm giữa (dùng detection đã cache).
