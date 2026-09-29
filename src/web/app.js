@@ -4,8 +4,8 @@
 const API = '/api/v1';
 const LEVELS = ['high', 'medium', 'low'];
 const LEVEL_NAME = { low: 'Low', medium: 'Medium', high: 'High' };
-const RISK_COLOR = { low: '#0ca30c', medium: '#fab219', high: '#d03b3b' };
-const HUMAN_COLOR = '#3987e5';
+const RISK_COLOR = { low: '#10b981', medium: '#f59e0b', high: '#ef4444' };
+const HUMAN_COLOR = '#2563eb';
 
 const S = {
   cfg: null,

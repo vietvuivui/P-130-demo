@@ -57,9 +57,48 @@ app.mount("/ui", StaticFiles(directory=WEB_DIR, html=True), name="ui")
 
 @app.get("/", include_in_schema=False)
 async def index():
-    return RedirectResponse("/ui/")
+    return RedirectResponse("/ui/login.html")
 
 
 @app.get("/health")
 async def health():
     return {"status": "ok", "env": settings.app_env}
+
+
+@app.get("/login", include_in_schema=False)
+async def login_page():
+    return RedirectResponse("/ui/login.html")
+
+
+@app.get("/projects", include_in_schema=False)
+async def projects_page():
+    return RedirectResponse("/ui/projects.html")
+
+
+@app.get("/frames", include_in_schema=False)
+async def frames_page():
+    return RedirectResponse("/ui/frames.html")
+
+
+@app.get("/project/{project_id}/frames", include_in_schema=False)
+async def project_frames_page(project_id: str):
+    return RedirectResponse(f"/ui/frames.html?project={project_id}")
+
+
+@app.get("/annotate", include_in_schema=False)
+@app.get("/annotate/{frame_id}", include_in_schema=False)
+async def annotate_page(frame_id: str = ""):
+    if frame_id:
+        return RedirectResponse(f"/ui/?frame={frame_id}")
+    return RedirectResponse("/ui/")
+
+
+@app.get("/export", include_in_schema=False)
+async def export_page():
+    return RedirectResponse("/ui/export.html")
+
+
+@app.get("/flow", include_in_schema=False)
+async def flow_page():
+    return RedirectResponse("/ui/flow.html")
+

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Đăng nhập — AutoLabel 3D / 2D</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+  <link rel="stylesheet" href="ui-flow.css">
+</head>
+<body>
+
+  <!-- 7-Step Interactive Stepper Navigation -->
+  <nav class="flow-stepper-bar" aria-label="UI Flow Steps">
+    <a href="login.html" class="flow-step-item active">
+      <span class="step-num">1</span>
+      <span>Đăng nhập</span>
+    </a>
+    <span class="flow-step-arrow">→</span>
+
+    <a href="projects.html" class="flow-step-item">
+      <span class="step-num">2</span>
+      <span>Dự án</span>
+    </a>
+    <span class="flow-step-arrow">→</span>
+
+    <a href="frames.html" class="flow-step-item">
+      <span class="step-num">3</span>
+      <span>Chọn frame</span>
+    </a>
+    <span class="flow-step-arrow">→</span>
+
+    <a href="index.html" class="flow-step-item">
+      <span class="step-num">4</span>
+      <span>Gán nhãn (Workstation)</span>
+    </a>
+    <span class="flow-step-arrow">→</span>
+
+    <a href="export.html" class="flow-step-item">
+      <span class="step-num">7</span>
+      <span>Xuất dữ liệu</span>
+    </a>
+
+    <div style="margin-left: auto;">
+      <a href="flow.html" class="btn-outline" style="padding: 4px 10px; font-size: 11px;">
+        <i class="ri-node-tree"></i> Xem toàn cảnh Flow
+      </a>
+    </div>
+  </nav>
+
+  <!-- Login Main Container -->
+  <div class="login-screen-wrap">
+    <div class="login-box">
+      <div class="login-logo">
+        <div class="icon-box">
+          <i class="ri-box-3-fill"></i>
+        </div>
+        <h1>AutoLabel 3D</h1>
+        <p>AI hỗ trợ gán nhãn ảnh & LiDAR (2D/3D) · Review by Exception</p>
+      </div>
+
+      <form id="loginForm">
+        <div class="form-group">
+          <label class="form-label" for="loginEmail">Email người dùng</label>
+          <div class="input-with-icon">
+            <i class="ri-mail-line"></i>
+            <input type="email" id="loginEmail" value="huy@example.com" placeholder="Email của bạn" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="loginPassword">Mật khẩu</label>
+          <div class="input-with-icon">
+            <i class="ri-lock-line"></i>
+            <input type="password" id="loginPassword" value="password123" placeholder="Mật khẩu" required>
+            <i class="ri-eye-off-line pw-toggle-btn" id="togglePasswordBtn" title="Hiện/ẩn mật khẩu"></i>
+          </div>
+        </div>
+
+        <div class="flex justify-between align-center mb-4 text-xs">
+          <label class="flex align-center gap-1 cursor-pointer">
+            <input type="checkbox" id="rememberMe" checked>
+            <span>Ghi nhớ đăng nhập</span>
+          </label>
+          <a href="javascript:void(0)" onclick="openModal('forgotPwModal')" class="text-blue fw-600">Quên mật khẩu?</a>
+        </div>
+
+        <button type="submit" class="btn-primary w-100" style="padding: 12px; font-size: 14px;">
+          <span>Đăng nhập vào hệ thống</span>
+          <i class="ri-arrow-right-line"></i>
+        </button>
+      </form>
+
+      <div class="mt-4 pt-3 text-center border-t text-xs text-gray" style="border-top: 1px solid var(--border);">
+        <span>Phiên bản AutoLabel Platform v1.0 · nuScenes Mini QA</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Forgot Password Modal -->
+  <div id="forgotPwModal" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <h3 class="mb-2">Đặt lại mật khẩu</h3>
+      <p class="text-gray text-sm mb-4">Nhập email của bạn để nhận liên kết khôi phục mật khẩu truy cập.</p>
+      <div class="form-group mb-4">
+        <label class="form-label">Email tài khoản</label>
+        <div class="input-with-icon">
+          <i class="ri-mail-line"></i>
+          <input type="email" id="resetEmail" value="huy@example.com" placeholder="email@example.com">
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <button type="button" class="btn-outline flex-grow" onclick="closeModal('forgotPwModal')">Hủy</button>
+        <button type="button" class="btn-primary flex-grow" onclick="showToast('Đã gửi mã xác nhận tới email của bạn', 'success'); closeModal('forgotPwModal');">Gửi liên kết</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toastContainer" class="toast-container"></div>
+  <script src="ui-flow.js"></script>
+</body>
+</html>

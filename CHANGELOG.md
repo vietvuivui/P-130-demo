@@ -30,6 +30,29 @@ Quy tắc:
 
 ---
 
+## 2026-09-29 · Danh · nhánh `danh`
+
+**Làm gì:** Tích hợp bộ giao diện UI Flow đa trang hoàn chỉnh (Đăng nhập, Dự án, Chọn frame, Xuất dữ liệu, Sơ đồ Flow) kết nối liền mạch vào luồng chạy chính của ứng dụng qua các route FastAPI. Đồng bộ toàn diện hệ thống thiết kế và bảng màu trang Workspace (Workstation gán nhãn) theo chuẩn Navy Slate (`#0f172a`) và Light Slate (`#f8fafc`), loại bỏ lỗi lệch màu do dark mode tự động, chuẩn hóa màu sắc bounding box canvas và thẻ QA risk badge.
+
+**File chính:**
+- Mới: `src/web/login.html`, `src/web/projects.html`, `src/web/frames.html`, `src/web/export.html`, `src/web/flow.html`, `src/web/ui-flow.css`, `src/web/ui-flow.js`, `src/web/road_camera.jpg`.
+- Sửa: `src/main.py` (thêm route chuyển hướng giao diện `/login`, `/projects`, `/frames`, `/annotate`, `/export`, `/flow`), `src/web/index.html` (thanh 7-step stepper, topbar brand đồng bộ icon/link), `src/web/styles.css` (bỏ prefers-color-scheme dark, chuẩn hóa token màu, topbar navy slate, layout flexbox), `src/web/app.js` (đồng bộ màu vẽ bounding box `RISK_COLOR` & `HUMAN_COLOR`).
+
+**Ảnh hưởng tới người khác:** Route mặc định `/` chuyển hướng về `/ui/login.html` thay vì `/ui/`. Thêm các đường dẫn trang `/projects`, `/frames`, `/export`, `/flow`. Các API `/api/v1/*`, schema dữ liệu và cấu hình `configs/autolabel.yaml` giữ nguyên vẹn.
+
+**Cách kiểm tra:**
+- `ruff check src tests` → All checks passed.
+- `python -m pytest tests/test_api/` → 11 passed.
+- Chạy `python -m src.demo` hoặc `uvicorn src.main:app`, truy cập `http://localhost:8000/`:
+  - Kiểm tra luồng Đăng nhập (`/login`) → Danh sách dự án (`/projects`) → Chọn frame (`/frames`) → Bấm "Gán nhãn" vào Workspace (`/annotate` hoặc `index.html`).
+  - Kiểm tra đồng bộ tông màu: thanh 7 bước, topbar `#0f172a`, canvas stage, thẻ rủi ro High/Medium/Low, phím tắt và thao tác duyệt frame/video hoạt động bình thường.
+  - Xem toàn cảnh flow tại `/flow` và trang xuất tại `/export`.
+
+**Còn dở / việc tiếp:**
+- Bổ sung xác thực JWT thực tế cho `/login` khi triển khai production nhiều annotator.
+
+---
+
 ## 2026-09-28 · Việt · nhánh `viet`
 
 **Làm gì:** Notebook Colab chạy liền một mạch: PointPillars (MMDetection3D, 10 sweep) tạo box 3D trên `mini_val` và chấm

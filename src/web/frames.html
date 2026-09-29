@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Danh sách frame — AutoLabel 3D / 2D</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+  <link rel="stylesheet" href="ui-flow.css">
+</head>
+<body>
+
+  <!-- 7-Step Interactive Stepper Navigation -->
+  <nav class="flow-stepper-bar" aria-label="UI Flow Steps">
+    <a href="login.html" class="flow-step-item">
+      <span class="step-num">1</span>
+      <span>Đăng nhập</span>
+    </a>
+    <span class="flow-step-arrow">→</span>
+
+    <a href="projects.html" class="flow-step-item">
+      <span class="step-num">2</span>
+      <span>Dự án</span>
+    </a>
+    <span class="flow-step-arrow">→</span>
+
+    <a href="frames.html" class="flow-step-item active">
+      <span class="step-num">3</span>
+      <span>Chọn frame</span>
+    </a>
+    <span class="flow-step-arrow">→</span>
+
+    <a href="index.html" class="flow-step-item">
+      <span class="step-num">4</span>
+      <span>Gán nhãn (Workstation)</span>
+    </a>
+    <span class="flow-step-arrow">→</span>
+
+    <a href="export.html" class="flow-step-item">
+      <span class="step-num">7</span>
+      <span>Xuất dữ liệu</span>
+    </a>
+
+    <div style="margin-left: auto;">
+      <a href="flow.html" class="btn-outline" style="padding: 4px 10px; font-size: 11px;">
+        <i class="ri-node-tree"></i> Xem toàn cảnh Flow
+      </a>
+    </div>
+  </nav>
+
+  <!-- App Layout -->
+  <div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="logo-icon"><i class="ri-box-3-fill"></i></div>
+        <span>AutoLabel 3D</span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="projects.html">
+          <i class="ri-folder-2-line"></i>
+          <span>Dự án</span>
+        </a>
+        <a href="javascript:void(0)" onclick="showToast('Quản lý tập dữ liệu thô', 'info')">
+          <i class="ri-database-2-line"></i>
+          <span>Dữ liệu thô</span>
+        </a>
+        <a href="index.html">
+          <i class="ri-price-tag-3-line"></i>
+          <span>Workspace Gán nhãn</span>
+        </a>
+        <a href="export.html">
+          <i class="ri-download-cloud-2-line"></i>
+          <span>Xuất dữ liệu</span>
+        </a>
+        <a href="flow.html">
+          <i class="ri-node-tree"></i>
+          <span>Toàn cảnh UI Flow</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-profile">
+          <div class="user-avatar">NH</div>
+          <div class="user-meta">
+            <span class="user-name">Phạm Quang Huy</span>
+            <span class="user-role">Reviewer &amp; Annotator</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <div class="page-container">
+        <!-- Breadcrumb & Header -->
+        <div class="flex align-center gap-2 mb-3">
+          <a href="projects.html" class="btn-outline icon-btn-small" title="Quay lại danh sách dự án">
+            <i class="ri-arrow-left-line"></i>
+          </a>
+          <span class="text-xs text-gray">Dự án</span>
+          <span class="text-xs text-gray">/</span>
+          <span class="text-xs fw-600 text-blue" id="frameProjectTitle">nuScenes_CAM_FRONT</span>
+        </div>
+
+        <div class="page-header">
+          <div>
+            <h1>Danh sách Frame</h1>
+            <p class="text-gray text-sm mt-1">Chọn frame ảnh và point cloud để tiến hành kiểm tra, chỉnh sửa và phê duyệt nhãn</p>
+          </div>
+          <div class="flex gap-2">
+            <a href="index.html" class="btn-primary">
+              <i class="ri-play-circle-line"></i> Mở Workspace Gán nhãn
+            </a>
+          </div>
+        </div>
+
+        <!-- Filter & Search Toolbar -->
+        <div class="toolbar-row">
+          <div class="tabs-pill-group">
+            <button class="tab-pill frame-filter-tab active" data-filter="all">Tất cả</button>
+            <button class="tab-pill frame-filter-tab" data-filter="unannotated">Chưa gán nhãn</button>
+            <button class="tab-pill frame-filter-tab" data-filter="annotated">Đã hoàn thành</button>
+          </div>
+
+          <div class="search-box">
+            <i class="ri-search-line"></i>
+            <input type="text" id="frameSearchInput" placeholder="Tìm kiếm theo mã Frame ID...">
+          </div>
+        </div>
+
+        <!-- Frames Table -->
+        <div class="table-card">
+          <table class="table-custom">
+            <thead>
+              <tr>
+                <th>Frame ID</th>
+                <th>Trạng thái</th>
+                <th>Đối tượng</th>
+                <th>Thời gian</th>
+                <th class="text-right">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody id="framesTableBody">
+              <!-- Dynamically populated from ui-flow.js -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="toastContainer" class="toast-container"></div>
+  <script src="ui-flow.js"></script>
+</body>
+</html>

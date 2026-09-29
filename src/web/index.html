@@ -6,29 +6,84 @@
   <title>AutoLabel 2D — Review</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
-  <link rel="stylesheet" href="styles.css?v=zoom1">
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=theme2">
 </head>
 <body>
+  <!-- 7-Step Interactive Stepper Navigation -->
+  <nav class="flow-stepper-bar" aria-label="UI Flow Steps">
+    <a href="login.html" class="flow-step-item">
+      <span class="step-num">1</span>
+      <span>Đăng nhập</span>
+    </a>
+    <span class="flow-step-arrow">→</span>
+
+    <a href="projects.html" class="flow-step-item">
+      <span class="step-num">2</span>
+      <span>Dự án</span>
+    </a>
+    <span class="flow-step-arrow">→</span>
+
+    <a href="frames.html" class="flow-step-item">
+      <span class="step-num">3</span>
+      <span>Chọn frame</span>
+    </a>
+    <span class="flow-step-arrow">→</span>
+
+    <a href="index.html" class="flow-step-item active">
+      <span class="step-num">4</span>
+      <span>Gán nhãn (Workstation)</span>
+    </a>
+    <span class="flow-step-arrow">→</span>
+
+    <a href="export.html" class="flow-step-item">
+      <span class="step-num">7</span>
+      <span>Xuất dữ liệu</span>
+    </a>
+
+    <div class="stepper-actions">
+      <a href="flow.html" class="btn btn-ghost btn-sm" style="font-size: 11px; padding: 3px 8px; text-decoration: none;" title="Xem toàn cảnh UI Flow">
+        <i class="ri-node-tree"></i> Toàn cảnh Flow
+      </a>
+      <a href="login.html" class="btn btn-ghost btn-sm" style="font-size: 11px; padding: 3px 8px; color: #ef4444; text-decoration: none;" title="Đăng xuất">
+        <i class="ri-logout-box-r-line"></i> Đăng xuất
+      </a>
+    </div>
+  </nav>
+
   <header class="topbar">
     <div class="brand">
-      <span class="brand-mark">2D</span>
+      <div class="brand-mark">
+        <i class="ri-box-3-fill" style="font-size: 18px;"></i>
+      </div>
       <div>
-        <div class="brand-title">AutoLabel 2D</div>
-        <div class="brand-sub">nuScenes CAM_FRONT · QA Agent · Review by exception</div>
+        <div class="brand-title">AutoLabel 3D / 2D</div>
+        <div class="brand-sub">nuScenes CAM_FRONT &amp; LiDAR · Review by exception</div>
       </div>
     </div>
     <div class="mode-switch" role="tablist" aria-label="Chế độ gán nhãn">
-      <button class="mode active" data-mode="image" role="tab" title="Gán nhãn từng frame ảnh độc lập">🖼 Ảnh</button>
-      <button class="mode" data-mode="video" role="tab" title="Gán nhãn cả video: timeline + lan truyền nhãn">🎞 Video</button>
+      <button class="mode active" data-mode="image" role="tab" title="Gán nhãn từng frame ảnh độc lập"><i class="ri-image-line"></i> Ảnh</button>
+      <button class="mode" data-mode="video" role="tab" title="Gán nhãn cả video: timeline + lan truyền nhãn"><i class="ri-film-line"></i> Video</button>
     </div>
     <nav class="tabs" role="tablist">
-      <button class="tab active" data-tab="review" role="tab">Review</button>
-      <button class="tab" data-tab="log" role="tab">Correction log</button>
-      <button class="tab" data-tab="metrics" role="tab">Metrics &amp; Export</button>
+      <button class="tab active" data-tab="review" role="tab"><i class="ri-check-double-line"></i> Review</button>
+      <button class="tab" data-tab="log" role="tab"><i class="ri-history-line"></i> Correction log</button>
+      <button class="tab" data-tab="metrics" role="tab"><i class="ri-bar-chart-2-line"></i> Metrics &amp; Export</button>
     </nav>
-    <label class="reviewer">Người duyệt
+    <label class="reviewer"><i class="ri-user-3-line" style="color: var(--accent);"></i> Người duyệt
       <input id="reviewer" type="text" maxlength="40">
     </label>
+    <div class="workflow-nav" style="display: flex; gap: 6px; align-items: center; margin-left: auto;">
+      <a href="projects.html" class="btn btn-ghost btn-sm" style="text-decoration: none; display: flex; align-items: center; gap: 4px; font-weight: 600;" title="Danh sách dự án">
+        <i class="ri-folder-2-line"></i> <span>Dự án</span>
+      </a>
+      <a href="frames.html" class="btn btn-ghost btn-sm" style="text-decoration: none; display: flex; align-items: center; gap: 4px;" title="Danh sách frame">
+        <i class="ri-list-check-2"></i> <span>Frames</span>
+      </a>
+      <a href="export.html" class="btn btn-ghost btn-sm" style="text-decoration: none; display: flex; align-items: center; gap: 4px;" title="Xuất dữ liệu">
+        <i class="ri-download-cloud-2-line"></i> <span>Xuất</span>
+      </a>
+    </div>
   </header>
 
   <!-- ===== Review ===== -->
@@ -211,6 +266,6 @@
   </main>
 
   <div id="toast" class="toast hidden" role="status"></div>
-  <script src="app.js?v=zoom1"></script>
+  <script src="app.js?v=theme2"></script>
 </body>
 </html>
