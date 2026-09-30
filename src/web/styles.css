@@ -454,3 +454,4 @@ body.in-project .brand-sub { display: none; }
 .delta-bad { color: var(--high); font-weight: 600; }
 .timing-card { margin: 16px 0; }
 #timing-table tr.timing-sec td { background: var(--surface-2); font-weight: 600; color: var(--text-2); cursor: default; }
+.prop-note { color: var(--accent); }

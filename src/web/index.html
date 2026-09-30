@@ -6,7 +6,7 @@
   <title>AutoLabel 3D — Review</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
-  <link rel="stylesheet" href="styles.css?v=3d11">
+  <link rel="stylesheet" href="styles.css?v=3d12">
 </head>
 <body>
   <header class="topbar">
@@ -297,6 +297,7 @@
             <button id="m3-btn-undo" class="btn btn-ghost btn-sm" title="Hoàn tác thao tác vừa rồi (Ctrl+Z)" disabled>↶</button>
             <button id="m3-btn-redo" class="btn btn-ghost btn-sm" title="Làm lại (Ctrl+Y)" disabled>↷</button>
             <button id="m3-btn-reject" class="btn btn-ghost btn-sm" title="Reviewer trả lại frame kèm lý do (R)">Trả lại</button>
+            <label class="toggle" title="Approve xong thì mang box đã duyệt sang các keyframe sau còn chưa mở (T: lan truyền lại)"><input type="checkbox" id="m3-auto-prop" checked> ↦ Lan truyền</label>
             <button id="m3-approve-frame" class="btn btn-primary">Approve frame <kbd>Enter</kbd></button>
           </span>
         </div>
@@ -458,8 +459,8 @@
   </main>
 
   <div id="toast" class="toast hidden" role="status"></div>
-  <script src="app.js?v=3d11"></script>
-  <script type="module" src="bev2d.js?v=3d11"></script>
-  <script type="module" src="app3d.js?v=3d11"></script>
+  <script src="app.js?v=3d12"></script>
+  <script type="module" src="bev2d.js?v=3d12"></script>
+  <script type="module" src="app3d.js?v=3d12"></script>
 </body>
 </html>

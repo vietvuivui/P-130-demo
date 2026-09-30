@@ -161,6 +161,31 @@ def approve(model: str, frame_id: str, req: ReviewerRequest, store: WorkspaceSto
     return frame
 
 
+@router3d.post("/frames/{model}/{frame_id}/propagate")
+def propagate(model: str, frame_id: str, request: Request, store: WorkspaceStore = Depends(get_store),
+              config: AutoLabelConfig = Depends(get_config)):  # fmt: skip
+    """Mang box người đã duyệt ở keyframe này sang các keyframe sau còn "auto" (src/services/propagation3d.py)."""
+    from src.api.routes import _nuscenes
+    from src.services.propagation3d import propagate3d_from
+
+    _load(store, model, frame_id)
+    timestamps = None
+    try:
+        data = _nuscenes(*data_source(request))
+        timestamps = lambda tok: data.sample[tok]["timestamp"]  # noqa: E731
+    except (FileNotFoundError, KeyError):
+        pass  # không có bảng nuScenes: coi hai keyframe cách nhau 0.5 s
+    try:
+        resp = propagate3d_from(store, model, frame_id, config.propagation3d, timestamps)
+    except ValueError as e:
+        raise _error(409, "NOT_APPROVED", str(e)) from e
+    except KeyError:
+        resp = propagate3d_from(store, model, frame_id, config.propagation3d, None)
+    store.append_event(dict(type="propagate", mode="3d", model=model, frame_id=frame_id,
+                            frames=len(resp["frames_updated"]), objects=resp["objects_propagated"]))  # fmt: skip
+    return resp
+
+
 @router3d.post("/frames/{model}/{frame_id}/reject", response_model=Frame3DRecord)
 def reject(model: str, frame_id: str, req: RejectRequest, store: WorkspaceStore = Depends(get_store)):
     frame = _load(store, model, frame_id)

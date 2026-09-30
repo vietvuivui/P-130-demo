@@ -880,6 +880,7 @@ function card(o) {
   return `<div class="obj-card ${lv} ${o.object_id === T.selected ? 'selected' : ''}" data-oid="${esc(o.object_id)}">
     <div class="oc-title"><span>${esc(finalLabel(o))} <span class="oid">#${esc(o.object_id)}</span></span>
       <span class="verdict ${lv}">${esc(VERDICT_VI[v.verdict] || v.verdict || '')}</span></div>
+    ${o.propagation ? `<div class="oc-stats prop-note">↦ lan truyền từ ${esc(o.propagation.keyframe_id)} (#${esc(o.propagation.keyframe_object_id)}) · lệch ${o.propagation.distance_m} m · lớp và kích thước theo người duyệt</div>` : ''}
     <div class="oc-stats">score ${o.score.toFixed(2)} · ${v.distance_m ?? '?'} m · ${v.lidar_points ?? 0} điểm LiDAR${v.camera ? ` · ${esc(v.camera.replace('CAM_', ''))}` : ''}${v.occlusion != null ? ` · che ${Math.round(v.occlusion * 100)}%` : ''}</div>
     <div class="m3-comment">${esc(v.comment || '')}</div>
     <div class="oc-actions">
@@ -909,14 +910,15 @@ function renderReview() {
   }
   $('m3-count-low').textContent = by.low.length;
   $('m3-list-low').innerHTML = by.low.map((o) => o.object_id === T.selected ? card(o) : `
-    <div class="low-row" data-oid="${esc(o.object_id)}"><span>#${esc(o.object_id)} ${esc(finalLabel(o))} · ${o.verify?.distance_m ?? '?'} m</span><span>${o.score.toFixed(2)}</span></div>`).join('');
+    <div class="low-row" data-oid="${esc(o.object_id)}"><span>${o.propagation ? '↦ ' : ''}#${esc(o.object_id)} ${esc(finalLabel(o))} · ${o.verify?.distance_m ?? '?'} m</span><span>${o.score.toFixed(2)}</span></div>`).join('');
   $('m3-approve-low').disabled = !by.low.length || f?.status === 'approved';
   $('m3-approve-low').innerHTML = `✓ Approve all low-risk (${by.low.length}) <kbd>A</kbd>`;
   const done = objs.filter((o) => o.review.status !== 'pending');
   $('m3-count-done').textContent = done.length;
   $('m3-list-done').innerHTML = done.map((o) => {
     const a = o.review.action;
-    const tag = o.review.status === 'deleted' ? '<span class="done-tag deleted">✗ xoá</span>'
+    const tag = a === 'PROPAGATED_DELETE' ? `<span class="done-tag deleted" title="Người đã xoá box này ở keyframe trước; bấm Keep nếu đây là vật thật">✗ tự xoá theo keyframe</span>`
+      : o.review.status === 'deleted' ? '<span class="done-tag deleted">✗ xoá</span>'
       : a === 'ADD_BOX' ? '<span class="done-tag added">＋ người thêm</span>'
         : `<span class="done-tag approved">${a === 'CHANGE_CLASS' ? `→ ${esc(o.review.final_label)}` : a === 'EDIT_BOX' ? `✎ sửa box${o.review.final_label !== o.label ? ` → ${esc(o.review.final_label)}` : ''}` : a === 'BATCH_APPROVE' ? 'batch approve' : 'keep'}</span>`;
     const dot = o.source === 'human' ? '<span class="dot" style="background:#22d3ee"></span>' : `<span class="dot ${levelOf(o)}"></span>`;
@@ -977,10 +979,19 @@ async function approveFrame() {
     const secs = T.timerStart ? Math.round((Date.now() - T.timerStart) / 1000) : undefined;
     T.frame = await api(`/frames/${encodeURIComponent(f.model)}/${encodeURIComponent(f.frame_id)}/approve`, { method: 'POST', body: { reviewer: reviewer(), review_time_s: secs } });
     toast(`Đã approve ${f.frame_id}`);
+    if ($('m3-auto-prop').checked) await propagate3d(f.frame_id);
     T.timerStart = null;
     await refreshSummary();
     const next = sortedQueue().find((x) => x.status !== 'approved' && x.frame_id !== f.frame_id);
     if (next) await openFrame(next.frame_id); else renderAll();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function propagate3d(frameId) {
+  try {
+    const r = await api(`/frames/${encodeURIComponent(T.model)}/${encodeURIComponent(frameId)}/propagate`, { method: 'POST', body: {} });
+    const n = r.frames_updated.length;
+    toast(n ? `↦ Lan truyền ${r.objects_propagated} box sang ${n} keyframe${r.objects_suppressed ? `, tự xoá ${r.objects_suppressed}` : ''}. ${r.stop_reason || ''}` : `Không lan truyền: ${r.stop_reason || 'không có keyframe sau còn chưa mở'}`);
   } catch (e) { toast(e.message, true); }
 }
 
@@ -1090,6 +1101,8 @@ function bind() {
   });
   $('m3-approve-low').addEventListener('click', approveLow);
   $('m3-approve-frame').addEventListener('click', approveFrame);
+  $('m3-auto-prop').checked = storage.get('autoProp', '1') === '1';
+  $('m3-auto-prop').addEventListener('change', (e) => storage.set('autoProp', e.target.checked ? '1' : '0'));
   $('m3-btn-undo').addEventListener('click', () => undoRedo('undo'));
   $('m3-btn-redo').addEventListener('click', () => undoRedo('redo'));
   $('m3-btn-reject').addEventListener('click', openReject);
@@ -1144,6 +1157,7 @@ function bind() {
       k: () => T.selected && act('KEEP', T.selected), d: () => T.selected && act('DELETE', T.selected),
       c: () => document.querySelector(`#tab-review3d .obj-card[data-oid="${CSS.escape(T.selected || '')}"] [data-class]`)?.focus(),
       a: approveLow, Enter: approveFrame, n: () => stepFrame(1), p: () => stepFrame(-1), r: openReject,
+      t: () => T.frame?.status === 'approved' && propagate3d(T.frame.frame_id).then(() => refreshSummary()),
       g: () => { $('m3-show-gt').checked = !$('m3-show-gt').checked; $('m3-show-gt').dispatchEvent(new Event('change')); },
       v: () => setView(!T.bev),
       b: toggleDraw, e: () => T.selected && startEdit(T.selected),

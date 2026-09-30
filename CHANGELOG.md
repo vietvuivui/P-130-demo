@@ -30,6 +30,40 @@ Quy tắc:
 
 ---
 
+## 2026-09-30 (5) · Kiên · nhánh `kien`
+
+**Làm gì:** **Lan truyền box 3D đã duyệt**.
+
+- Approve một keyframe 3D thì box sang các keyframe sau:
+  - bù chuyển động xe, dịch theo vận tốc mô hình dự đoán;
+  - lớp và kích thước theo người;
+  - box người đã xoá được tự xoá.
+- UI 3D: ô "↦ Lan truyền" cạnh nút Approve, phím `T`.
+- Held-out 4 scene (ensemble): khoảng 95% box lan truyền đúng vật. Dịch theo vận tốc cho thêm 15% nhãn đúng so với
+  chỉ bù chuyển động xe.
+
+**File chính:**
+
+- Mới: `src/services/propagation3d.py`, `propagation3d_eval.py`, `tools3d/eval_propagation3d.py`,
+  `eval/results/propagation3d.md`.
+- Sửa: `routes3d.py`, `web/app3d.js`.
+
+**Ảnh hưởng tới người khác:**
+
+- Schema:
+  - `Object3D.source` thêm `"propagated"`;
+  - `Object3D.propagation`;
+  - `Frame3DRecord.propagated_from`, `propagated_at`, `prelabel`.
+- Config: `propagation3d`.
+- API: `POST /3d/frames/{m}/{f}/propagate`.
+
+**Cách kiểm tra:**
+
+- `pytest` (141 pass).
+- `scripts\tasks.ps1 evalprop3d`: đo trên đủ 27 scene val có dự đoán.
+
+---
+
 ## 2026-09-30 (4) · Kiên · nhánh `kien`
 
 **Làm gì:** Đo một frame tốn thời gian ở bước nào.

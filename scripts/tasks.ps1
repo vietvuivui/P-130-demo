@@ -11,6 +11,7 @@
 #   eval3d      chấm 3D trên các scene val có trên máy: 4 mô hình LiDAR (+ lật trục) rồi eval (tách dev / held-out)
 #   label3d     tạo frame 3D cho UI "Workspace nhóm" bằng ensemble (chạy sau eval3d)
 #   eval2d      chấm detector 2D trên dev / held-out (thêm -Weights để so trọng số đã fine-tune)
+#   evalprop3d  đo lan truyền box 3D đã duyệt trên các scene val có dự đoán 3D (dùng dự đoán của eval3d, không cần GPU)
 #   profile     đo một frame tốn thời gian ở bước nào (detect, LiDAR, QA, làm mờ ảnh, nạp model), không dùng cache: -Limit 10
 #   evaltemporal  so sánh trước / sau optical flow (lan truyền nhãn, QA temporal, tính lại score theo sweep) trên
 #               dev (3 scene demo) và held-out (-Scenes, mặc định 20 scene val có đủ dữ liệu); detect chạy GPU, có cache
@@ -24,7 +25,7 @@
 
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("check", "install", "serve", "test", "demozip", "eval3d", "label3d", "eval2d", "evaltemporal", "rescore", "profile",
+    [ValidateSet("check", "install", "serve", "test", "demozip", "eval3d", "label3d", "eval2d", "evaltemporal", "rescore", "profile", "evalprop3d",
         "push", "all")]
     [string]$Task = "check",
     [string]$Dataroot = "..\v1.0-trainval",
@@ -185,6 +186,11 @@ function Profile {
     Run "python" $argv
 }
 
+function EvalProp3d {
+    Step "Lan truyền 3D: chỉ bù chuyển động xe / + vận tốc / + ngưỡng chặt (dev 3 scene, held-out phần còn lại)"
+    Run "python" @("tools3d\eval_propagation3d.py", "--dataroot", $Dataroot)
+}
+
 function Push {
     Step "git push"
     $branch = (git rev-parse --abbrev-ref HEAD).Trim()
@@ -204,6 +210,7 @@ switch ($Task) {
     "evaltemporal" { EvalTemporal }
     "rescore" { Rescore }
     "profile" { Profile }
+    "evalprop3d" { EvalProp3d }
     "push" { Push }
     "all" { Check; Test; Eval3d; Label3d; Eval2d }
 }

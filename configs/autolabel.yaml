@@ -221,6 +221,16 @@ propagation:
   # Detector ở frame đích gán lớp khác lớp lan truyền với score >= ngưỡng -> PROP_CLASS_DIFFERS
   class_differs_score: 0.5
 
+# Lan truyền box 3D đã duyệt sang keyframe sau (src/services/propagation3d.py): box về hệ toàn cục (bù chuyển động xe),
+# dịch theo vận tốc mô hình dự đoán, khớp dự đoán ở keyframe sau theo khoảng cách tâm (ngưỡng theo lớp của tracker
+# CenterPoint × dist_scale). Chọn trên 3 scene dev (thí nghiệm keyframe hoàn hảo, ensemble): so với chỉ bù chuyển động
+# xe, nhãn đúng 3650 -> 4074, đổi ID 182 -> 106; held-out 4 scene: 3031 -> 3339, đổi ID 98 -> 36, tỉ lệ đúng 0.95.
+propagation3d:
+  motion: velocity
+  dist_scale: 0.5
+  max_misses: 2
+  max_keyframes: 20
+
 # Video mp4 tải lên (chế độ Video trên UI). Frame cắt ở track_fps dùng cho tracking khi lan truyền; cứ
 # track_fps/label_fps frame thì có một keyframe để gán nhãn (giống keyframe 2Hz + sweep 12Hz của nuScenes)
 video:

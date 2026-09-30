@@ -166,6 +166,18 @@ class PropagationCfg(BaseModel):
     class_differs_score: float = 0.5
 
 
+class Propagation3DCfg(BaseModel):
+    """Lan truyền box 3D đã duyệt sang keyframe sau (src/services/propagation3d.py)."""
+
+    # velocity: dịch box theo vận tốc mô hình dự đoán (hệ toàn cục, đã bù chuyển động xe) | none: chỉ bù chuyển động xe
+    motion: Literal["velocity", "none"] = "velocity"
+    # Nhân ngưỡng khoảng cách khớp theo lớp của tracker CenterPoint
+    dist_scale: float = 0.5
+    # Không khớp quá bấy nhiêu keyframe liên tiếp thì dừng track
+    max_misses: int = 2
+    max_keyframes: int = 20
+
+
 class VideoCfg(BaseModel):
     # Video mp4 tải lên: cắt frame ở track_fps để tracking, cứ track_fps/label_fps frame có một keyframe để gán nhãn
     track_fps: float = 10.0
@@ -223,6 +235,7 @@ class AutoLabelConfig(BaseModel):
     gt_category_map: dict[str, str] = Field(default_factory=dict)
     qa: QACfg = QACfg()
     propagation: PropagationCfg = PropagationCfg()
+    propagation3d: Propagation3DCfg = Propagation3DCfg()
     video: VideoCfg = VideoCfg()
     verify3d: Verify3DCfg = Verify3DCfg()
     privacy: PrivacyCfg = PrivacyCfg()
