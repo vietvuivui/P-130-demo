@@ -184,7 +184,8 @@ Chế độ Video:
   Video không có LiDAR/calibration nên các check LiDAR tự bỏ qua, risk dựa trên score, temporal và hình học.
 
 **BEV** (`V`, cả chế độ Ảnh và Video): khung bên phải nhìn từ trên xuống. Ảnh camera được chiếu xuống mặt đường bằng
-homography (nuScenes: ngoại tham số thật của camera; video tải lên: giả định camera cao 1.5 m, nhìn thẳng), trên đó là
+homography (nuScenes: ngoại tham số thật của camera, mặt đường theo LiDAR, ghép thêm các keyframe lân cận như ảnh BEV
+3D; video tải lên: giả định camera cao 1.5 m, nhìn thẳng), trên đó là
 điểm LiDAR và từng box 2D đặt lên mặt đường: có điểm LiDAR trong box thì theo độ sâu LiDAR (nét liền), không thì theo
 chân vật chạm đường (nét đứt); bề ngang theo box, chiều dài theo cỡ trung bình của lớp. Bấm box trên BEV để chọn, sửa
 box trên ảnh thì BEV cập nhật ngay; kéo để di chuyển, lăn chuột để zoom.
@@ -211,7 +212,7 @@ sinh pre-label box 3D; QA Agent kiểm chứng từng box bằng 6 camera + LiDA
 ```bash
 # 1. Suy luận + chấm mAP/NDS các mô hình trên máy có GPU (môi trường riêng, xem tools3d/README.md)
 .venv-mm3d\Scripts\python tools3d\run3d.py all --dataroot ..\v1.0-trainval
-#    thêm --tta và "ensemble" (gộp 4 mô hình LiDAR + tinh chỉnh theo track): dev mAP 0.537 -> 0.644, xem tools3d/README.md
+#    thêm --tta và "ensemble" (gộp 4 mô hình LiDAR + tinh chỉnh theo track): dev mAP 0.537 -> 0.644, test 0.578 -> 0.668
 # 2. Kiểm chứng bằng camera, tạo frame 3D cho UI (môi trường chính)
 python -m src.cli label3d --model centerpoint_voxel
 python -m src.cli evaluate3d --model centerpoint_voxel   # kết luận kiểm chứng so với nhãn gốc
@@ -224,7 +225,9 @@ box chiếu xuống (camera tốt nhất tự chọn, `1`–`6` đổi camera). 
 
 - **Ảnh BEV** (`I`): 6 camera ghép thành ảnh nhìn từ trên xuống bằng homography mặt đường
   (`src/services/bev.py`), trải dưới point cloud. Thấy được vạch kẻ đường, lề, vị trí xe trên làn quanh cả xe thay vì
-  nhìn từng camera một. Chỉ đúng cho mặt đường: vật cao bị kéo dài ra xa camera; xa hơn 25 m ảnh mờ dần.
+  nhìn từng camera một. Mặt đường ghép thêm từ ±4 keyframe cùng scene (nối bằng ego pose), mỗi ô lấy từ lần camera
+  nhìn gần nhất: chỗ bị xe che được lấp, ảnh ở xa hết nhoè. Chỗ mặt đường bị vật cao che ở mọi lần nhìn để trống cho
+  point cloud hiện ra. Lần đầu mở một frame mất vài giây (sau đó lấy từ cache).
 - **Vẽ thêm box** (`B`, cho vật mô hình bỏ sót): chọn lớp, kéo trên mặt đường từ đuôi tới đầu vật (hoặc bấm một điểm để
   đặt box cỡ trung bình của lớp, cùng hướng với xe gần nhất). Box tự đặt đáy lên mặt đường và lấy chiều cao theo điểm
   LiDAR; `F` co khít đám điểm LiDAR (giữ cạnh gần xe khi vật chỉ lộ một mặt). Box hiện ngay trên ảnh camera để so.
@@ -239,6 +242,11 @@ Phím: `↑/↓` chọn box · `K` `D` `C` `E` · `B` vẽ box · `A` · `Enter`
 
 Xem [eval/results/autolabel2d_eval.md](eval/results/autolabel2d_eval.md). Optical flow cho lan truyền và QA
 temporal (trước / sau, dev + held-out): [eval/results/temporal/report.md](eval/results/temporal/report.md).
+
+**3D trên tập test** ([eval/results/det3d_heldout.md](eval/results/det3d_heldout.md)): 24 scene val chưa dùng để chọn
+cấu hình (957 keyframe), so với nhãn gốc nuScenes. Mô hình đơn tốt nhất CenterPoint voxel mAP 0.578 / NDS 0.655; gộp 4 mô
+hình LiDAR + tinh chỉnh theo track (mặc định) **mAP 0.668 / NDS 0.713**. Thử ý tưởng VESPA (box 3D từ box 2D + LiDAR,
+hướng theo chuyển động, cỡ theo lớp): không tăng mAP ([eval/results/vespa.md](eval/results/vespa.md)).
 
 3D ([eval/compare_3d.ipynb](eval/compare_3d.ipynb)): trọng số có sẵn, 27 scene val nuScenes (1076 keyframe), RTX 4050.
 Hai cột cuối là kết quả QA Agent 3D trên 3 scene demo, dùng ngưỡng điểm riêng của từng mô hình.

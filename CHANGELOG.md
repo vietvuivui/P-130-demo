@@ -46,13 +46,20 @@ Quy tắc:
 - **Đo thời gian từng bước** (2D, 3D, nạp model, làm mờ ảnh): bảng ở tab Metrics, lệnh `profile`. CPU: detect
   17.7 s/frame; GPU laptop: 2D ~1 s, 3D ~4 s/frame.
 - `tasks.ps1 serve -Workspace` để demo; ẩn cảnh báo `'half' is deprecated`.
+- **Ảnh BEV dễ nhìn hơn** (3D và 2D): ghép mặt đường từ ±4 keyframe cùng scene theo ego pose, mỗi ô lấy từ lần camera
+  nhìn gần nhất — lấp vùng bị xe che, hết nhoè ở xa, 2D đặt vạch đường đúng chỗ hơn; bỏ vệt cốp / capô xe mình, dọn mảnh vụn.
+- **Mô hình 3D trên tập test** (24 scene, 957 keyframe, so với nhãn gốc): ensemble 4 LiDAR + track mAP 0.668 / NDS 0.713,
+  CenterPoint voxel 0.578 (`eval/results/det3d_heldout.md`).
+- **Thử ý tưởng VESPA** (box 3D từ box 2D + LiDAR, hướng theo chuyển động, cỡ theo lớp): không tăng mAP, không bật
+  (`eval/results/vespa.md`; `src/services/fill3d.py` giữ để thử tiếp).
 - PRD: thêm trạng thái từng FR, kết quả đo, giải thích công cụ; slide tóm tắt MVP.
 
 **File chính:**
 
 - Mới: `src/services/ui_settings.py`, `jobs.py`, `relabel.py`, `temporal_eval.py`, `timing.py`, `profiling.py`,
-  `propagation3d.py`, `propagation3d_eval.py`, `tools3d/eval_propagation3d.py`, `eval/results/propagation3d.md`.
-- Sửa: `propagation.py`, `pipeline.py`, `routes.py`, `routes3d.py`, `projects.py`, `label3d.py`, `privacy.py`,
+  `propagation3d.py`, `propagation3d_eval.py`, `fill3d.py`, `tools3d/eval_propagation3d.py`,
+  `eval/results/propagation3d.md`, `det3d_heldout.md`, `vespa.md`.
+- Sửa: `propagation.py`, `pipeline.py`, `bev.py`, `routes.py`, `routes3d.py`, `projects.py`, `label3d.py`, `privacy.py`,
   `cli.py`, `web/app.js`, `web/app3d.js`, `configs/autolabel.yaml`, `scripts/tasks.ps1`, `PRD-AutoLabel3D.md`.
 
 **Ảnh hưởng tới người khác:**
@@ -64,10 +71,11 @@ Quy tắc:
 - `routes.get_config(request)` áp thêm `<workspace>/settings.json`; có thêm `get_base_config`. Bước gán nhãn của dự án
   cũng dùng cài đặt này.
 - API mới: `/settings`, `/relabel`, `/eval-temporal`, `/timing`, `POST /3d/frames/{m}/{f}/propagate`.
+- `bev.bev_mosaic(..., neighbors=)`, `bev.bev_camera(..., neighbors=)`; `GET /3d/frames/{m}/{f}/bev?fuse=false` để lấy ảnh một frame như cũ.
 
 **Cách kiểm tra:**
 
-- `pytest` (141 pass), `ruff check src tests`.
+- `pytest` (148 pass), `ruff check src tests`.
 - UI: tab ⚙ Cài đặt → đổi một mục → Lưu → Áp dụng lại → Chạy đánh giá; chế độ 3D: approve có ô "↦ Lan truyền".
 - `scripts\tasks.ps1 profile`, `scripts\tasks.ps1 evalprop3d` (đủ 27 scene val).
 

@@ -80,9 +80,13 @@ theo mô hình, khung 3D / BEV, ảnh camera có box chiếu xuống, card từn
 5. Người vẽ thêm box (`ADD_BOX`, `source: human`) cho vật mô hình bỏ sót và sửa box (`EDIT_BOX`, box mô hình giữ ở
    `original_box`). Việc đặt lên mặt đường / co khít điểm LiDAR chạy ngay trên trình duyệt với point cloud đã tải.
 6. Ảnh BEV (`bev.py`): độ cao mặt đường z0 = mode của z các điểm LiDAR thấp quanh xe; mỗi camera có homography
-   H = K·[r1 r2 z0·r3+t] từ mặt đường sang ảnh; mỗi ô BEV lấy màu từ camera nhìn nó gần trục quang học nhất. Cache PNG
-   theo frame ở `workspace/bev3d/`.
-7. BEV của chế độ Ảnh / Video (`bev2d.js`): một camera, mặt đường z = 0 của hệ ego; `/frames/{id}/bev/meta` trả
+   H = K·[r1 r2 z0·r3+t] từ mặt đường sang ảnh (mặt đường thật lấy từ LiDAR: RANSAC + lưới sai lệch). Ô mà tia camera bị
+   vật cao chắn không lấy màu từ camera đó. Ghép thêm ±4 keyframe cùng scene: ô mặt đường đổi sang hệ của từng keyframe
+   bằng `global_from_lidar`, mỗi lần nhìn chấm theo độ nét (1/(1+(ρ/8)²)⁶, ρ = khoảng cách tới camera) nên lần nhìn gần
+   thắng hẳn; bỏ vùng quanh thân xe (camera thấy cốp / capô của chính xe), dọn mảnh vụn, tô lỗ < 3 m². Cache PNG theo
+   frame ở `workspace/bev3d/`.
+7. BEV của chế độ Ảnh / Video (`bev2d.js`): một camera; ảnh nuScenes dùng LiDAR và ghép keyframe lân cận (ego pose) như
+   ảnh BEV 3D, video tải lên dùng mặt đường z = 0 của hệ ego; `/frames/{id}/bev/meta` trả
    cam_from_ego + homography, trình duyệt đổi điểm LiDAR (u, v, độ sâu) về hệ ego và đặt box 2D lên mặt đường.
 
 ## QA Agent

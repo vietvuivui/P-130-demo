@@ -79,7 +79,7 @@ Mục tiêu sản phẩm: giảm thời gian gán nhãn một frame camera + LiD
 | # | Chỉ số | Cách đo | Cách đọc | Hiện có (2026-09-30) |
 | --- | --- | --- | --- | --- |
 | M1 | Thời gian gán nhãn mỗi frame | Đồng hồ thao tác trong app, từ lúc mở frame tới lúc submit, chỉ tính thời gian đang thao tác | Giảm so với baseline thủ công của chính nhóm | Có thời gian duyệt mỗi frame từ log thao tác (tab Metrics, CSV). Chưa có baseline thủ công và A/B |
-| M2 | mAP của nhãn tự động 3D | So với ground truth của dataset, IoU 3D ≥ 0.5 và 0.7 | Báo cáo theo từng lớp | Dev 3 scene: ensemble 4 mô hình LiDAR mAP 0.644 / NDS 0.643. 27 scene val: CenterPoint voxel mAP 0.573 / NDS 0.647. AP từng lớp: `eval/results/det3d/` |
+| M2 | mAP của nhãn tự động 3D | So với ground truth của dataset, IoU 3D ≥ 0.5 và 0.7 | Báo cáo theo từng lớp | Tập test 24 scene (957 keyframe): ensemble 4 mô hình LiDAR + track mAP 0.668 / NDS 0.713; CenterPoint voxel đơn 0.578 / 0.655. AP từng lớp: `eval/results/det3d_heldout.md` |
 | M3 | mAP của nhãn tự động 2D | So với ground truth, IoU 2D ≥ 0.5 và 0.7 | Báo cáo theo từng lớp | YOLOE-26L zero-shot mAP50: dev 0.395 (119 keyframe), held-out 0.452 (40 keyframe) |
 | M4 | Tỷ lệ nhãn phải sửa | Số object bị người chỉnh hoặc xóa / tổng object máy sinh, tách theo nguồn model / propagated / inherited | Theo dõi xu hướng giảm dần | Tính từ log thao tác thật (tab Metrics). Chưa có phiên duyệt thật đủ lớn để báo số |
 | M5 | Chất lượng sau khi duyệt | IoU trung bình của nhãn đã approve so với ground truth | Không thấp hơn nhánh làm thủ công | Chưa đo (cần A/B) |
@@ -1052,7 +1052,7 @@ Mục này ghi lại những gì đã chạy được trên nhánh `kien`, khác
 ### Thêm ngoài kế hoạch
 
 - **Lan truyền 3D** bù chuyển động xe và dịch theo vận tốc mô hình dự đoán.
-- **Ảnh BEV** ghép từ 6 camera, trải dưới point cloud khi sửa box 3D.
+- **Ảnh BEV** ghép từ 6 camera và ±4 keyframe lân cận (lấp vùng bị che, hết nhoè ở xa), trải dưới point cloud khi sửa box 3D; chế độ 2D cũng dùng.
 - **Sửa nhãn ở sweep** t−2…t+2; keyframe được chấm lại ngay.
 - **Tab ⚙ Cài đặt:** chỉnh thuật toán theo từng dự án, áp dụng lại, chạy đánh giá trước / sau ngay trên web.
 - **Đo thời gian từng bước** cho mỗi frame (tab Metrics).
@@ -1064,10 +1064,12 @@ Giao thức chống overfit: chọn cách làm trên **dev** (3 scene demo: scen
 
 | Hạng mục | Kết quả | Nguồn |
 | --- | --- | --- |
+| **3D, tập test 24 scene (957 keyframe)** | **Ensemble 4 LiDAR + track mAP 0.668 / NDS 0.713**; CenterPoint voxel 0.578 / 0.655; camera 0.34–0.40 | `eval/results/det3d_heldout.md` |
 | 3D, 27 scene val (1076 keyframe) | CenterPoint voxel mAP 0.573 / NDS 0.647; 0.62 s/keyframe (RTX 4050) | `eval/compare_3d.ipynb` |
 | 3D, dev, gộp 4 mô hình + track | mAP 0.537 → 0.644, NDS 0.560 → 0.643 | `tools3d/README.md` |
 | QA 3D (CenterPoint voxel) | Đưa 51% box vào nhóm duyệt theo lô, trong đó 93% đúng; bắt 86% box sai | `README.md` |
-| 2D YOLOE-26L zero-shot | mAP50 dev 0.395, held-out 0.452 | `eval/results/det2d_variants.json` |
+| 2D YOLOE-26L zero-shot | mAP50 dev 0.395; tập test 20 scene (795 keyframe) 0.296, P 0.49 / R 0.52 (nhãn gốc là hình chiếu box 3D) | `eval/results/temporal/gpu_heldout20.json` |
+| So sánh detector 2D, 40 keyframe | YOLOE 0.452 · YOLO26 0.398 · YOLO-World 0.311 (chỉ YOLOE có lớp barrier) | `eval/results/compare/` |
 | Lan truyền 2D + optical flow, 20 scene held-out (795 keyframe) | Nhãn đúng 2910 → 3329 (+14%); đổi ID 265 → 97 | `eval/results/temporal/report.md` |
 | Ghép kiểu ByteTrack | Box lan truyền sai: dev 224 → 203, held-out 4 scene 329 → 300 | như trên |
 | Lan truyền 3D, 4 scene held-out | ~95% box đúng vật; đổi ID 98 → 36 | `eval/results/propagation3d.md` |
@@ -1077,6 +1079,7 @@ Thử nhưng không bật mặc định (có sẵn trên tab Cài đặt):
 
 - Tính lại score theo sweep: bớt ~60% box phải xem tay nhưng sót thêm ~9% vật.
 - Optical flow cho QA temporal: nhiều lỗi lọt qua duyệt theo lô hơn.
+- Ý tưởng VESPA (box 3D từ box 2D + LiDAR cho vật bị sót, hướng theo chuyển động, cỡ theo lớp): không tăng mAP; vật bị sót phần lớn có dưới 5 điểm LiDAR (`eval/results/vespa.md`).
 
 ### Còn thiếu
 
