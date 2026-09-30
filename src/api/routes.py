@@ -395,6 +395,43 @@ def get_bev_meta(frame_id: str, request: Request, store: WorkspaceStore = Depend
     }  # fmt: skip
 
 
+BEV2D_NEIGHBORS = (1, -1, 2, -2, 3, 4)  # keyframe sau nhìn gần mặt đường phía trước nên lấy nhiều hơn
+
+
+def _bev2d_neighbors(frame: FrameRecord, request: Request, store: WorkspaceStore, dataroot: Path) -> list | None:
+    """Keyframe cùng scene quanh frame này (ảnh, intrinsic, camera <- ego, ego của nó <- ego frame này, LiDAR)."""
+    from src.services import bev
+
+    root, version = data_source(request)
+    try:
+        data = _nuscenes(root, version)
+        ref = data._global_from_ego(frame.image.sd_token)
+    except (FileNotFoundError, KeyError):
+        return None
+    out = []
+    for d in BEV2D_NEIGHBORS:
+        if frame.index + d < 0:
+            continue
+        try:
+            nb = store.load_frame(f"{frame.scene}_{frame.index + d:03d}")
+        except ValueError:
+            continue
+        if nb is None or nb.scene != frame.scene or nb.image.path.startswith("@workspace"):
+            continue
+        img = bev.load_rgb(image_path(dataroot, nb, 0, workspace=store.root))
+        try:
+            cfe = np.linalg.inv(data._ego_from_sensor(nb.image.sd_token))
+            from_ref = np.linalg.inv(data._global_from_ego(nb.image.sd_token)) @ ref
+        except KeyError:
+            continue
+        if img is None:
+            continue
+        intr = np.asarray(nb.intrinsic, float)
+        pts = bev.lidar_uvd_to_ego(store.load_aux("lidar", nb.frame_id), intr, cfe)
+        out.append((img, intr, cfe, from_ref, pts))
+    return out
+
+
 @router.get("/frames/{frame_id}/bev")
 def get_bev(frame_id: str, request: Request, store: WorkspaceStore = Depends(get_store),
             dataroot: Path = Depends(get_dataroot)):  # fmt: skip
@@ -402,13 +439,18 @@ def get_bev(frame_id: str, request: Request, store: WorkspaceStore = Depends(get
     from src.services import bev
 
     frame = _load(store, frame_id)
-    cache = store.root / "bev2d" / f"{store.check_id(frame_id)}.png"
+    cache = store.root / "bev2d" / f"{store.check_id(frame_id)}_v{bev.BEV_VERSION}.png"
     if not cache.exists():
         img = bev.load_rgb(image_path(dataroot, frame, 0, workspace=store.root))
         if img is None:
             raise _error(404, "IMAGE_NOT_FOUND", "Không tìm thấy file ảnh trong dataroot")
-        cam_from_ego, _ = _cam_from_ego(frame, request)
-        data = bev.to_png(bev.bev_camera(img, np.asarray(frame.intrinsic, float), cam_from_ego))
+        cam_from_ego, estimated = _cam_from_ego(frame, request)
+        intrinsic = np.asarray(frame.intrinsic, float)
+        # có LiDAR + calibration thật: bỏ vùng bị vật cao che (vệt kéo dài), mặt đường theo LiDAR, ghép thêm mặt đường
+        # từ keyframe lân cận (ego pose): ảnh xa hết nhoè, chỗ bị xe trước che được lấp
+        points = None if estimated else bev.lidar_uvd_to_ego(store.load_aux("lidar", frame_id), intrinsic, cam_from_ego)
+        nbrs = None if estimated else _bev2d_neighbors(frame, request, store, dataroot)
+        data = bev.to_png(bev.bev_camera(img, intrinsic, cam_from_ego, points_ego=points, neighbors=nbrs))
         cache.parent.mkdir(parents=True, exist_ok=True)
         cache.write_bytes(data)
     return FileResponse(cache, media_type="image/png", headers={"Cache-Control": "max-age=3600"})
