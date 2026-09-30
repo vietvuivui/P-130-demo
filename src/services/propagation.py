@@ -78,6 +78,12 @@ class Track:
     # Lớp detector gán ở lần khớp đầu tiên. Người có thể đã sửa lớp ở keyframe (detector nói car, người
     # chốt truck); chỉ khi lớp detector đổi giữa chừng mới là dấu hiệu track nhảy sang object khác
     first_det_label: str | None = None
+    # OC-SORT: quan sát thật gần nhất (box detection đã khớp, timestamp) và vài tâm quan sát gần đây để lấy hướng đi
+    last_obs_box: np.ndarray | None = None
+    last_obs_t: int | None = None
+    obs_vel: np.ndarray = field(default_factory=lambda: np.zeros(4))
+    obs_centers: list = field(default_factory=list)  # [(t, cx, cy)]
+    recovered: int = 0  # số lần ghép lại được nhờ OCR
 
     def stop(self, reason: str) -> None:
         self.alive = False
@@ -142,13 +148,16 @@ def init_tracks(keyframe: FrameRecord, lidar_aux: dict | None = None) -> list[Tr
     return tracks
 
 
-def _greedy_match(pred: np.ndarray, dets: list[list[float]], thr: float) -> dict[int, tuple[int, float]]:
-    """Ghép một-một theo IoU giảm dần. {chỉ số track: (chỉ số detection, IoU)}."""
+def _greedy_match(pred: np.ndarray, dets: list[list[float]], thr: float,
+                  bonus: np.ndarray | None = None) -> dict[int, tuple[int, float]]:  # fmt: skip
+    """Ghép một-một theo IoU giảm dần (cộng `bonus` nếu có, để xếp thứ tự; ngưỡng vẫn theo IoU).
+    {chỉ số track: (chỉ số detection, IoU)}."""
     m = iou_matrix(pred, np.array(dets))
     rows, cols = np.where(m >= thr)
+    rank = m if bonus is None else m + bonus
     out: dict[int, tuple[int, float]] = {}
     used: set[int] = set()
-    for i, j in sorted(zip(rows.tolist(), cols.tolist(), strict=True), key=lambda ij: -m[ij]):
+    for i, j in sorted(zip(rows.tolist(), cols.tolist(), strict=True), key=lambda ij: -rank[ij]):
         if i not in out and j not in used:
             out[i] = (j, float(m[i, j]))
             used.add(j)
@@ -170,6 +179,10 @@ class Tracker:
         self.images_with_flow = 0
         self.motion = motion if cfg.flow != "off" else None
         self.prev_path = start_path
+        self._now = 0
+        for t in tracks:  # box người chốt ở keyframe là quan sát đầu tiên (cho OCR)
+            if t.last_obs_box is None:
+                t.last_obs_box, t.last_obs_t = t.box.copy(), t.last_t
 
     @property
     def alive(self) -> list[Track]:
@@ -196,6 +209,7 @@ class Tracker:
                 preds.append(t.box + t.vel * dt)
         pred = np.array(preds)
 
+        self._now = image.timestamp
         if detections is None:
             self.images_without_detections += 1
             pairs: dict[int, tuple[int, float]] = {}
@@ -211,12 +225,24 @@ class Tracker:
                 j, agreement = pairs[i]
                 det = detections[j]
                 det_box = np.asarray(det.bbox, dtype=np.float64)
-                new_box = cfg.smoothing * det_box + (1 - cfg.smoothing) * pred[i]
-                # Lần khớp đầu tiên chỉ "bắt" vào box detector: box người vẽ ở keyframe có thể rộng/hẹp hơn
-                # box detector, lấy hiệu hai box làm vận tốc sẽ ra chuyển động giả
-                if t.matched_steps > 0:
-                    measured = (new_box - t.box) / dt
-                    t.vel = cfg.velocity_smoothing * measured + (1 - cfg.velocity_smoothing) * t.vel
+                gap = (image.timestamp - t.last_obs_t) / 1e6 if t.last_obs_t is not None else 0.0
+                if cfg.oc_reupdate and t.misses > 0 and t.matched_steps > 0 and t.last_obs_box is not None and gap > 0:
+                    # ORU: box dự đoán lúc bị che đã trôi (theo vật che / vận tốc cũ); lấy detection làm box và vận tốc
+                    # theo đường nối quan sát cuối -> quan sát mới (quỹ đạo ảo của OC-SORT)
+                    new_box = det_box
+                    t.vel = (det_box - t.last_obs_box) / gap
+                else:
+                    new_box = cfg.smoothing * det_box + (1 - cfg.smoothing) * pred[i]
+                    # Lần khớp đầu tiên chỉ "bắt" vào box detector: box người vẽ ở keyframe có thể rộng/hẹp hơn
+                    # box detector, lấy hiệu hai box làm vận tốc sẽ ra chuyển động giả
+                    if t.matched_steps > 0:
+                        measured = (new_box - t.box) / dt
+                        t.vel = cfg.velocity_smoothing * measured + (1 - cfg.velocity_smoothing) * t.vel
+                if t.matched_steps > 0 and t.last_obs_box is not None and gap > 0:
+                    t.obs_vel = 0.5 * (det_box - t.last_obs_box) / gap + 0.5 * t.obs_vel
+                t.last_obs_box, t.last_obs_t = det_box, image.timestamp
+                t.obs_centers = (t.obs_centers + [(image.timestamp, (det_box[0] + det_box[2]) / 2,
+                                                   (det_box[1] + det_box[3]) / 2)])[-(cfg.oc_delta + 1):]  # fmt: skip
                 t.box = new_box
                 t.misses = 0
                 if t.matched_steps == 0:
@@ -255,21 +281,76 @@ class Tracker:
             stages = [(high, cfg.match_iou), (low, max(cfg.match_iou, cfg.byte_low_iou))]
         else:
             stages = [(list(range(len(detections))), cfg.match_iou)]
-        for free, thr in stages:
+        leftover: list[int] = []
+        for si, (free, thr) in enumerate(stages):
             for kind in ("keep", "suppress"):
-                idx = [i for i, t in enumerate(tracks) if t.kind == kind and i not in pairs]
+                # OC-SORT: track mất lâu hơn max_coast_images chỉ được nhận lại bằng OCR (theo quan sát cuối), không
+                # theo box dự đoán đã trôi theo vật che
+                idx = [i for i, t in enumerate(tracks) if t.kind == kind and i not in pairs
+                       and not (cfg.oc_recover and t.misses > cfg.max_coast_images)]  # fmt: skip
                 if not idx or not free:
                     continue
-                found = _greedy_match(pred[idx], [detections[j].bbox for j in free], thr)
+                bonus = self._momentum([tracks[i] for i in idx], [detections[j] for j in free]) \
+                    if cfg.oc_momentum > 0 else None  # fmt: skip
+                found = _greedy_match(pred[idx], [detections[j].bbox for j in free], thr, bonus)
                 for a, (b, v) in found.items():
                     pairs[idx[a]] = (free[b], v)
                 used = {free[b] for b, _ in found.values()}
                 free = [j for j in free if j not in used]
+            if si == 0:
+                leftover = free
+        if cfg.oc_recover:
+            # OCR: track đang mất ghép với detection rõ còn thừa theo box quan sát cuối (không theo box dự đoán đã trôi)
+            leftover = [j for j in leftover if j not in {p[0] for p in pairs.values()}]
+            idx = [i for i, t in enumerate(tracks) if i not in pairs and t.misses > 0 and t.last_obs_box is not None]
+            if idx and leftover:
+                ts = self._now
+                cand = []
+                for i in idx:
+                    t = tracks[i]
+                    gap = max(0.0, (ts - t.last_obs_t) / 1e6)
+                    cand.append((t.last_obs_box, t.last_obs_box + t.obs_vel * gap))
+                boxes = [detections[j].bbox for j in leftover]
+                same = np.array([[detections[j].label in (tracks[i].label, tracks[i].first_det_label) for j in leftover]
+                                 for i in idx])  # fmt: skip
+                m = np.maximum(iou_matrix(np.array([c[0] for c in cand]), np.array(boxes)),
+                               iou_matrix(np.array([c[1] for c in cand]), np.array(boxes)))  # fmt: skip
+                m = np.where(same, m, 0.0)
+                rows, cols = np.where(m >= cfg.oc_recover_iou)
+                used: set[int] = set()
+                for a, b in sorted(zip(rows.tolist(), cols.tolist(), strict=True), key=lambda ab: -m[ab]):
+                    i = idx[a]
+                    if i in pairs or b in used:
+                        continue
+                    pairs[i] = (leftover[b], float(m[a, b]))
+                    used.add(b)
+                    tracks[i].recovered += 1
         return pairs
+
+    def _momentum(self, tracks: list[Track], dets: list[Detection]) -> np.ndarray:
+        """OCM: oc_momentum x cos góc giữa hướng đi đã quan sát (tâm quan sát cách oc_delta lần -> quan sát cuối) và
+        hướng từ quan sát cuối tới detection. Track chưa đủ quan sát / đứng yên: 0."""
+        cfg = self.cfg
+        out = np.zeros((len(tracks), len(dets)))
+        dc = np.array([[(d.bbox[0] + d.bbox[2]) / 2, (d.bbox[1] + d.bbox[3]) / 2] for d in dets])
+        for a, t in enumerate(tracks):
+            if len(t.obs_centers) < 2:
+                continue
+            (_, x0, y0), (_, x1, y1) = t.obs_centers[0], t.obs_centers[-1]
+            v = np.array([x1 - x0, y1 - y0])
+            nv = np.linalg.norm(v)
+            if nv < 2.0:  # gần như đứng yên trên ảnh: hướng vô nghĩa
+                continue
+            w = dc - [x1, y1]
+            nw = np.linalg.norm(w, axis=1)
+            cos = np.where(nw > 1e-6, (w @ v) / (nv * np.maximum(nw, 1e-6)), 0.0)
+            out[a] = cfg.oc_momentum * cos
+        return out
 
     def _check_stop(self, t: Track) -> None:
         cfg = self.cfg
-        if t.misses > cfg.max_coast_images:
+        limit = cfg.oc_max_lost if cfg.oc_recover else cfg.max_coast_images
+        if t.misses > limit:
             t.stop(f"Mất dấu: {t.misses} ảnh liên tiếp không có detection khớp")
             return
         b = t.box

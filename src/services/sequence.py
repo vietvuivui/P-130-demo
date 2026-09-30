@@ -312,6 +312,10 @@ def evaluate_propagation(
                 "correct_rate": round(s["correct"] / n, 4) if n else None,
                 "mean_iou": round(s["iou_sum"] / n, 4) if n else None,
                 "coverage": round(s["covered"] / s["present"], 4) if s["present"] else None,
+                **{
+                    k: int(s[k])
+                    for k in ("outputs_emit", "correct_emit", "id_switch_emit", "wrong_emit", "missing_emit")
+                },
             }
         )
     return {
@@ -329,7 +333,7 @@ def _score_hop(
     acc: dict, calib: dict, tracks: list[Track], gts: list[dict], uv: np.ndarray | None, cfg, thr: float
 ) -> None:
     gt_by_inst = {g["instance_token"]: g for g in gts}
-    alive_ids = set()
+    alive_ids, emitted_ids = set(), set()
     for t in tracks:
         if not t.alive or t.kind != "keep":
             continue
@@ -338,17 +342,25 @@ def _score_hop(
         c = track_confidence(t, uv, cfg)
         own = gt_by_inst.get(t.track_id)
         v = iou(box, own["bbox"]) if own else 0.0
+        # Sản phẩm chỉ ghi box khi track khớp detection ở keyframe đích (emit_coasting: false); đếm riêng phần đó ("_emit")
+        emit = t.last_match is not None or cfg.emit_coasting
+        if emit:
+            acc["outputs_emit"] += 1
+            emitted_ids.add(t.track_id)
         acc["outputs"] += 1
         acc["iou_sum"] += v
         if v >= thr:
             acc["correct"] += 1
+            acc["correct_emit"] += emit
             calib["correct"].append(c)
             continue
         calib["wrong"].append(c)
         if any(iou(box, g["bbox"]) >= thr for inst, g in gt_by_inst.items() if inst != t.track_id):
             acc["id_switch"] += 1
+            acc["id_switch_emit"] += emit
         else:
             acc["wrong"] += 1
+            acc["wrong_emit"] += emit
     started = {t.track_id for t in tracks if t.kind == "keep"}
     for inst in gt_by_inst:
         if inst in started:
@@ -357,6 +369,8 @@ def _score_hop(
                 acc["covered"] += 1
             else:
                 acc["lost"] += 1
+            if inst not in emitted_ids:
+                acc["missing_emit"] += 1  # vật còn đó mà sản phẩm không ghi nhãn lan truyền
 
 
 def _calibration(calib: dict, flag_below: float) -> dict:

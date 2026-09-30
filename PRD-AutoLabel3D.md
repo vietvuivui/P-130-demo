@@ -1,6 +1,6 @@
 # PRD — AutoLabel 3D: Tự động gán nhãn Ảnh & LiDAR (human-in-the-loop)
 
-2026-09-25 · Kiên · Nhóm 4 người · Thời lượng 6 tuần · cập nhật trạng thái triển khai 2026-09-30
+2026-09-25 · Kiên · Nhóm 4 người · Thời lượng 6 tuần · cập nhật trạng thái triển khai 2026-10-01
 
 ## Thông tin tài liệu
 
@@ -11,9 +11,9 @@
 | Lĩnh vực | Perception cho xe tự hành — công cụ gán nhãn dữ liệu |
 | Nhóm thực hiện | 4 thành viên (ML 2D, ML 3D, Backend, Frontend) |
 | Thời lượng | 6 tuần, làm toàn bộ phạm vi trong kỳ |
-| Hạ tầng | Kế hoạch: RTX 3090 (24 GB) chạy cả ngày làm model service thường trực; A100 trên Google Colab thuê thêm cho job nặng; backend và frontend chạy qua Docker. Thực tế (2026-09-30): một laptop RTX 4050 chạy web + suy luận 2D/3D, RTX 3090 dùng để fine-tune; có chế độ CPU; chưa dùng A100 |
+| Hạ tầng | Kế hoạch: RTX 3090 (24 GB) chạy cả ngày làm model service thường trực; A100 trên Google Colab thuê thêm cho job nặng; backend và frontend chạy qua Docker. Thực tế (2026-10-01): một laptop RTX 4050 chạy web + suy luận 2D/3D, RTX 3090 dùng để fine-tune; có chế độ CPU; chưa dùng A100 |
 | Phạm vi dữ liệu | Subset nuScenes mini / KITTI; dataset và danh sách lớp phương tiện mở rộng dần trong kỳ. Thực tế: nuScenes mini để demo, 27 scene val của nuScenes trainval để đánh giá (tách dev / held-out); trang Dự án nhận thêm KITTI, LiDAR + camera, video |
-| Trạng thái | Bản hoàn chỉnh — ngưỡng các chỉ số chốt sau khi có baseline, cuối tuần 2. **2026-09-30:** MVP chạy đầu cuối (nạp dữ liệu → auto-label 2D/3D → QA chấm rủi ro → duyệt → lan truyền → xuất); còn thiếu đăng nhập / phân vai, gộp frame, VLM, mẫu ngẫu nhiên, đo năng suất P/Q/E. Xem [Trạng thái triển khai](#trạng-thái-triển-khai-cập-nhật-2026-09-30) |
+| Trạng thái | Bản hoàn chỉnh — ngưỡng các chỉ số chốt sau khi có baseline, cuối tuần 2. **2026-10-01:** MVP chạy đầu cuối (nạp dữ liệu → auto-label 2D/3D → QA chấm rủi ro → duyệt → lan truyền → xuất); còn thiếu đăng nhập / phân vai, gộp frame, VLM, mẫu ngẫu nhiên, đo năng suất P/Q/E. Xem [Trạng thái triển khai](#trạng-thái-triển-khai-cập-nhật-2026-10-01) |
 
 ## Mục lục
 
@@ -43,7 +43,7 @@
 24. [Rủi ro và giả định](#rủi-ro-và-giả-định)
 25. [Hướng mở rộng sau kỳ này](#hướng-mở-rộng-sau-kỳ-này)
 26. [Checklist nghiệm thu](#checklist-nghiệm-thu)
-27. [Trạng thái triển khai (cập nhật 2026-09-30)](#trạng-thái-triển-khai-cập-nhật-2026-09-30)
+27. [Trạng thái triển khai (cập nhật 2026-10-01)](#trạng-thái-triển-khai-cập-nhật-2026-10-01)
 28. [Công cụ và lệnh](#công-cụ-và-lệnh)
 
 ## Tóm tắt
@@ -54,7 +54,7 @@ Sản phẩm làm việc ở hai mức hạt. Với một frame: tự sinh 2D bo
 
 Giá trị đo được của sản phẩm là thời gian gán nhãn giảm so với làm thủ công, với điều kiện chất lượng nhãn cuối không giảm. Vì vậy PRD coi thời gian mỗi frame, tỷ lệ nhãn tự động phải sửa và tỷ lệ nhãn kém lọt qua là tiêu chí nghiệm thu chính, không phải số lượng tính năng. Năng suất của từng annotator cũng được đo và kết luận đạt hay chưa đạt ngưỡng — luôn đi kèm chất lượng, để làm nhanh bằng cách làm ẩu không bao giờ được tính là đạt.
 
-**Cập nhật 2026-09-30.** MVP đã chạy đầu cuối trên web. Phần đã làm khác kế hoạch ở ba điểm chính: duyệt theo ngoại lệ ở mức box (QA Agent chấm rủi ro từng box, box rủi ro thấp duyệt theo lô) thay cho bộ kiểm tra sau submit; lan truyền 2D bằng tracker + optical flow thay cho SAM2 video; chạy trên một GPU laptop thay cho 3090 + A100. Trạng thái từng yêu cầu ở cột cuối bảng [Yêu cầu chức năng](#yêu-cầu-chức-năng); số đo và phần còn thiếu ở mục [Trạng thái triển khai](#trạng-thái-triển-khai-cập-nhật-2026-09-30).
+**Cập nhật 2026-10-01.** MVP đã chạy đầu cuối trên web. Phần đã làm khác kế hoạch ở ba điểm chính: duyệt theo ngoại lệ ở mức box (QA Agent chấm rủi ro từng box, box rủi ro thấp duyệt theo lô) thay cho bộ kiểm tra sau submit; lan truyền 2D bằng tracker + optical flow thay cho SAM2 video; chạy trên một GPU laptop thay cho 3090 + A100. Có 16 lần tối ưu mô hình đã đo trước / sau trên tập test (7 lần được bật). Trạng thái từng yêu cầu ở cột cuối bảng [Yêu cầu chức năng](#yêu-cầu-chức-năng); mô hình đã thử, lịch sử tối ưu, số đo và phần còn thiếu ở mục [Trạng thái triển khai](#trạng-thái-triển-khai-cập-nhật-2026-10-01).
 
 Hệ thống chỉ xử lý dữ liệu đã ghi, không điều khiển phương tiện và không có thành phần thời gian thực trên xe. Mọi frame đều qua tay ít nhất một người trước khi được approved; frame bị cờ hoặc trúng mẫu kiểm tra thì qua thêm một người thứ hai. Không nhãn nào được xuất khi frame chưa approved.
 
@@ -76,7 +76,7 @@ Hướng giải quyết là đảo ngược vai trò của người: thay vì v�
 
 Mục tiêu sản phẩm: giảm thời gian gán nhãn một frame camera + LiDAR và một sequence video mà không làm giảm chất lượng nhãn cuối cùng, và làm cho cả chất lượng lẫn năng suất trở nên đo được.
 
-| # | Chỉ số | Cách đo | Cách đọc | Hiện có (2026-09-30) |
+| # | Chỉ số | Cách đo | Cách đọc | Hiện có (2026-10-01) |
 | --- | --- | --- | --- | --- |
 | M1 | Thời gian gán nhãn mỗi frame | Đồng hồ thao tác trong app, từ lúc mở frame tới lúc submit, chỉ tính thời gian đang thao tác | Giảm so với baseline thủ công của chính nhóm | Có thời gian duyệt mỗi frame từ log thao tác (tab Metrics, CSV). Chưa có baseline thủ công và A/B |
 | M2 | mAP của nhãn tự động 3D | So với ground truth của dataset, IoU 3D ≥ 0.5 và 0.7 | Báo cáo theo từng lớp | Tập test 24 scene (957 keyframe): ensemble 4 mô hình LiDAR + track mAP 0.668 / NDS 0.713; CenterPoint voxel đơn 0.578 / 0.655. AP từng lớp: `eval/results/det3d_heldout.md` |
@@ -344,9 +344,9 @@ Vì n\_fix đếm từ log chỉnh sửa, người bỏ qua lỗi sẽ có thờ
 
 ## Yêu cầu chức năng
 
-Tất cả yêu cầu dưới đây nằm trong phạm vi 6 tuần. Cột "Trạng thái" cập nhật ngày 2026-09-30: 18 Xong, 14 Một phần, 14 Chưa.
+Tất cả yêu cầu dưới đây nằm trong phạm vi 6 tuần. Cột "Trạng thái" cập nhật ngày 2026-10-01: 18 Xong, 14 Một phần, 14 Chưa.
 
-| ID | Yêu cầu | Tiêu chí chấp nhận | Trạng thái (2026-09-30) |
+| ID | Yêu cầu | Tiêu chí chấp nhận | Trạng thái (2026-10-01) |
 | --- | --- | --- | --- |
 | FR-01 | Nạp một frame gồm ảnh, point cloud (.pcd/.bin) và calibration | Upload sai định dạng báo lỗi rõ; frame hợp lệ hiển thị được cả hai khung trong 3 giây | Xong — trang Dự án nhận zip nuScenes, KITTI (.bin + calib), LiDAR + camera (.pcd/.bin), video; sai định dạng báo lỗi |
 | FR-02 | Chọn frame hoặc sequence từ subset nuScenes mini / KITTI đã nạp sẵn | Danh sách có trạng thái và người đang xử lý | Một phần — hàng đợi frame và danh sách video / scene có trạng thái; chưa có "người đang xử lý" (không đăng nhập) |
@@ -973,7 +973,7 @@ Những hướng đi tiếp nếu đề tài được làm tiếp, không thuộ
 
 ## Checklist nghiệm thu
 
-Dùng để tự chấm trước buổi bảo vệ. Một mục chỉ được tích khi có thể đem ra cho người khác xem, không phải khi gần xong. Tích theo trạng thái ngày 2026-09-30; ghi chú in nghiêng là phần đã có hoặc còn thiếu.
+Dùng để tự chấm trước buổi bảo vệ. Một mục chỉ được tích khi có thể đem ra cho người khác xem, không phải khi gần xong. Tích theo trạng thái ngày 2026-10-01; ghi chú in nghiêng là phần đã có hoặc còn thiếu.
 
 **Gán nhãn frame đơn**
 
@@ -1017,13 +1017,14 @@ Dùng để tự chấm trước buổi bảo vệ. Một mục chỉ được t
 - [ ] Ngưỡng các chỉ số và ngưỡng năng suất đã chốt và ghi ngược vào PRD
 - [ ] Có kết quả thí nghiệm A/B và thí nghiệm trên sequence
 - [ ] Mỗi lần đo ghi kèm phiên bản dataset, tập lớp và checkpoint mô hình
-- [x] Unit test cho bộ chuyển đổi tọa độ và bộ xuất định dạng — *141 test, `scripts\tasks.ps1 test`*
+- [x] Unit test cho bộ chuyển đổi tọa độ và bộ xuất định dạng — *152 test, `scripts\tasks.ps1 test`*
 - [ ] Toàn hệ thống dựng được bằng một lệnh `docker compose up` — *có cho web; mô hình 3D chạy trong venv riêng `.venv-mm3d`*
 - [ ] Kịch bản demo chạy trọn một lượt không lỗi trước ngày bảo vệ — *kịch bản: `docs/demo-script.md`*
 
-## Trạng thái triển khai (cập nhật 2026-09-30)
+## Trạng thái triển khai (cập nhật 2026-10-01)
 
-Mục này ghi lại những gì đã chạy được trên nhánh `kien`, khác kế hoạch ở trên chỗ nào, và số đo hiện có. Trạng thái từng FR nằm ở cột cuối bảng [Yêu cầu chức năng](#yêu-cầu-chức-năng): 18 Xong, 14 Một phần, 14 Chưa.
+Mục này ghi lại những gì đã chạy được trên nhánh `kien`, khác kế hoạch ở trên chỗ nào, các mô hình đã thử, lịch sử tối
+ưu và số đo. Trạng thái từng FR nằm ở cột cuối bảng [Yêu cầu chức năng](#yêu-cầu-chức-năng): 18 Xong, 14 Một phần, 14 Chưa.
 
 ### Luồng đã chạy đầu cuối
 
@@ -1044,6 +1045,7 @@ Mục này ghi lại những gì đã chạy được trên nhánh `kien`, khác
 | PostgreSQL | File JSON + JSONL theo workspace / dự án | Một nhóm, một máy chủ; dễ diff và xuất |
 | YOLO + SAM2 | YOLOE-26 (open-vocab, có mask); YOLO-World, Grounding DINO, Florence-2 làm phương án | Nhận được barrier / cone mà không cần train |
 | Lan truyền 2D bằng SAM2 video | Tracker trên ảnh 12 Hz dùng detection đã cache + optical flow + ghép kiểu ByteTrack | Không tốn thêm GPU; flow cho thêm 14% nhãn đúng |
+| Tracking bằng Kalman | Dự đoán theo quan sát: optical flow (2D), vận tốc mô hình + ego pose (3D); đã thử OC-SORT | OC-SORT không thêm được gì cho 2D; ý giữ track qua che khuất cho 3D +1.6% nhãn đúng |
 | Bộ kiểm tra sau submit, mẫu ngẫu nhiên, VLM | QA Agent chấm rủi ro từng box ngay sau auto-label; box rủi ro thấp duyệt theo lô | Chấm ở mức box để giảm số box người phải xem; VLM và mẫu ngẫu nhiên chưa làm |
 | Điểm độ khó D(f) | Điểm rủi ro từng box: `w1(1 − score) + w2·lidar + w3·temporal + w4·geometric`; frame sắp theo box rủi ro nhất | Cùng điểm dùng cho cả hàng đợi và duyệt theo lô |
 | Nội suy giữa hai keyframe (FR-14) | Lan truyền tiến từ frame đã duyệt | Chỉ cần duyệt một frame, không cần hai |
@@ -1058,28 +1060,81 @@ Mục này ghi lại những gì đã chạy được trên nhánh `kien`, khác
 - **Đo thời gian từng bước** cho mỗi frame (tab Metrics).
 - **Demo không cần GPU:** `python -m src.demo`.
 
-### Kết quả đo
+### Giao thức đánh giá
 
-Giao thức chống overfit: chọn cách làm trên **dev** (3 scene demo: scene-0035/0097/0101), chỉ báo cáo trên **held-out** (các scene val còn lại). Tham số lấy theo mặc định của bài báo gốc, không dò trên GT.
+- **dev** = 3 scene demo của UI (scene-0035/0097/0101, 119 keyframe): dùng để chọn cách làm.
+- **test** = các scene val khác của nuScenes, chưa dùng để chọn gì: 24 scene (957 keyframe) cho 3D, 20 scene (795 keyframe) cho 2D và lan truyền 2D.
+- So với **nhãn gốc của dataset** (nuScenes; nhãn 2D là hình chiếu box 3D). 3D: mAP / NDS chuẩn nuScenes. 2D: mAP50.
+- Lan truyền: thí nghiệm "keyframe hoàn hảo": nhãn gốc ở keyframe 0, 5, 10… đóng vai nhãn người, đi tối đa 10 keyframe.
+- Tham số lấy theo mặc định của bài báo gốc, không dò trên nhãn gốc. Một cách làm chỉ được bật khi tốt hơn trên dev, và
+  số báo cáo là số trên test.
+
+### Mô hình đã thử
+
+**3D — test 24 scene, so với nhãn gốc** (`eval/results/det3d_heldout.md`):
+
+| Mô hình | Cảm biến | mAP | NDS |
+| --- | --- | --- | --- |
+| FCOS3D | camera | 0.336 | 0.421 |
+| PGD | camera | 0.399 | 0.458 |
+| SSN | LiDAR | 0.441 | 0.568 |
+| PointPillars | LiDAR | 0.473 | 0.559 |
+| CenterPoint pillar | LiDAR | 0.528 | 0.610 |
+| CenterPoint voxel | LiDAR | 0.578 | 0.655 |
+| CenterPoint voxel + tinh chỉnh theo track | LiDAR | 0.616 | 0.689 |
+| **Gộp 4 mô hình LiDAR + track (mặc định)** | LiDAR | **0.668** | **0.713** |
+| Gộp 4 LiDAR + 2 camera + track | cả hai | 0.662 | 0.711 |
+
+Lý do chọn: CenterPoint voxel là mô hình đơn tốt nhất. Gộp 4 mô hình LiDAR rồi tinh chỉnh theo track (gán nhãn được nhìn
+cả tương lai) cho +0.09 mAP. Thêm mô hình camera làm ensemble kém đi. BEVFusion (công bố 68.6 mAP) chưa chạy được vì cần
+biên dịch op CUDA.
+
+**2D** (`eval/results/compare/`, `eval/results/temporal/gpu_heldout20.json`):
+
+| Detector (không train) | mAP50, 40 keyframe | Ghi chú |
+| --- | --- | --- |
+| YOLO-World (từ vựng COCO) | 0.311 | không có lớp barrier |
+| YOLO26 (tập lớp COCO) | 0.398 | không có lớp barrier |
+| **YOLOE-26 (mặc định)** | **0.452** | open-vocab, có mask; test 20 scene: mAP50 0.296, P 0.49 / R 0.52 |
+
+Grounding DINO và Florence-2 có trong code làm phương án. Fine-tune YOLOE trên nuImages: công cụ sẵn ở `tools2d/`, chưa
+chạy xong.
+
+### Lịch sử tối ưu
+
+Mỗi dòng là một lần thử, đo trước / sau trên cùng dữ liệu. "Bật" = đã thành mặc định của sản phẩm.
+
+| # | Thử | Nguồn ý tưởng | Kết quả (test, trừ khi ghi dev) | Quyết định |
+| --- | --- | --- | --- | --- |
+| 1 | Detector 2D YOLO-World → YOLOE-26 | open-vocab | mAP50 0.311 → 0.452 (40 keyframe) | Bật |
+| 2 | Ngưỡng giữ box 2D 0.30 sau fusion | — | precision 0.34 → 0.51, box bị gắn cờ 260 → 88 (40 keyframe) | Bật |
+| 3 | Đổi prompt, prompt nhiễu, lật ảnh, ảnh 1600 px | TTA | dev mAP50 0.395 → 0.365–0.392 | Không |
+| 4 | Gộp 4 mô hình LiDAR + tinh chỉnh theo track | WBF, CenterPoint | mAP 0.578 → 0.668, NDS 0.655 → 0.713 | Bật |
+| 5 | Thêm 2 mô hình camera vào ensemble | — | mAP 0.668 → 0.662 | Không |
+| 6 | Chấm lại điểm / đổi, xoá box 3D theo 2D | kiểm tra chéo | dev: mAP giảm; sửa đúng 14, làm hỏng 39 | Không |
+| 7 | Lan truyền 2D dự đoán bằng optical flow | Deep Feature Flow | nhãn đúng 2910 → 3329 (+14%), đổi ID 265 → 97 | Bật |
+| 8 | Ghép kiểu ByteTrack | ByteTrack | dev box sai 224 → 203; held-out 4 scene 329 → 300 | Bật |
+| 9 | Optical flow cho QA temporal | Deep Feature Flow | lỗi lọt qua duyệt theo lô 1632 → 2082 | Không |
+| 10 | Tính lại score theo sweep | Seq-NMS | xem tay 1707 → 648, lỗi còn lại như cũ, vật sót +9% | Tuỳ chọn |
+| 11 | Tin box sweep score thấp | ByteTrack | lỗi lọt qua tăng | Không |
+| 12 | Lan truyền 3D theo vận tốc mô hình | CenterPoint tracker | held-out 4 scene: đổi ID 98 → 36, ~95% đúng | Bật |
+| 13 | Box 3D từ box 2D + LiDAR cho vật bị sót | VESPA | dev mAP 0.644 → 0.627–0.640; 63% vật sót có < 5 điểm LiDAR | Không |
+| 14 | Hướng theo chuyển động, cỡ theo lớp | VESPA | NDS 0.713 → 0.712–0.713 | Không |
+| 15 | OCR / ORU / OCM cho lan truyền 2D | OC-SORT | điểm (đúng − sai − 2×đổi ID) 2180 → 2173 | Không |
+| 16 | Giữ track 3D 4 keyframe thay vì 2 | OC-SORT | nhãn đúng 23355 → 23731 (+1.6%), đổi ID 470 → 543 | Bật |
+
+Chi tiết: `eval/results/det3d_heldout.md`, `temporal/report.md`, `propagation3d.md`, `vespa.md`, `ocsort.md`.
+
+### Kết quả đo
 
 | Hạng mục | Kết quả | Nguồn |
 | --- | --- | --- |
-| **3D, tập test 24 scene (957 keyframe)** | **Ensemble 4 LiDAR + track mAP 0.668 / NDS 0.713**; CenterPoint voxel 0.578 / 0.655; camera 0.34–0.40 | `eval/results/det3d_heldout.md` |
-| 3D, 27 scene val (1076 keyframe) | CenterPoint voxel mAP 0.573 / NDS 0.647; 0.62 s/keyframe (RTX 4050) | `eval/compare_3d.ipynb` |
-| 3D, dev, gộp 4 mô hình + track | mAP 0.537 → 0.644, NDS 0.560 → 0.643 | `tools3d/README.md` |
-| QA 3D (CenterPoint voxel) | Đưa 51% box vào nhóm duyệt theo lô, trong đó 93% đúng; bắt 86% box sai | `README.md` |
-| 2D YOLOE-26L zero-shot | mAP50 dev 0.395; tập test 20 scene (795 keyframe) 0.296, P 0.49 / R 0.52 (nhãn gốc là hình chiếu box 3D) | `eval/results/temporal/gpu_heldout20.json` |
-| So sánh detector 2D, 40 keyframe | YOLOE 0.452 · YOLO26 0.398 · YOLO-World 0.311 (chỉ YOLOE có lớp barrier) | `eval/results/compare/` |
-| Lan truyền 2D + optical flow, 20 scene held-out (795 keyframe) | Nhãn đúng 2910 → 3329 (+14%); đổi ID 265 → 97 | `eval/results/temporal/report.md` |
-| Ghép kiểu ByteTrack | Box lan truyền sai: dev 224 → 203, held-out 4 scene 329 → 300 | như trên |
-| Lan truyền 3D, 4 scene held-out | ~95% box đúng vật; đổi ID 98 → 36 | `eval/results/propagation3d.md` |
-| Thời gian | GPU: 2D ~1 s, 3D ~4 s/frame. CPU: detect 2D 17.7 s/frame | tab Metrics, lệnh `profile` |
-
-Thử nhưng không bật mặc định (có sẵn trên tab Cài đặt):
-
-- Tính lại score theo sweep: bớt ~60% box phải xem tay nhưng sót thêm ~9% vật.
-- Optical flow cho QA temporal: nhiều lỗi lọt qua duyệt theo lô hơn.
-- Ý tưởng VESPA (box 3D từ box 2D + LiDAR cho vật bị sót, hướng theo chuyển động, cỡ theo lớp): không tăng mAP; vật bị sót phần lớn có dưới 5 điểm LiDAR (`eval/results/vespa.md`).
+| **3D, test 24 scene (957 keyframe)** | **Ensemble 4 LiDAR + track mAP 0.668 / NDS 0.713** | `eval/results/det3d_heldout.md` |
+| 2D YOLOE-26 zero-shot, test 20 scene | mAP50 0.296, P 0.49 / R 0.52 | `eval/results/temporal/gpu_heldout20.json` |
+| Lan truyền 2D, test 20 scene | 3192 box ghi ra đúng / 4128 (77%), đổi ID 76 | `eval/results/ocsort.md` |
+| **Lan truyền 3D, test 24 scene** | **23731 box đúng vật / 25242 (94%)**, 65% vật còn trong tầm có nhãn lan truyền | `eval/results/ocsort.md` |
+| QA 3D (CenterPoint voxel, 3 scene) | Đưa 51% box vào nhóm duyệt theo lô, trong đó 93% đúng; bắt 86% box sai | `README.md` |
+| Thời gian | GPU laptop: 2D ~1 s, 3D ~4 s/frame. CPU: detect 2D 17.7 s/frame | tab Metrics, lệnh `profile` |
 
 ### Còn thiếu
 
@@ -1088,8 +1143,8 @@ Thử nhưng không bật mặc định (có sẵn trên tab Cài đặt):
 - **Kiểm soát chất lượng:** VLM (FR-30, FR-31), mẫu ngẫu nhiên mù và điểm tin cậy (FR-32, FR-33), so sánh hai annotator (FR-37).
 - **Năng suất:** đồng hồ dừng theo focus, frame vàng, kết luận P / Q / E (FR-39 → FR-41).
 - **Khác:** brush sửa mask (FR-19), DVC (FR-45), chiều ảnh → 3D (FR-17).
+- **Mô hình:** fine-tune YOLOE trên nuImages (PC 3090), TTA lật trục cho 4 mô hình LiDAR, BEVFusion.
 - **Số liệu:** baseline thủ công, thí nghiệm A/B (M1, M5), tỷ lệ làm mờ (M7). Ngưỡng các chỉ số chưa chốt.
-- Đo lan truyền 3D trên đủ 27 scene: `scripts\tasks.ps1 evalprop3d`.
 
 ## Công cụ và lệnh
 

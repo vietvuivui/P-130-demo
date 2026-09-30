@@ -216,6 +216,15 @@ propagation:
   association: byte
   byte_high_score: 0.3
   byte_low_iou: 0.5
+  # OC-SORT (Cao et al., CVPR 2023): OCR = ghép thêm track đang mất theo box quan sát cuối (oc_recover_iou), sống tới
+  # oc_max_lost ảnh; ORU = vận tốc theo quan sát cuối -> quan sát mới sau khi mất; OCM = ưu tiên detection cùng hướng đi.
+  # Tắt: 20 scene test, box ghi ra đúng 3192 -> 3215 (+0.7%) nhưng đổi ID 76 -> 87, box sai 860 -> 868 — không lợi.
+  # ORU / OCM không đổi gì đo được (flow đã dự đoán theo quan sát). eval/results/ocsort.md
+  oc_recover: false
+  oc_reupdate: false
+  oc_momentum: 0.0
+  oc_max_lost: 6
+  oc_recover_iou: 0.5
   # Số keyframe tối đa đi tới trong một lần lan truyền
   max_keyframes: 20
   # Detector ở frame đích gán lớp khác lớp lan truyền với score >= ngưỡng -> PROP_CLASS_DIFFERS
@@ -225,11 +234,18 @@ propagation:
 # dịch theo vận tốc mô hình dự đoán, khớp dự đoán ở keyframe sau theo khoảng cách tâm (ngưỡng theo lớp của tracker
 # CenterPoint × dist_scale). Chọn trên 3 scene dev (thí nghiệm keyframe hoàn hảo, ensemble): so với chỉ bù chuyển động
 # xe, nhãn đúng 3650 -> 4074, đổi ID 182 -> 106; held-out 4 scene: 3031 -> 3339, đổi ID 98 -> 36, tỉ lệ đúng 0.95.
+# max_misses 2 -> 4 (thử OC-SORT, 2026-10-01): giữ track qua vật che lâu hơn. Dev: nhãn đúng 4074 -> 4126, đổi ID
+# 106 -> 116; test 24 scene: 23355 -> 23731 (+1.6%), đổi ID 470 -> 543, tỉ lệ đúng 0.943 -> 0.940. Bước OCR của OC-SORT
+# (nhận lại theo quan sát cuối) thêm được trên test nhưng không trên dev nên tắt; ORU / OCM không đổi gì.
 propagation3d:
   motion: velocity
   dist_scale: 0.5
-  max_misses: 2
+  max_misses: 4
   max_keyframes: 20
+  oc_recover: false
+  oc_reupdate: false
+  oc_momentum: 0.0
+  oc_max_lost: 4
 
 # Video mp4 tải lên (chế độ Video trên UI). Frame cắt ở track_fps dùng cho tracking khi lan truyền; cứ
 # track_fps/label_fps frame thì có một keyframe để gán nhãn (giống keyframe 2Hz + sweep 12Hz của nuScenes)

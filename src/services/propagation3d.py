@@ -81,12 +81,21 @@ class Track3D:
     match: Det3D | None = None
     dist: float | None = None
     extra: dict = field(default_factory=dict)
+    # OC-SORT: quan sát thật gần nhất, thời gian từ đó tới giờ, vận tốc theo quan sát, hướng đi đã quan sát
+    last_obs: np.ndarray | None = None
+    since_obs: float = 0.0
+    obs_vel: np.ndarray = field(default_factory=lambda: np.zeros(2))
+    obs_dir: np.ndarray | None = None
+    recovered: int = 0
 
 
 class Tracker3D:
     def __init__(self, tracks: list[Track3D], cfg: Propagation3DCfg):
         self.tracks = tracks
         self.cfg = cfg
+        for t in tracks:  # box người chốt ở keyframe là quan sát đầu tiên (cho OCR)
+            if t.last_obs is None:
+                t.last_obs = t.center.copy()
 
     @property
     def alive(self) -> list[Track3D]:
@@ -99,6 +108,7 @@ class Tracker3D:
 
     def step(self, dets: list[Det3D], dt: float) -> None:
         tracks = self.alive
+        cfg = self.cfg
         preds = [self.predict(t, dt) for t in tracks]
         pairs: dict[int, tuple[int, float]] = {}
         used: set[int] = set()
@@ -107,11 +117,31 @@ class Tracker3D:
             for i, (t, p) in enumerate(zip(tracks, preds, strict=True)):
                 if t.kind != kind:
                     continue
-                thr = MATCH_DIST.get(t.label, 2.0) * self.cfg.dist_scale
+                thr = MATCH_DIST.get(t.label, 2.0) * cfg.dist_scale
                 for j, d in enumerate(dets):
                     if kind == "suppress" and d.label != t.label:
                         continue  # chỉ tự xoá box cùng lớp với box người đã xoá
                     dist = float(np.hypot(*(d.center[:2] - p[:2])))
+                    if dist <= thr:
+                        cand.append((dist - self._momentum(t, d) * thr, dist, i, j))
+            for _, dist, i, j in sorted(cand):
+                if i in pairs or j in used:
+                    continue
+                pairs[i] = (j, dist)
+                used.add(j)
+        if cfg.oc_recover:
+            # OCR: track đang mất ghép với dự đoán còn thừa theo tâm quan sát cuối dời theo vận tốc quan sát
+            cand = []
+            for i, t in enumerate(tracks):
+                if i in pairs or t.kind != "keep" or t.misses == 0 or t.last_obs is None:
+                    continue
+                gap = t.since_obs + dt
+                anchor = t.last_obs[:2] + (t.obs_vel * gap if t.label not in STATIC else 0.0)
+                thr = MATCH_DIST.get(t.label, 2.0) * cfg.dist_scale * cfg.oc_recover_scale
+                for j, d in enumerate(dets):
+                    if j in used or d.label != t.label:
+                        continue
+                    dist = float(np.hypot(*(d.center[:2] - anchor)))
                     if dist <= thr:
                         cand.append((dist, i, j))
             for dist, i, j in sorted(cand):
@@ -119,20 +149,42 @@ class Tracker3D:
                     continue
                 pairs[i] = (j, dist)
                 used.add(j)
+                tracks[i].recovered += 1
+        limit = cfg.oc_max_lost if cfg.oc_recover else cfg.max_misses
         for i, t in enumerate(tracks):
             t.hops += 1
             if i in pairs:
                 j, dist = pairs[i]
                 d = dets[j]
-                moved = (d.center[:2] - t.center[:2]) / max(dt, 1e-3)
+                gap = t.since_obs + dt
+                if cfg.oc_reupdate and t.misses > 0 and t.last_obs is not None:
+                    moved = (d.center[:2] - t.last_obs[:2]) / max(gap, 1e-3)  # ORU: quỹ đạo ảo quan sát -> quan sát
+                else:
+                    moved = (d.center[:2] - t.center[:2]) / max(dt, 1e-3)
                 t.vel = d.vel if np.hypot(*d.vel) > 0.05 or t.label in STATIC else moved
+                if t.last_obs is not None:
+                    step_v = (d.center[:2] - t.last_obs[:2]) / max(gap, 1e-3)
+                    t.obs_vel = 0.5 * step_v + 0.5 * t.obs_vel if np.hypot(*t.obs_vel) > 0 else step_v
+                    mv = d.center[:2] - t.last_obs[:2]
+                    if np.hypot(*mv) > 0.3:
+                        t.obs_dir = mv / np.hypot(*mv)
+                t.last_obs, t.since_obs = d.center.copy(), 0.0
                 t.center, t.yaw = d.center.copy(), d.yaw
                 t.misses, t.match, t.dist = 0, d, dist
             else:
                 t.center = preds[i]
+                t.since_obs += dt
                 t.misses, t.match, t.dist = t.misses + 1, None, None
-                if t.misses > self.cfg.max_misses:
+                if t.misses > limit:
                     t.alive = False
+
+    def _momentum(self, t: Track3D, d: Det3D) -> float:
+        """OCM: oc_momentum x cos(hướng đi đã quan sát, hướng từ quan sát cuối tới dự đoán); 0 nếu chưa có hướng."""
+        if self.cfg.oc_momentum <= 0 or t.obs_dir is None or t.last_obs is None:
+            return 0.0
+        w = d.center[:2] - t.last_obs[:2]
+        n = float(np.hypot(*w))
+        return 0.0 if n < 0.3 else self.cfg.oc_momentum * float(w @ t.obs_dir) / n
 
 
 # ---------------------------------------------------------------- nối với frame 3D của sản phẩm

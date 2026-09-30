@@ -52,13 +52,16 @@ Quy tắc:
   CenterPoint voxel 0.578 (`eval/results/det3d_heldout.md`).
 - **Thử ý tưởng VESPA** (box 3D từ box 2D + LiDAR, hướng theo chuyển động, cỡ theo lớp): không tăng mAP, không bật
   (`eval/results/vespa.md`; `src/services/fill3d.py` giữ để thử tiếp).
-- PRD: thêm trạng thái từng FR, kết quả đo, giải thích công cụ; slide tóm tắt MVP.
+- **Thử OC-SORT** (OCR / ORU / OCM) cho tracker lan truyền 2D và 3D, đo trước / sau trên dev và test: 2D không lợi (tắt,
+  bật được ở tab Cài đặt); 3D bật phần giữ track qua che khuất `propagation3d.max_misses: 2 → 4` — test 24 scene nhãn đúng
+  +1.6%, đổi ID 470 → 543 (`eval/results/ocsort.md`).
+- PRD: trạng thái từng FR, mô hình đã thử, lịch sử 16 lần tối ưu, kết quả đo, giải thích công cụ; slide MVP + so sánh.
 
 **File chính:**
 
 - Mới: `src/services/ui_settings.py`, `jobs.py`, `relabel.py`, `temporal_eval.py`, `timing.py`, `profiling.py`,
   `propagation3d.py`, `propagation3d_eval.py`, `fill3d.py`, `tools3d/eval_propagation3d.py`,
-  `eval/results/propagation3d.md`, `det3d_heldout.md`, `vespa.md`.
+  `eval/results/propagation3d.md`, `det3d_heldout.md`, `vespa.md`, `ocsort.md`, `tests/test_services/test_ocsort.py`.
 - Sửa: `propagation.py`, `pipeline.py`, `bev.py`, `routes.py`, `routes3d.py`, `projects.py`, `label3d.py`, `privacy.py`,
   `cli.py`, `web/app.js`, `web/app3d.js`, `configs/autolabel.yaml`, `scripts/tasks.ps1`, `PRD-AutoLabel3D.md`.
 
@@ -66,8 +69,8 @@ Quy tắc:
 
 - Schema: `FrameRecord.autolabel_timing`, `Frame3DRecord.autolabel_timing` / `propagated_from` / `propagated_at` /
   `prelabel`; `Object3D.source` thêm `"propagated"`, `Object3D.propagation`.
-- Config: `propagation.association`, `byte_high_score`, `byte_low_iou`; `qa.temporal.sweep_min_score`;
-  `propagation3d`.
+- Config: `propagation.association`, `byte_high_score`, `byte_low_iou`, `oc_*`; `qa.temporal.sweep_min_score`;
+  `propagation3d` (`max_misses` mặc định 4, `oc_*`).
 - `routes.get_config(request)` áp thêm `<workspace>/settings.json`; có thêm `get_base_config`. Bước gán nhãn của dự án
   cũng dùng cài đặt này.
 - API mới: `/settings`, `/relabel`, `/eval-temporal`, `/timing`, `POST /3d/frames/{m}/{f}/propagate`.
@@ -75,7 +78,7 @@ Quy tắc:
 
 **Cách kiểm tra:**
 
-- `pytest` (148 pass), `ruff check src tests`.
+- `pytest` (152 pass), `ruff check src tests`.
 - UI: tab ⚙ Cài đặt → đổi một mục → Lưu → Áp dụng lại → Chạy đánh giá; chế độ 3D: approve có ô "↦ Lan truyền".
 - `scripts\tasks.ps1 profile`, `scripts\tasks.ps1 evalprop3d` (đủ 27 scene val).
 

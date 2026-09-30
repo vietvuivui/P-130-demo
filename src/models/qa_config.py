@@ -162,6 +162,17 @@ class PropagationCfg(BaseModel):
     association: Literal["single", "byte"] = "byte"
     byte_high_score: float = 0.3
     byte_low_iou: float = 0.5
+    # OC-SORT (Cao et al., CVPR 2023) — chỉ dựa vào quan sát thật (detection đã khớp), không vào box dự đoán lúc bị che:
+    # - oc_recover (OCR): sau các lượt ghép, track đang mất ghép thêm với detection còn thừa theo box quan sát cuối
+    #   (và box quan sát cuối dời theo vận tốc quan sát); cho track sống tới oc_max_lost ảnh thay vì max_coast_images
+    # - oc_reupdate (ORU): ghép lại sau khi mất thì lấy vận tốc theo đường nối quan sát cuối -> quan sát mới, box = detection
+    # - oc_momentum (OCM): cộng oc_momentum x độ cùng hướng (cos) giữa hướng đi đã quan sát và hướng tới detection
+    oc_recover: bool = False
+    oc_reupdate: bool = False
+    oc_momentum: float = 0.0
+    oc_max_lost: int = 6
+    oc_recover_iou: float = 0.5
+    oc_delta: int = 3
     max_keyframes: int = 20
     class_differs_score: float = 0.5
 
@@ -173,9 +184,17 @@ class Propagation3DCfg(BaseModel):
     motion: Literal["velocity", "none"] = "velocity"
     # Nhân ngưỡng khoảng cách khớp theo lớp của tracker CenterPoint
     dist_scale: float = 0.5
-    # Không khớp quá bấy nhiêu keyframe liên tiếp thì dừng track
-    max_misses: int = 2
+    # Không khớp quá bấy nhiêu keyframe liên tiếp thì dừng track (4: chọn khi thử OC-SORT, eval/results/ocsort.md)
+    max_misses: int = 4
     max_keyframes: int = 20
+    # OC-SORT như lan truyền 2D: OCR ghép lại track đang mất theo tâm quan sát cuối (dời theo vận tốc quan sát), sống tới
+    # oc_max_lost keyframe; ORU lấy vận tốc theo quan sát cuối -> quan sát mới khi mô hình không cho vận tốc; OCM ưu tiên
+    # detection cùng hướng đi đã quan sát
+    oc_recover: bool = False
+    oc_reupdate: bool = False
+    oc_momentum: float = 0.0
+    oc_max_lost: int = 4
+    oc_recover_scale: float = 1.0  # ngưỡng khoảng cách của OCR = ngưỡng khớp x hệ số này
 
 
 class VideoCfg(BaseModel):

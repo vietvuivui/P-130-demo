@@ -246,7 +246,9 @@ temporal (trước / sau, dev + held-out): [eval/results/temporal/report.md](eva
 **3D trên tập test** ([eval/results/det3d_heldout.md](eval/results/det3d_heldout.md)): 24 scene val chưa dùng để chọn
 cấu hình (957 keyframe), so với nhãn gốc nuScenes. Mô hình đơn tốt nhất CenterPoint voxel mAP 0.578 / NDS 0.655; gộp 4 mô
 hình LiDAR + tinh chỉnh theo track (mặc định) **mAP 0.668 / NDS 0.713**. Thử ý tưởng VESPA (box 3D từ box 2D + LiDAR,
-hướng theo chuyển động, cỡ theo lớp): không tăng mAP ([eval/results/vespa.md](eval/results/vespa.md)).
+hướng theo chuyển động, cỡ theo lớp): không tăng mAP ([eval/results/vespa.md](eval/results/vespa.md)). Thử OC-SORT cho
+tracker lan truyền ([eval/results/ocsort.md](eval/results/ocsort.md)): 2D không lợi; 3D giữ track 4 keyframe thay vì 2
+(test 24 scene: nhãn lan truyền đúng +1.6%, 94% box đúng vật). Mọi lần tối ưu: PRD, mục "Lịch sử tối ưu".
 
 3D ([eval/compare_3d.ipynb](eval/compare_3d.ipynb)): trọng số có sẵn, 27 scene val nuScenes (1076 keyframe), RTX 4050.
 Hai cột cuối là kết quả QA Agent 3D trên 3 scene demo, dùng ngưỡng điểm riêng của từng mô hình.

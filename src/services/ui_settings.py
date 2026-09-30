@@ -39,6 +39,28 @@ FIELDS: dict[str, dict] = {
         "nhãn đúng giữ nguyên; held-out 4 scene: sai 329 → 300.",
         "applies": "now",
     },
+    "propagation.oc_recover": {
+        "kind": "bool",
+        "label": "Lan truyền 2D: nhận lại vật bị che (OC-SORT)",
+        "help": "Không khuyên bật. Track đang mất được ghép lại theo box quan sát cuối. 20 scene test: box ghi ra đúng "
+        "3192 → 3215 (+0.7%) nhưng đổi ID 76 → 87, box sai 860 → 868.",
+        "applies": "now",
+    },
+    "propagation3d.max_misses": {
+        "kind": "int",
+        "label": "Lan truyền 3D: số keyframe giữ track khi mất dấu",
+        "min": 1,
+        "max": 10,
+        "help": "Vật bị che quá bấy nhiêu keyframe thì dừng. 2 → 4 (mặc định): test 24 scene nhãn đúng +1.6% "
+        "(23355 → 23731), đổi ID 470 → 543.",
+        "applies": "now",
+    },
+    "propagation3d.oc_recover": {
+        "kind": "bool",
+        "label": "Lan truyền 3D: nhận lại theo vị trí quan sát cuối (OC-SORT)",
+        "help": "Tắt mặc định: thêm nhãn đúng trên test (23731 → 23872) nhưng không trên dev, và thêm đổi ID.",
+        "applies": "now",
+    },
     "propagation.max_keyframes": {
         "kind": "int",
         "label": "Số keyframe tối đa mỗi lần lan truyền",

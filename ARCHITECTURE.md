@@ -149,9 +149,13 @@ lan truyền, so với GT cùng `instance_token` ở các keyframe sau (tỉ l�
 xoá → track "suppress"). Mỗi keyframe sau: box về hệ toàn cục qua `global_from_lidar`, dịch `c + v·dt` (vận tốc của
 mô hình, vật đứng yên thì không), khớp dự đoán mô hình theo khoảng cách tâm BEV ≤ ngưỡng theo lớp của tracker
 CenterPoint × `propagation3d.dist_scale`; khớp → object `source="propagated"` (tâm / hướng từ mô hình, lớp / kích thước
-từ người, mức low nếu khớp chặt và cùng lớp), không khớp → track chạy tiếp, mất > `max_misses` keyframe thì dừng. Như 2D:
+từ người, mức low nếu khớp chặt và cùng lớp), không khớp → track chạy tiếp, mất > `max_misses` (4) keyframe thì dừng. Như 2D:
 dựng lại từ `prelabel`, không ghi vào frame đã mở, box người xoá chỉ tự xoá box cùng lớp (`PROPAGATED_DELETE`).
 Đánh giá: `src/services/propagation3d_eval.py`, `tools3d/eval_propagation3d.py`.
+
+OC-SORT (`propagation.oc_*`, `propagation3d.oc_*`, tắt mặc định): OCR ghép thêm track đang mất theo box / tâm quan sát
+cuối, ORU lấy vận tốc theo quan sát cuối → quan sát mới sau khi mất, OCM ưu tiên detection cùng hướng đi đã quan sát. Đo
+trước / sau: `eval/results/ocsort.md` — 2D không lợi; 3D chỉ phần giữ track lâu hơn (`max_misses` 2 → 4) được bật.
 
 ## Optical flow và sửa nhãn ở sweep
 
