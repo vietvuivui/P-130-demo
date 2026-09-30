@@ -22,6 +22,7 @@ const S = {
   gt: null,
   selected: null,
   viewOffset: 0,
+  sweepSel: null, // box đang chọn khi xem một sweep (sửa tự do ở t-2 … t+2)
   showLidar: false,
   showGt: false,
   showLow: true,
@@ -122,6 +123,91 @@ function orderedObjects() {
 }
 const getObj = (id) => S.frame?.objects.find((o) => o.object_id === id);
 
+// ---------- sweep t-2 … t+2: sửa tự do để QA / score của keyframe đúng hơn (không xuất ra) ----------
+const inSweep = () => !!S.frame && S.viewOffset !== 0;
+const curSweep = () => S.frame?.sweeps.find((s) => s.offset === S.viewOffset);
+function sweepBoxes(s) {
+  if (!s) return [];
+  return s.boxes || s.detections.map((d, i) => ({ box_id: String(i + 1), bbox: d.bbox, label: d.label, score: d.score, source: 'model', review: { status: 'pending' } }));
+}
+const getSweepBox = (id) => sweepBoxes(curSweep()).find((b) => b.box_id === id);
+const offName = (off) => `t${off > 0 ? '+' : '−'}${Math.abs(off)}`;
+/* Object keyframe nào đang được ghép với box sweep này (qua check temporal) */
+function linkedObject(b) {
+  const box = finalBox(b);
+  return S.frame.objects.find((o) => {
+    const t = o.track?.[String(S.viewOffset)];
+    return t && Math.abs(t[0] - box[0]) + Math.abs(t[1] - box[1]) + Math.abs(t[2] - box[2]) + Math.abs(t[3] - box[3]) < 2;
+  });
+}
+function hitSweep(x, y) {
+  let best = null;
+  let bestArea = Infinity;
+  for (const b of sweepBoxes(curSweep())) {
+    if (b.review.status === 'deleted' && b.box_id !== S.sweepSel) continue;
+    const [x1, y1, x2, y2] = finalBox(b);
+    if (x >= x1 && x <= x2 && y >= y1 && y <= y2 && (x2 - x1) * (y2 - y1) < bestArea) { best = b; bestArea = (x2 - x1) * (y2 - y1); }
+  }
+  return best;
+}
+function setView(off) {
+  if (S.mode !== 'view') cancelEdit();
+  S.viewOffset = off;
+  S.sweepSel = null;
+  draw();
+  renderPanel();
+  renderFilmstrip();
+}
+async function sweepAct(body) {
+  try {
+    const frame = await api(`/frames/${encodeURIComponent(S.frame.frame_id)}/sweeps/${S.viewOffset}/actions`, {
+      method: 'POST',
+      body: { ...body, reviewer: reviewer() },
+    });
+    S.frame = frame;
+    const boxes = sweepBoxes(curSweep());
+    if (body.action === 'ADD_BOX') S.sweepSel = boxes[boxes.length - 1]?.box_id || null;
+    else if (['KEEP', 'DELETE', 'CHANGE_CLASS'].includes(body.action)) {
+      const i = boxes.findIndex((b) => b.box_id === body.box_id);
+      const next = boxes.slice(i + 1).concat(boxes.slice(0, i)).find((b) => b.review.status === 'pending');
+      S.sweepSel = next ? next.box_id : body.box_id;
+    }
+    renderAll();
+    refreshLists();
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+function sweepPanel() {
+  const sw = curSweep();
+  const boxes = sweepBoxes(sw);
+  const locked = S.frame.status === 'approved';
+  const edited = boxes.filter((b) => b.review.status !== 'pending').length;
+  const rows = boxes.map((b) => {
+    const sel = b.box_id === S.sweepSel;
+    const o = linkedObject(b);
+    const st = b.review.status === 'deleted' ? '<span class="done-tag deleted">✗ xoá</span>'
+      : b.review.status === 'approved' ? `<span class="done-tag approved">✓ ${esc(b.review.action.toLowerCase().replace('_', ' '))}</span>`
+        : `<span class="muted">score ${fx(b.score)}</span>`;
+    const actions = !sel || locked ? '' : b.review.status === 'deleted'
+      ? '<div class="oc-actions"><button class="btn btn-sm" data-sact="RESTORE">↺ Khôi phục</button></div>'
+      : `<div class="oc-actions">
+          <button class="btn btn-sm btn-keep" data-sact="KEEP">✓ Keep</button>
+          <button class="btn btn-sm btn-del" data-sact="DELETE">🗑 Delete</button>
+          <select data-sclass>${classOptions(finalLabel(b))}</select>
+          <button class="btn btn-sm btn-class" data-sact="CHANGE_CLASS">Đổi lớp</button>
+          <button class="btn btn-sm btn-edit" data-sact="EDIT">✎ Sửa box</button>
+        </div>`;
+    return `<div class="sw-row ${sel ? 'selected' : ''} ${b.review.status}" data-sbid="${esc(b.box_id)}">
+      <div class="sw-line"><span>#${esc(b.box_id)} ${esc(finalLabel(b))}${b.source === 'human' ? ' <span class="muted">· người vẽ</span>' : ''}${o ? ` <span class="muted">↔ #${esc(o.object_id)} ở keyframe</span>` : ''}</span>${st}</div>${actions}</div>`;
+  }).join('');
+  return `<h3>Sweep ${offName(S.viewOffset)} <small>${boxes.length} box · đã sửa ${edited}</small>
+      <button class="btn btn-ghost btn-sm" data-sweep-back title="Quay về keyframe (Esc)">← Keyframe</button></h3>
+    <p class="muted sw-note">Box ở sweep không được xuất; sửa ở đây để cờ FLICKER / RECOVERED, score và lan truyền của keyframe đúng hơn. Keyframe được tính lại ngay sau mỗi thao tác.</p>
+    ${locked ? '' : '<button class="btn btn-sm wide" data-sweep-add>+ Vẽ box ở sweep này <kbd>B</kbd></button>'}
+    <div class="sw-list">${rows || '<p class="muted">Detector không thấy gì ở sweep này — vẽ thêm nếu có vật bị sót.</p>'}</div>`;
+}
+
 // ---------- hàng đợi ----------
 
 async function loadQueue() {
@@ -176,6 +262,7 @@ async function openFrame(id, { preview = false } = {}) {
   S.lidar = S.gt = null;
   S.sweepImgs = {};
   S.viewOffset = 0;
+  S.sweepSel = null;
   S.mode = 'view';
   S.editBox = null;
   S.selected = orderedObjects()[0]?.object_id || null;
@@ -420,12 +507,31 @@ function drawCanvas() {
   }
 
   if (S.viewOffset !== 0) {
-    // Xem một sweep: vẽ detection của sweep đó mờ + box track của object đang chọn
-    const sweep = f.sweeps.find((s) => s.offset === S.viewOffset);
-    for (const d of sweep?.detections || []) drawBox(d.bbox, '#94a3b8', { lw: 1, alpha: 0.7 });
-    const o = getObj(S.selected);
-    const tb = o?.track?.[String(S.viewOffset)];
-    if (tb) drawBox(tb, '#3987e5', { lw: 3, label: `#${o.object_id} ${o.label} @t${S.viewOffset > 0 ? '+' : ''}${S.viewOffset}` });
+    // Xem một sweep: box của sweep (sửa được); xám = máy sinh chưa xem, xanh dương = người đã xác nhận / vẽ
+    for (const b of sweepBoxes(f.sweeps.find((s) => s.offset === S.viewOffset))) {
+      const sel = b.box_id === S.sweepSel;
+      if (sel && S.mode === 'edit') continue;
+      if (b.review.status === 'deleted') {
+        if (sel) drawBox(finalBox(b), '#d03b3b', { lw: 1.5, dash: [4, 4], label: `#${b.box_id} đã xoá` });
+        continue;
+      }
+      const done = b.review.status === 'approved' || b.source === 'human';
+      drawBox(finalBox(b), done ? HUMAN_COLOR : '#94a3b8', {
+        lw: sel ? 3.5 : 1.6,
+        label: `#${b.box_id} ${finalLabel(b)}${done ? '' : ' ' + fx(b.score)}`,
+        alpha: sel || !S.sweepSel ? 1 : 0.8,
+      });
+    }
+    if (S.editBox) drawBox(S.editBox, '#7c5cd6', { lw: 3, dash: S.mode === 'add' ? [6, 4] : null });
+    if (S.editBox && S.mode === 'edit') {
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = '#7c5cd6';
+      ctx.lineWidth = 2 * k;
+      for (const [hx, hy] of handles(S.editBox)) {
+        ctx.fillRect(hx - 5 * k, hy - 5 * k, 10 * k, 10 * k);
+        ctx.strokeRect(hx - 5 * k, hy - 5 * k, 10 * k, 10 * k);
+      }
+    }
     return;
   }
 
@@ -497,7 +603,7 @@ function hitObject(x, y) {
 }
 
 canvas.addEventListener('mousedown', (e) => {
-  if (!S.frame || S.viewOffset !== 0) return;
+  if (!S.frame) return;
   const [x, y] = toImg(e);
   if (S.mode === 'add') {
     S.drag = { kind: 'draw', x0: x, y0: y };
@@ -512,8 +618,10 @@ canvas.addEventListener('mousedown', (e) => {
     if (x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3]) { S.drag = { kind: 'move', x0: x, y0: y, box: b.slice() }; return; }
     return;
   }
-  const o = hitObject(x, y);
-  if (o) select(o.object_id);
+  const o = inSweep() ? null : hitObject(x, y);
+  const sb = inSweep() ? hitSweep(x, y) : null;
+  if (sb) { S.sweepSel = sb.box_id; renderPanel(); draw(); }
+  else if (o) select(o.object_id);
   else if (S.zoom > 1) {
     // Kéo vùng trống để di chuyển ảnh khi đang phóng to
     const box = $('canvas-scroll');
@@ -578,6 +686,15 @@ window.addEventListener('mouseup', () => {
 });
 
 function startEdit() {
+  if (inSweep()) {
+    const b = getSweepBox(S.sweepSel);
+    if (!b || b.review.status === 'deleted' || S.frame.status === 'approved') return;
+    S.mode = 'edit';
+    S.editBox = finalBox(b).slice();
+    showEditBar('edit');
+    draw();
+    return;
+  }
   const o = getObj(S.selected);
   if (!o || S.frame.status === 'approved') return;
   S.mode = 'edit';
@@ -588,7 +705,6 @@ function startEdit() {
 
 function startAdd() {
   if (!S.frame || S.frame.status === 'approved') return;
-  S.viewOffset = 0;
   S.mode = 'add';
   S.editBox = null;
   canvas.classList.add('drawing');
@@ -621,6 +737,12 @@ function showEditBar(kind) {
 
 async function saveEdit() {
   const box = S.editBox.map((v) => Math.round(v * 10) / 10);
+  if (inSweep()) {
+    if (S.mode === 'add') await sweepAct({ action: 'ADD_BOX', bbox: box, label: $('add-class').value });
+    else if (S.mode === 'edit') await sweepAct({ action: 'EDIT_BOX', box_id: S.sweepSel, bbox: box });
+    cancelEdit();
+    return;
+  }
   if (S.mode === 'add') {
     await act({ action: 'ADD_BOX', bbox: box, label: $('add-class').value });
   } else if (S.mode === 'edit') {
@@ -757,7 +879,7 @@ function objectCard(o) {
   if (isProp(o)) {
     facts.push(`c_prop ${fx(pr.prop_conf)}`);
     facts.push(pr.matched ? `detector: ${esc(pr.detector_label)} ${fx(pr.detector_score)}` : 'detector không thấy, box dự đoán');
-  } else if (o.source !== 'human') facts.push(`score ${fx(o.score)}`);
+  } else if (o.source !== 'human') facts.push(o.det_score != null && Math.abs(o.det_score - o.score) >= 0.005 ? `score ${fx(o.score)} <span class="muted" title="Score tính lại theo các sweep lân cận (vật thấy ổn định được tăng, box chỉ loé lên bị hạ); số trong ngoặc là score gốc của detector">(detector ${fx(o.det_score)})</span>` : `score ${fx(o.score)}`);
   if (lid.available) facts.push(`${lid.n_points ?? 0} điểm LiDAR${lid.depth_m != null ? ` · ${fx(lid.depth_m, 1)} m` : ''}${lid.est_height_m != null ? ` · cao ~${fx(lid.est_height_m, 1)} m` : ''}`);
   if (tmp.available) facts.push(`sweep ${tmp.support}/${tmp.available}`);
   const status = !done
@@ -845,6 +967,10 @@ function renderPanel() {
   }
   $('btn-add').disabled = !f || locked;
   $('btn-propagate').disabled = !locked || S.viewMode !== 'video';
+  const sweepMode = inSweep();
+  $('review-scroll').classList.toggle('sweep-mode', sweepMode);
+  $('sweep-panel').classList.toggle('hidden', !sweepMode);
+  $('sweep-panel').innerHTML = sweepMode ? sweepPanel() : '';
   drawCrops();
 }
 
@@ -874,6 +1000,20 @@ function drawCrops() {
 }
 
 document.querySelector('.review-panel').addEventListener('click', (e) => {
+  if (e.target.closest('[data-sweep-back]')) { setView(0); return; }
+  if (e.target.closest('[data-sweep-add]')) { startAdd(); return; }
+  const row = e.target.closest('[data-sbid]');
+  if (row) {
+    if (e.target.closest('select')) return;
+    const id = row.dataset.sbid;
+    const sbtn = e.target.closest('[data-sact]');
+    if (!sbtn) { S.sweepSel = id; renderPanel(); draw(); return; }
+    const a = sbtn.dataset.sact;
+    if (a === 'EDIT') { S.sweepSel = id; startEdit(); return; }
+    if (a === 'CHANGE_CLASS') { sweepAct({ action: 'CHANGE_CLASS', box_id: id, label: row.querySelector('[data-sclass]').value }); return; }
+    sweepAct({ action: a, box_id: id });
+    return;
+  }
   const card = e.target.closest('[data-oid]');
   if (!card) return;
   const id = card.dataset.oid;
@@ -934,10 +1074,7 @@ $('filmstrip').addEventListener('click', (e) => {
   if (!film) return;
   const off = Number(film.dataset.off);
   if (off !== 0 && !S.sweepImgs[off]) return;
-  if (S.mode !== 'view') cancelEdit();
-  S.viewOffset = S.viewOffset === off ? 0 : off;
-  draw();
-  renderFilmstrip();
+  setView(S.viewOffset === off ? 0 : off);
 });
 
 // ---------- chế độ Ảnh / Video ----------
@@ -1249,12 +1386,12 @@ function renderProductivity(prod, p, csvBase) {
   $(p + 'csv-summary').href = csvBase + (csvBase.includes('?') ? '&' : '?') + 'kind=summary';
   const n = (v, d = 1) => (v == null ? '—' : Number(v).toFixed(d));
   const rows = prod?.reviewers || [];
-  $(p + 'prod-table').innerHTML = '<thead><tr><th>Người duyệt</th><th class="num">Frame duyệt</th><th class="num">Object đã xử lý</th><th class="num">Trả lại</th><th class="num">Hoàn tác</th><th class="num">Thời gian duyệt</th><th class="num">Frame/giờ</th><th>Phiên</th></tr></thead><tbody>' +
+  $(p + 'prod-table').innerHTML = '<thead><tr><th>Người duyệt</th><th class="num">Frame duyệt</th><th class="num">Object đã xử lý</th><th class="num">Box sweep đã sửa</th><th class="num">Trả lại</th><th class="num">Hoàn tác</th><th class="num">Thời gian duyệt</th><th class="num">Frame/giờ</th><th>Phiên</th></tr></thead><tbody>' +
     (rows.map((r) => `<tr><td>${esc(r.reviewer)}</td><td class="num">${r.frames_approved}</td><td class="num">${r.objects_handled}</td>
-      <td class="num">${r.frames_rejected}</td><td class="num">${r.undo_redo}</td><td class="num">${fmtTime(r.review_time_s)}</td>
+      <td class="num">${r.sweep_boxes_handled ?? 0}</td><td class="num">${r.frames_rejected}</td><td class="num">${r.undo_redo}</td><td class="num">${fmtTime(r.review_time_s)}</td>
       <td class="num"><b>${n(r.frames_per_hour)}</b></td>
       <td class="prod-sessions">${r.sessions.map((s) => `${esc(s.start.slice(0, 16).replace('T', ' '))}: ${s.frames} frame, ${n(s.frames_per_hour)}/giờ`).join('<br>') || '—'}</td></tr>`).join('') ||
-      '<tr><td colspan="8" class="muted">Chưa có frame nào được approve</td></tr>') + '</tbody>';
+      '<tr><td colspan="9" class="muted">Chưa có frame nào được approve</td></tr>') + '</tbody>';
   const inf = prod?.inference || [];
   $(p + 'infer-table').innerHTML = '<thead><tr><th>Phiên auto-label</th><th>Thiết bị</th><th class="num">Frame</th><th class="num">s / frame</th><th class="num">Frame/giờ</th></tr></thead><tbody>' +
     (inf.map((r) => `<tr><td><code>${esc(r.run)}</code></td><td>${esc(r.device || '—')}</td><td class="num">${r.frames}</td><td class="num">${n(r.s_per_frame, 2)}</td><td class="num"><b>${n(r.frames_per_hour, 0)}</b></td></tr>`).join('') ||
@@ -1305,6 +1442,16 @@ function stepFrame(delta) {
   if (next) openFrame(next.frame_id);
 }
 
+function stepSweepBox(delta) {
+  const boxes = sweepBoxes(curSweep());
+  if (!boxes.length) return;
+  const i = boxes.findIndex((b) => b.box_id === S.sweepSel);
+  S.sweepSel = boxes[(i + delta + boxes.length) % boxes.length].box_id;
+  renderPanel();
+  draw();
+  document.querySelector(`[data-sbid="${CSS.escape(S.sweepSel)}"]`)?.scrollIntoView({ block: 'nearest' });
+}
+
 function stepObject(delta) {
   const objs = orderedObjects().filter((o) => o.review.status !== 'deleted' || o.object_id === S.selected);
   if (!objs.length) return;
@@ -1315,7 +1462,12 @@ function stepObject(delta) {
 document.addEventListener('keydown', (e) => {
   if ($('tab-review').classList.contains('hidden')) return;
   const inField = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName);
-  if (e.key === 'Escape') { cancelEdit(); document.activeElement?.blur(); return; }
+  if (e.key === 'Escape') {
+    if (S.mode === 'view' && inSweep() && !inField) setView(0);
+    cancelEdit();
+    document.activeElement?.blur();
+    return;
+  }
   if (inField) {
     if (e.key === 'Enter' && document.activeElement.id === 'add-class') saveEdit();
     return;
@@ -1332,8 +1484,8 @@ document.addEventListener('keydown', (e) => {
 
   // Điều hướng: dùng được cả khi frame đã approve
   const nav = {
-    ArrowDown: () => stepObject(1),
-    ArrowUp: () => stepObject(-1),
+    ArrowDown: () => (inSweep() ? stepSweepBox(1) : stepObject(1)),
+    ArrowUp: () => (inSweep() ? stepSweepBox(-1) : stepObject(-1)),
     n: () => stepFrame(1),
     p: () => stepFrame(-1),
     l: () => $('show-lidar').click(),
@@ -1350,6 +1502,20 @@ document.addEventListener('keydown', (e) => {
   if (nav[key]) { nav[key](); e.preventDefault(); return; }
   if (S.frame.status === 'approved') return;
 
+  if (inSweep()) {
+    const sb = S.sweepSel;
+    const sweepKeys = {
+      k: () => sb && sweepAct({ action: 'KEEP', box_id: sb }),
+      d: () => sb && sweepAct({ action: 'DELETE', box_id: sb }),
+      Delete: () => sb && sweepAct({ action: 'DELETE', box_id: sb }),
+      c: () => sb && document.querySelector(`[data-sbid="${CSS.escape(sb)}"] [data-sclass]`)?.focus(),
+      e: startEdit,
+      b: startAdd,
+      Enter: () => S.mode !== 'view' && S.editBox && saveEdit(),
+    };
+    if (sweepKeys[key]) { sweepKeys[key](); e.preventDefault(); }
+    return;
+  }
   const sel = S.selected;
   const edit = {
     k: () => sel && act({ action: 'KEEP', object_id: sel }),
@@ -1366,6 +1532,10 @@ document.addEventListener('keydown', (e) => {
 
 // Đổi lớp bằng bàn phím: C -> chọn trong dropdown -> Enter
 document.querySelector('.review-panel').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.matches('[data-sclass]')) {
+    sweepAct({ action: 'CHANGE_CLASS', box_id: e.target.closest('[data-sbid]').dataset.sbid, label: e.target.value });
+    return;
+  }
   if (e.key !== 'Enter' || !e.target.matches('[data-class]')) return;
   const card = e.target.closest('[data-oid]');
   act({ action: 'CHANGE_CLASS', object_id: card.dataset.oid, label: e.target.value });

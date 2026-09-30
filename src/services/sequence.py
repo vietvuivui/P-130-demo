@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Callable
+from pathlib import Path
 from typing import Protocol
 
 import numpy as np
@@ -19,6 +20,7 @@ import numpy as np
 from src.models.qa_config import AutoLabelConfig
 from src.models.schemas import Detection, FrameRecord, LabelObject, PropagateResponse, PropagateSkip, ReviewState
 from src.services.detectors import DetectorEnsemble
+from src.services.flow import FlowProvider
 from src.services.geometry import iou
 from src.services.nuscenes_data import NuScenesMini, TimelineImage
 from src.services.propagation import (
@@ -32,12 +34,21 @@ from src.services.propagation import (
 )
 from src.services.review import now_iso
 from src.services.store import WorkspaceStore
+from src.services.sweep_review import effective_detections
 
 
 class SequenceSource(Protocol):
     def timeline(self, scene: str, camera: str) -> list[TimelineImage]: ...
 
     def detections(self, sd_token: str) -> list[Detection] | None: ...
+
+
+def _motion(source, cfg) -> FlowProvider | None:
+    """Optical flow cho tracker (propagation.flow) nếu nguồn đọc được file ảnh."""
+    image_file = getattr(source, "image_file", None)
+    if cfg.flow == "off" or image_file is None:
+        return None
+    return FlowProvider(image_file, cfg.flow_scale)
 
 
 class NuScenesSequenceSource:
@@ -57,6 +68,9 @@ class NuScenesSequenceSource:
     def detections(self, sd_token: str) -> list[Detection] | None:
         return self.ensemble.load_cached(sd_token)
 
+    def image_file(self, path: str) -> Path:
+        return Path(self.data.dataroot) / path
+
 
 class PropagationError(ValueError):
     def __init__(self, code: str, message: str, status: int = 409):
@@ -69,9 +83,11 @@ class WorkspaceSequenceSource:
     """Nguồn dùng cho API: video tải lên lấy timeline từ record trong workspace; scene nuScenes đọc bảng nuScenes
     (chỉ nạp khi cần, nên lan truyền trên video tải lên chạy được cả khi máy không có dataset)."""
 
-    def __init__(self, store: WorkspaceStore, ensemble: DetectorEnsemble, nuscenes: Callable[[], NuScenesMini]):
+    def __init__(self, store: WorkspaceStore, ensemble: DetectorEnsemble, nuscenes: Callable[[], NuScenesMini],
+                 dataroot: str | Path | None = None):  # fmt: skip
         self.store = store
         self.ensemble = ensemble
+        self.dataroot = dataroot
         self._nuscenes_factory = nuscenes
         self._nuscenes: NuScenesSequenceSource | None = None
 
@@ -90,6 +106,16 @@ class WorkspaceSequenceSource:
 
     def detections(self, sd_token: str) -> list[Detection] | None:
         return self.ensemble.load_cached(sd_token)
+
+    def image_file(self, path: str) -> Path:
+        from src.services.pipeline import resolve_image
+
+        return resolve_image(self.dataroot or ".", self.store.root, path)
+
+
+def sweep_overrides(frames: list[FrameRecord]) -> dict[str, list[Detection]]:
+    """Detection của các sweep người đã sửa (sd_token -> box sau khi sửa): thay cho cache detector khi tracking."""
+    return {s.sd_token: effective_detections(s) for f in frames for s in f.sweeps if s.boxes is not None}
 
 
 def _timeline_after(source: SequenceSource, keyframe: FrameRecord) -> list[TimelineImage]:
@@ -132,12 +158,17 @@ def propagate_from(
         resp.stop_reason = "Keyframe không có object nào đã duyệt để lan truyền"
         return resp
 
-    frame_of_sample = {f.sample_token: f.frame_id for f in store.list_frames() if f.scene == keyframe.scene}
-    tracker = Tracker(tracks, cfg, keyframe.image.width, keyframe.image.height)
+    scene_frames = [f for f in store.list_frames() if f.scene == keyframe.scene]
+    frame_of_sample = {f.sample_token: f.frame_id for f in scene_frames}
+    overrides = sweep_overrides(scene_frames)
+    tracker = Tracker(
+        tracks, cfg, keyframe.image.width, keyframe.image.height, _motion(source, cfg), keyframe.image.path
+    )
     at = now_iso()
     hops = 0
     for image in images:
-        tracker.step(image, source.detections(image.sd_token))
+        dets = overrides[image.sd_token] if image.sd_token in overrides else source.detections(image.sd_token)
+        tracker.step(image, dets)
         if not image.is_keyframe:
             continue
         hops += 1
@@ -210,8 +241,12 @@ def evaluate_propagation(
     scenes: list[str] | None = None,
     max_frames: int | None = None,
     thr: float = 0.5,
+    start_every: int | None = None,
 ) -> dict:
     """Lan truyền GT của keyframe đầu mỗi scene rồi đo với GT cùng instance ở các keyframe sau.
+
+    start_every=k: bắt đầu thêm từ keyframe thứ k, 2k, ... của mỗi scene (mỗi lần là một thí nghiệm độc lập), để có
+    đủ object khi chỉ có vài scene.
 
     Với mỗi track ở mỗi keyframe đích:
       đúng      : IoU với GT của chính instance đó >= thr
@@ -231,9 +266,14 @@ def evaluate_propagation(
     calib = {"correct": [], "wrong": []}
     n_scenes = n_tracks = 0
 
-    for scene, scene_frames in sorted(by_scene.items()):
+    runs = []
+    for _scene, scene_frames in sorted(by_scene.items()):
         scene_frames.sort(key=lambda f: f.index)
-        first = scene_frames[0]
+        step = start_every or len(scene_frames)
+        runs += [(scene_frames, i) for i in range(0, max(1, len(scene_frames) - 1), step)]
+
+    for scene_frames, start in runs:
+        first = scene_frames[start]
         gts0 = store.load_aux("gt", first.frame_id) or []
         keyframe = _gt_keyframe(first, gts0)
         tracks = init_tracks(keyframe, store.load_aux("lidar", first.frame_id))
@@ -242,7 +282,7 @@ def evaluate_propagation(
         n_scenes += 1
         n_tracks += len(tracks)
         frame_of_sample = {f.sample_token: f for f in scene_frames}
-        tracker = Tracker(tracks, cfg, first.image.width, first.image.height)
+        tracker = Tracker(tracks, cfg, first.image.width, first.image.height, _motion(source, cfg), first.image.path)
         hops = 0
         for image in _timeline_after(source, first):
             tracker.step(image, source.detections(image.sd_token))
@@ -276,7 +316,8 @@ def evaluate_propagation(
         )
     return {
         "match_iou": thr,
-        "scenes": n_scenes,
+        "scenes": len(by_scene),
+        "starts": n_scenes,
         "tracks_started": n_tracks,
         "per_hop": rows,
         "calibration": _calibration(calib, cfg.flag_below),

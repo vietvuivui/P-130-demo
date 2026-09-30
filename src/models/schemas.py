@@ -24,6 +24,8 @@ class Detection(BaseModel):
     alternatives: dict[str, float] = Field(default_factory=dict)
     # Mask segmentation sơ bộ (model -seg): đa giác [x1, y1, x2, y2, ...] theo pixel, FR-04
     mask: list[float] | None = None
+    # Score gốc của detector khi `score` đã được tính lại theo các sweep lân cận (temporal_fusion.py)
+    det_score: float | None = None
 
 
 class QAIssue(BaseModel):
@@ -80,6 +82,8 @@ class LabelObject(BaseModel):
     propagation: PropagationInfo | None = None
     models: dict[str, float] = Field(default_factory=dict)
     alternatives: dict[str, float] = Field(default_factory=dict)
+    # Score gốc của detector khi `score` đã được tính lại theo các sweep lân cận
+    det_score: float | None = None
     # Mask sơ bộ từ detector (đa giác phẳng [x1, y1, ...]); bỏ khi người sửa box (không còn khớp), FR-04
     mask: list[float] | None = None
     # Box của cùng object ở các sweep lân cận, key là offset ("-2", "-1", "1", "2")
@@ -96,9 +100,31 @@ class ImageInfo(BaseModel):
     height: int = 900
 
 
+class SweepBox(BaseModel):
+    """Một box ở sweep khi người sửa tự do (FR-05 mở rộng): chỉ dùng cho QA / score của keyframe, không xuất ra."""
+
+    box_id: str
+    bbox: list[float] = Field(..., min_length=4, max_length=4)
+    label: str
+    score: float
+    source: Literal["model", "human"] = "model"
+    review: ReviewState = Field(default_factory=ReviewState)
+
+
 class SweepInfo(ImageInfo):
     offset: int
+    # Detection máy sinh (giữ nguyên, không sửa)
     detections: list[Detection] = Field(default_factory=list)
+    # Bản người đã sửa: tạo từ detections ở lần sửa đầu tiên; None = chưa ai sửa sweep này
+    boxes: list[SweepBox] | None = None
+
+
+class SweepActionRequest(BaseModel):
+    action: Literal["KEEP", "DELETE", "CHANGE_CLASS", "EDIT_BOX", "ADD_BOX", "RESTORE"]
+    box_id: str | None = None
+    bbox: list[float] | None = Field(None, min_length=4, max_length=4)
+    label: str | None = None
+    reviewer: str | None = None
 
 
 class FrameRecord(BaseModel):

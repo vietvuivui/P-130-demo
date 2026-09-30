@@ -30,6 +30,51 @@ Quy tắc:
 
 ---
 
+## 2026-09-30 · Kiên · nhánh `kien`
+
+**Làm gì:** Đưa ý tưởng *Deep Feature Flow* (arXiv:1611.07715) vào sản phẩm ở mức box (optical flow OpenCV DIS, không
+train lại detector) và cho sửa nhãn ở các sweep t−2…t+2:
+
+- **Lan truyền nhãn dùng optical flow** (`propagation.flow: always`, mặc định bật). Held-out: +88 nhãn lan truyền
+  đúng (+11%), đổi ID 26 → 11, mất dấu −23%.
+- **QA temporal dùng flow + tính lại score theo sweep** (`qa.temporal.flow`, `qa.temporal.rescore`): có sẵn, **tắt
+  mặc định**. mAP không đổi; bật `flow + mean` bớt ~60% box phải xem tay nhưng lỗi còn lại sau duyệt +5–7%.
+- **Sửa tự do ở sweep** trên UI 2D: click ô t±1/t±2, keep / xoá / đổi lớp / sửa box / vẽ thêm / khôi phục, có
+  hoàn tác. Keyframe được tính lại ngay (FLICKER, RECOVERED_BY_TRACK, risk). Tracker lan truyền dùng bản đã sửa.
+  Box ở sweep không được xuất.
+- Bảng trước / sau (dev 119 + held-out 159 keyframe): `eval/results/temporal/report.md`.
+
+**File chính:**
+
+- Mới: `src/services/flow.py`, `src/services/temporal_fusion.py`, `src/services/sweep_review.py`,
+  `tools2d/eval_temporal.py`.
+- Sửa: `pipeline.py`, `agents/nodes/temporal.py`, `propagation.py`, `sequence.py`, `routes.py`, `web/app.js`.
+
+**Ảnh hưởng tới người khác:**
+
+- Schema:
+  - `Detection.det_score`, `LabelObject.det_score`;
+  - `SweepInfo.boxes` (list `SweepBox`, None = chưa sửa);
+  - `SweepActionRequest`.
+- API: `POST /frames/{id}/sweeps/{offset}/actions`.
+- Config: `qa.temporal.flow`, `flow_scale`, `rescore`; `propagation.flow`, `flow_scale`.
+- `evaluate_propagation(..., start_every=)`.
+- `WorkspaceSequenceSource(..., dataroot)`.
+- Báo cáo năng suất có cột "Box sweep đã sửa". Frame cũ vẫn đọc được.
+
+**Cách kiểm tra:**
+
+- `pytest` (129 pass), `ruff check src tests`.
+- UI: mở một frame, click ô t−1 ở dải dưới, xoá / vẽ box, xem keyframe đổi cờ.
+- `python tools2d/eval_temporal.py --dataroot <nuscenes> --workspace <ws đã run> --out <thư mục>`.
+
+**Còn dở / việc tiếp:**
+
+- Nhóm quyết định có bật `flow + mean` (đổi chất lượng lấy công duyệt) hay không.
+- Đo lại trên GPU với nhiều scene hơn.
+
+---
+
 ## 2026-09-29 (4) · Kiên · nhánh `kien`
 
 **Làm gì:** Làm các yêu cầu còn thiếu của PRD không phụ thuộc giao diện:

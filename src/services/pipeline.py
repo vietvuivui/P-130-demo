@@ -13,9 +13,11 @@ from src.agents.graph import qa_agent
 from src.models.qa_config import AutoLabelConfig
 from src.models.schemas import FrameRecord, ImageInfo, LabelObject, SweepInfo
 from src.services.detectors import DetectorEnsemble
+from src.services.flow import FlowProvider
 from src.services.nuscenes_data import CameraFrame, NuScenesMini
 from src.services.review import now_iso
 from src.services.store import WORKSPACE_PREFIX, WorkspaceStore
+from src.services.temporal_fusion import rescore
 
 log = logging.getLogger(__name__)
 
@@ -130,11 +132,16 @@ def label_keyframe(
     images = [(image.sd_token, image_file(image.path))] + [
         (sweeps[o].sd_token, image_file(sweeps[o].path)) for o in offsets
     ]
-    det_cfg = config.detection
-    # Ngưỡng giữ box áp cho cả keyframe lẫn sweep để check temporal/tracking nhất quán với box người thấy
-    detections = [[d for d in dets if det_cfg.keep(d.label, d.score)] for dets in ensemble.detect_batch(images)]
-    key_dets = detections[0]
-    sweep_dets = dict(zip(offsets, detections[1:], strict=True))
+    det_cfg, tcfg = config.detection, config.qa.temporal
+    raw = ensemble.detect_batch(images)
+    # Ngưỡng giữ box áp cho sweep để check temporal/tracking nhất quán với box người thấy
+    sweep_dets = {
+        o: [d for d in dets if det_cfg.keep(d.label, d.score)] for o, dets in zip(offsets, raw[1:], strict=True)
+    }
+    warped = sweep_warps(image, sweeps, sweep_dets, image_file, tcfg) if offsets else {}
+    # Score keyframe tính lại theo sweep trước khi lọc ngưỡng: vật thấy ổn định được giữ, box chỉ loé lên bị bỏ
+    key_all = rescore(raw[0], sweep_dets, warped, tcfg.rescore, tcfg.match_iou)
+    key_dets = sorted((d for d in key_all if det_cfg.keep(d.label, d.score)), key=lambda d: -d.score)
 
     objects = [
         LabelObject(
@@ -142,6 +149,7 @@ def label_keyframe(
             bbox=d.bbox,
             label=d.label,
             score=d.score,
+            det_score=d.det_score,
             models=d.models,
             alternatives=d.alternatives,
             mask=d.mask,
@@ -155,7 +163,7 @@ def label_keyframe(
             "intrinsic": intrinsic,
             "key_timestamp": image.timestamp,
             "objects": objects,
-            "sweeps": {o: {"timestamp": sweeps[o].timestamp, "detections": sweep_dets[o]} for o in offsets},
+            "sweeps": {o: sweep_state(sweeps[o].timestamp, sweep_dets[o], warped.get(o)) for o in offsets},
             "lidar_uv": uv,
             "lidar_depth": depth,
         }
@@ -175,6 +183,35 @@ def label_keyframe(
         objects=state["reviewed"],
         created_at=now_iso(),
     )
+
+
+def sweep_state(timestamp: int, dets: list, warped: list | None) -> dict:
+    state = {"timestamp": timestamp, "detections": dets}
+    if warped is not None:
+        state["warped"] = warped
+    return state
+
+
+def sweep_warps(
+    image: ImageInfo,
+    sweeps: dict[int, ImageInfo],
+    sweep_dets: dict[int, list],
+    image_file: Callable[[str], Path],
+    tcfg,
+) -> dict[int, list[list[float]]]:
+    """Box của mỗi sweep dời về thời điểm keyframe bằng optical flow sweep -> keyframe. Rỗng nếu tắt flow."""
+    if not tcfg.flow:
+        return {}
+    flows = FlowProvider(lambda p: image_file(p), tcfg.flow_scale)
+    out = {}
+    for o, dets in sweep_dets.items():
+        if not dets:
+            out[o] = []
+            continue
+        field = flows.between(sweeps[o].path, image.path)
+        if field is not None:
+            out[o] = [[round(v, 1) for v in field.warp_box(d.bbox)] for d in dets]
+    return out
 
 
 def resolve_image(dataroot: str | Path, workspace: str | Path | None, path: str) -> Path:

@@ -182,6 +182,17 @@ input[type=text], select { font: inherit; padding: 6px 8px; border: 1px solid va
 .low-row:hover, .low-row.selected { background: var(--surface-2); }
 .done-list .low-row { color: var(--muted); }
 .done-tag { font-size: 11px; font-weight: 600; }
+/* Sửa tự do ở sweep t-2 … t+2 */
+.review-scroll.sweep-mode > .group:not(.group-sweep) { display: none; }
+.group-sweep h3 { display: flex; align-items: center; gap: 8px; }
+.group-sweep h3 small { flex: 1; }
+.sw-note { font-size: 12px; margin: 4px 0 8px; line-height: 1.4; }
+.sw-list { display: grid; gap: 4px; margin-top: 8px; }
+.sw-row { padding: 6px 8px; border-radius: 6px; font-size: 12px; cursor: pointer; border: 1px solid transparent; }
+.sw-row:hover { background: var(--surface-2); }
+.sw-row.selected { background: var(--accent-soft); border-color: var(--accent); }
+.sw-row.deleted .sw-line > span:first-child { text-decoration: line-through; color: var(--muted); }
+.sw-line { display: flex; justify-content: space-between; align-items: center; gap: 8px; overflow-wrap: anywhere; }
 .done-tag.deleted { color: var(--high); }
 .done-tag.approved { color: var(--low); }
 .review-foot { border-top: 1px solid var(--border); padding: 10px 12px; display: grid; gap: 8px; }

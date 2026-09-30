@@ -158,12 +158,18 @@ def _greedy_match(pred: np.ndarray, dets: list[list[float]], thr: float) -> dict
 class Tracker:
     """Theo dõi các track qua từng ảnh camera (keyframe hoặc sweep)."""
 
-    def __init__(self, tracks: list[Track], cfg: PropagationCfg, width: int, height: int):
+    def __init__(self, tracks: list[Track], cfg: PropagationCfg, width: int, height: int, motion=None,
+                 start_path: str | None = None):  # fmt: skip
+        """motion: FlowProvider (src/services/flow.py) để dự đoán box theo optical flow thay vì vận tốc không đổi,
+        theo cfg.flow ("missing": chỉ ở ảnh chưa có detection; "always": mọi ảnh). start_path: ảnh của keyframe gốc."""
         self.tracks = tracks
         self.cfg = cfg
         self.width = width
         self.height = height
         self.images_without_detections = 0
+        self.images_with_flow = 0
+        self.motion = motion if cfg.flow != "off" else None
+        self.prev_path = start_path
 
     @property
     def alive(self) -> list[Track]:
@@ -175,10 +181,19 @@ class Tracker:
         if not tracks:
             return
         cfg = self.cfg
+        field = None
+        if self.motion is not None and self.prev_path and image.path and (cfg.flow == "always" or detections is None):
+            field = self.motion.between(self.prev_path, image.path)
+        self.prev_path = image.path or self.prev_path
+        if field is not None:
+            self.images_with_flow += 1
         preds = []
         for t in tracks:
-            dt = max(0.0, (image.timestamp - t.last_t) / 1e6)
-            preds.append(t.box + t.vel * dt)
+            if field is not None:
+                preds.append(np.asarray(field.warp_box(t.box), dtype=np.float64))
+            else:
+                dt = max(0.0, (image.timestamp - t.last_t) / 1e6)
+                preds.append(t.box + t.vel * dt)
         pred = np.array(preds)
 
         if detections is None:
@@ -209,8 +224,12 @@ class Tracker:
                 t.matched_steps += 1
                 t.last_match, t.last_agreement = det, agreement
             else:
+                if field is not None:
+                    # Box dời theo chuyển động thật của ảnh: lấy luôn làm vận tốc cho ảnh sau (nếu ảnh sau không có flow)
+                    t.vel = (pred[i] - t.box) / dt
+                else:
+                    t.vel = t.vel * COAST_VELOCITY_DAMPING
                 t.box = pred[i]
-                t.vel = t.vel * COAST_VELOCITY_DAMPING
                 t.last_match, t.last_agreement = None, 0.0
                 # Ảnh chưa có detection trong cache không phải bằng chứng object biến mất
                 if detections is not None:

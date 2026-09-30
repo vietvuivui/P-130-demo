@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -90,6 +91,11 @@ class TemporalCfg(BaseModel):
     match_iou: float = 0.3
     min_support: int = 2
     recover_min_score: float = 0.35
+    # Dời box của sweep về thời điểm keyframe bằng optical flow trước khi so khớp (src/services/flow.py)
+    flow: bool = False
+    flow_scale: float = 0.5
+    # Tính lại score keyframe theo các sweep (src/services/temporal_fusion.py): off | mean | linked
+    rescore: Literal["off", "mean", "linked"] = "off"
 
 
 class GeometryCfg(BaseModel):
@@ -144,6 +150,9 @@ class PropagationCfg(BaseModel):
     stop_below: float = 0.15
     # Track không khớp detection ở chính keyframe đích (đang "trôi" theo vận tốc) có được ghi ra không
     emit_coasting: bool = False
+    # Optical flow cho tracker lan truyền: off (dự đoán theo vận tốc) | missing (chỉ ảnh chưa có detection) | always
+    flow: Literal["off", "missing", "always"] = "always"
+    flow_scale: float = 0.5
     max_keyframes: int = 20
     class_differs_score: float = 0.5
 

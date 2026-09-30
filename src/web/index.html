@@ -6,7 +6,7 @@
   <title>AutoLabel 3D — Review</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
-  <link rel="stylesheet" href="styles.css?v=3d7">
+  <link rel="stylesheet" href="styles.css?v=3d8">
 </head>
 <body>
   <header class="topbar">
@@ -144,6 +144,7 @@
       <div id="reject-banner" class="reject-banner hidden" role="status"></div>
       <div class="risk-summary" id="risk-summary"></div>
       <div class="review-scroll" id="review-scroll">
+        <section id="sweep-panel" class="group group-sweep hidden" aria-live="polite"></section>
         <section class="group group-high">
           <h3><span class="dot high"></span>High risk <small>xem chi tiết</small> <span class="count" id="count-high">0</span></h3>
           <div id="list-high"></div>
@@ -184,7 +185,7 @@
           </span>
         </div>
         <div class="shortcuts">
-          <kbd>↑</kbd><kbd>↓</kbd> chọn object · <kbd>K</kbd> keep · <kbd>D</kbd> delete · <kbd>C</kbd> đổi lớp · <kbd>E</kbd> sửa box · <kbd>V</kbd> BEV · <kbd>T</kbd> lan truyền · <kbd>Space</kbd> phát video · <kbd>N</kbd>/<kbd>P</kbd> frame kế · <kbd>Ctrl</kbd>+<kbd>Z</kbd>/<kbd>Y</kbd> hoàn tác / làm lại · <kbd>R</kbd> trả lại · lăn chuột, <kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>0</kbd> vừa khung
+          <kbd>↑</kbd><kbd>↓</kbd> chọn object · click ô t±1/t±2 bên dưới để sửa sweep (<kbd>Esc</kbd> quay về) · <kbd>K</kbd> keep · <kbd>D</kbd> delete · <kbd>C</kbd> đổi lớp · <kbd>E</kbd> sửa box · <kbd>V</kbd> BEV · <kbd>T</kbd> lan truyền · <kbd>Space</kbd> phát video · <kbd>N</kbd>/<kbd>P</kbd> frame kế · <kbd>Ctrl</kbd>+<kbd>Z</kbd>/<kbd>Y</kbd> hoàn tác / làm lại · <kbd>R</kbd> trả lại · lăn chuột, <kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>0</kbd> vừa khung
         </div>
       </div>
     </aside>
@@ -406,8 +407,8 @@
   </main>
 
   <div id="toast" class="toast hidden" role="status"></div>
-  <script src="app.js?v=3d7"></script>
-  <script type="module" src="bev2d.js?v=3d7"></script>
-  <script type="module" src="app3d.js?v=3d7"></script>
+  <script src="app.js?v=3d8"></script>
+  <script type="module" src="bev2d.js?v=3d8"></script>
+  <script type="module" src="app3d.js?v=3d8"></script>
 </body>
 </html>

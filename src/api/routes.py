@@ -21,6 +21,7 @@ from src.models.schemas import (
     RejectRequest,
     ReviewActionRequest,
     ReviewerRequest,
+    SweepActionRequest,
     VideoDetail,
     VideoSummary,
 )
@@ -121,7 +122,7 @@ def get_sequence_source(
     ensemble: DetectorEnsemble = Depends(get_ensemble),
 ) -> SequenceSource:
     root, version = data_source(request)
-    return WorkspaceSequenceSource(store, ensemble, lambda: _nuscenes(root, version))
+    return WorkspaceSequenceSource(store, ensemble, lambda: _nuscenes(root, version), root)
 
 
 def resume_videos() -> None:
@@ -284,6 +285,35 @@ def review_action(
         raise _error(422, "INVALID_ACTION", str(e)) from e
     store.save_frame(frame)
     store.append_corrections([entry])
+    history.record(store, history.kind_2d(), frame_id, before)
+    return frame
+
+
+@router.post("/frames/{frame_id}/sweeps/{offset}/actions", response_model=FrameRecord)
+def sweep_action(
+    frame_id: str,
+    offset: int,
+    req: SweepActionRequest,
+    store: WorkspaceStore = Depends(get_store),
+    dataroot: Path = Depends(get_dataroot),
+    config: AutoLabelConfig = Depends(get_config),
+):
+    """Sửa một box ở sweep t±n (giữ / xoá / đổi lớp / sửa / vẽ thêm) rồi tính lại QA và score của keyframe."""
+    from src.services.pipeline import resolve_image
+    from src.services.propagation import lidar_arrays
+    from src.services.sweep_review import apply_sweep_action, requalify_frame
+
+    frame = _load(store, frame_id)
+    before = frame.model_dump_json()
+    reviewer = req.reviewer or get_settings().reviewer_name
+    try:
+        entry = apply_sweep_action(frame, offset, req, reviewer, config)
+    except review.ReviewError as e:
+        raise _error(422, "INVALID_ACTION", str(e)) from e
+    uv, depth = lidar_arrays(store.load_aux("lidar", frame_id))
+    requalify_frame(frame, config, lambda p: resolve_image(dataroot, store.root, p), uv, depth)
+    store.save_frame(frame)
+    store.append_event(dict(type="sweep_action", mode="2d", **entry))
     history.record(store, history.kind_2d(), frame_id, before)
     return frame
 

@@ -164,7 +164,9 @@ Chế độ Ảnh:
   rộng hơn box detector; box GT mờ không chữ = vật hiển thị 0–40% hoặc không có điểm LiDAR/radar, bỏ qua khi đánh giá.
 - **Zoom**: lăn chuột trên ảnh (phóng quanh con trỏ), `+`/`−`, `0` về vừa khung, hoặc nút `− 100% +`; khi phóng to
   kéo vùng trống để di chuyển ảnh. Vẽ/sửa box vẫn đúng toạ độ ở mọi mức zoom.
-- **Temporal strip** t-2 … t+2: xem object đang chọn có/không ở từng sweep; click để xem sweep đó.
+- **Temporal strip** t-2 … t+2: xem object đang chọn có/không ở từng sweep; click để mở sweep đó và **sửa tự do**
+  (keep / xoá / đổi lớp / sửa box / vẽ thêm, cùng phím tắt, `Esc` quay về keyframe). Box ở sweep không được xuất;
+  sửa để FLICKER / RECOVERED_BY_TRACK, risk và lan truyền của keyframe đúng hơn — keyframe được tính lại ngay.
 - **Panel risk**: High (card chi tiết + crop + issue + giải thích), Medium, Low (thu gọn + *Approve all low-risk*).
 - **Correction log** và **Metrics & Export**: M4 (tỉ lệ nhãn phải sửa), M1 (thời gian/frame),
   flag precision/recall của agent tính từ thao tác thật của người, precision của từng issue code.
@@ -235,7 +237,8 @@ Phím: `↑/↓` chọn box · `K` `D` `C` `E` · `B` vẽ box · `A` · `Enter`
 
 ## Kết quả đánh giá
 
-Xem [eval/results/autolabel2d_eval.md](eval/results/autolabel2d_eval.md).
+Xem [eval/results/autolabel2d_eval.md](eval/results/autolabel2d_eval.md). Optical flow cho lan truyền và QA
+temporal (trước / sau, dev + held-out): [eval/results/temporal/report.md](eval/results/temporal/report.md).
 
 3D ([eval/compare_3d.ipynb](eval/compare_3d.ipynb)): trọng số có sẵn, 27 scene val nuScenes (1076 keyframe), RTX 4050.
 Hai cột cuối là kết quả QA Agent 3D trên 3 scene demo, dùng ngưỡng điểm riêng của từng mô hình.
@@ -259,6 +262,7 @@ Hai cột cuối là kết quả QA Agent 3D trên 3 scene demo, dùng ngưỡng
 | GET | `/api/v1/frames/{id}/lidar`, `/gt` | Điểm LiDAR đã chiếu, GT 2D |
 | GET | `/api/v1/frames/{id}/bev`, `/bev/meta` | Ảnh camera chiếu xuống mặt đường (PNG) và homography / ngoại tham số để đặt box lên BEV |
 | POST | `/api/v1/frames/{id}/actions` | `KEEP` / `DELETE` / `CHANGE_CLASS` / `EDIT_BOX` / `ADD_BOX` |
+| POST | `/api/v1/frames/{id}/sweeps/{offset}/actions` | Sửa box ở sweep t±n: `KEEP` / `DELETE` / `CHANGE_CLASS` / `EDIT_BOX` / `ADD_BOX` / `RESTORE` (`box_id`), rồi tính lại QA keyframe |
 | POST | `/api/v1/frames/{id}/approve-low-risk` | Duyệt theo lô nhóm low |
 | POST | `/api/v1/frames/{id}/approve`, `/reopen` | Approve frame (chặn nếu còn object chờ) / mở lại |
 | GET | `/api/v1/corrections?frame_id=` | Correction log |

@@ -112,8 +112,10 @@ Người approve một keyframe → `POST /frames/{id}/propagate` (UI tự gọi
    `track_id` = `<keyframe>:<object_id>`, giữ nguyên qua các frame.
 2. **Tracker** đi qua mọi ảnh sau keyframe — CAM_FRONT 12Hz (`NuScenesMini.camera_timeline`) hoặc mọi frame
    10 fps của video tải lên (timeline trong record; `sequence.WorkspaceSequenceSource` chọn nguồn), dự đoán box
-   theo vận tốc không đổi trong toạ độ ảnh, ghép với detection đã cache (IoU ≥ 0.3, một-một). Ảnh chưa có
-   trong cache: chỉ dự đoán. Dừng track khi > 6 ảnh liền không khớp, ra khỏi khung, hoặc box quá nhỏ.
+   ở ảnh kế tiếp bằng **optical flow** giữa hai ảnh (`src/services/flow.py`, OpenCV DIS; `propagation.flow`:
+   `always` mặc định, `missing` chỉ ở ảnh chưa có detection, `off` = vận tốc không đổi như trước), ghép với
+   detection đã cache (IoU ≥ 0.3, một-một). Sweep người đã sửa (xem dưới) thay cho cache detector. Ảnh chưa có
+   detection: box đi theo flow. Dừng track khi > 6 ảnh liền không khớp, ra khỏi khung, hoặc box quá nhỏ.
 3. **Ở mỗi keyframe đích còn "auto"**: tính c_prop; track nhận box pre-label trùng nó (IoU ≥ 0.5) → object
    `source="propagated"`, lớp của người, box của detector ở chính frame đó. Detector không thấy → thêm box
    dự đoán (`PROP_COASTING`). Track "suppress" chỉ tự xoá box khớp chặt (IoU ≥ 0.5) và cùng lớp.
@@ -135,6 +137,27 @@ thành phần detection = 1 − c_prop; `PROP_LOW_CONF` khi c_prop < 0.6.
 Đánh giá không cần người: `python -m src.cli eval-propagation` lấy GT keyframe đầu mỗi scene làm "nhãn người",
 lan truyền, so với GT cùng `instance_token` ở các keyframe sau (tỉ lệ đúng, đổi ID, độ phủ, c_prop có tách được
 đúng/sai không).
+
+## Optical flow và sửa nhãn ở sweep
+
+Ý tưởng lấy từ *Deep Feature Flow* (Zhu et al., arXiv:1611.07715): tính kỹ ở keyframe, mang kết quả sang ảnh lân cận
+bằng flow thay vì chạy lại detector hay đoán. Bài báo warp feature map bên trong mạng (phải train lại cả mạng với
+FlowNet); ở đây làm ở mức box nên không phải train và không đổi detector:
+
+- `flow.FlowField.warp_box`: dời box theo từng cạnh (trung vị flow ở dải trái / phải / trên / dưới bên trong box),
+  theo được cả vật tiến lại gần. DIS ở nửa độ phân giải: ~0.06 s mỗi cặp ảnh trên CPU 2 nhân.
+- **Lan truyền** (`Tracker`, trên): bật mặc định.
+- **Check temporal** (`qa.temporal.flow`) và **tính lại score theo sweep** (`qa.temporal.rescore`,
+  `temporal_fusion.py`, ý tưởng Flow-Guided Feature Aggregation ở mức box): có sẵn, tắt mặc định — đo trên dev
+  không tăng mAP và làm lỗi lọt qua duyệt theo lô tăng (eval/results/temporal/report.md).
+- **Sửa tự do ở sweep** (`sweep_review.py`, `POST /frames/{id}/sweeps/{offset}/actions`): keep / xoá / đổi lớp /
+  sửa box / vẽ thêm / khôi phục. Bản máy (`SweepInfo.detections`) giữ nguyên, bản người sửa ở `SweepInfo.boxes`.
+  Mỗi thao tác tính lại keyframe (`requalify_frame`): score (nếu bật rescore), FLICKER, đề xuất RECOVERED_BY_TRACK
+  (đề xuất cũ còn chờ được thay, cái người đã xử lý giữ nguyên), risk; kết quả LiDAR lúc auto-label giữ nguyên.
+  Sweep không được xuất. Có undo/redo và sự kiện `sweep_action` trong `events.jsonl`.
+
+Đánh giá trước / sau: `python tools2d/eval_temporal.py --dataroot … --workspace … --out …` (dùng lại cache detection
+của workspace, mọi cấu hình cùng một detection).
 
 ## Design Decisions
 
