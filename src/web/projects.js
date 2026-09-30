@@ -144,6 +144,7 @@ function cardHtml(p) {
     <div class="pj-actions">
       <a class="btn btn-primary btn-sm ${ready || p.steps.some((s) => s.name === 'label2d' && s.status === 'done') ? '' : 'disabled'}" href="${u(firstMode)}">Duyệt 2D</a>
       ${has3d ? `<a class="btn btn-primary btn-sm" href="${u('3d')}">Duyệt 3D</a>` : ''}
+      <a class="btn btn-ghost btn-sm" href="${u(firstMode)}&tab=settings" title="Chỉnh cách gán nhãn / lan truyền, áp dụng lại, so sánh trước / sau">⚙ Cài đặt</a>
       <button class="btn btn-ghost btn-sm" data-act="export-nuscenes" ${ready && has3d ? '' : 'disabled'} title="${has3d ? 'Box 3D đã duyệt, định dạng nuScenes' : 'Cần dữ liệu có LiDAR và bước dự đoán 3D đã chạy'}">Xuất nuScenes</button>
       <button class="btn btn-ghost btn-sm" data-act="export-kitti" ${ready && has3d ? '' : 'disabled'} title="Box 3D đã duyệt, định dạng KITTI object (camera trước)">Xuất KITTI</button>
       <button class="btn btn-ghost btn-sm" data-act="export-coco" ${ready ? '' : 'disabled'} title="Nhãn 2D đã duyệt (COCO + YOLO)">Xuất COCO</button>

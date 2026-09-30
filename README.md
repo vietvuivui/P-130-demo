@@ -273,6 +273,8 @@ Hai cột cuối là kết quả QA Agent 3D trên 3 scene demo, dùng ngưỡng
 | POST | `/api/v1/videos/upload` | Tải lên mp4 (multipart `file`); cắt frame ngay, auto-label chạy nền |
 | POST | `/api/v1/frames/{id}/reject` | Reviewer trả lại frame, bắt buộc có lý do (`reason`) |
 | POST | `/api/v1/frames/{id}/undo`, `/redo`; GET `/history` | Hoàn tác / làm lại thao tác trên frame (Ctrl+Z / Ctrl+Y) |
+| GET/PUT/DELETE | `/api/v1/settings` | Cài đặt chỉnh trên UI của workspace / dự án (`{"values": {"qa.temporal.rescore": "mean", ...}}`) |
+| POST/GET | `/api/v1/relabel`, `/api/v1/eval-temporal` | Chạy nền: áp dụng lại cài đặt cho frame chưa mở; so sánh trước / sau optical flow (GET trả tiến độ và kết quả gần nhất) |
 | GET | `/api/v1/report.csv?kind=frames\|summary` | Báo cáo CSV: từng frame / số liệu tổng hợp (gồm năng suất) |
 | POST | `/api/v1/export` | Xuất dataset các frame đã approve (COCO có `segmentation` từ mask sơ bộ) |
 | GET | `/api/v1/3d/models`, `/3d/frames?model=` | Mô hình 3D có frame; hàng đợi frame 3D |
@@ -296,6 +298,7 @@ Hai cột cuối là kết quả QA Agent 3D trên 3 scene demo, dùng ngưỡng
 | FR-16 lịch sử | `corrections.jsonl` (từng object) + `events.jsonl` (approve / reject / reopen / undo / redo của từng frame) |
 | FR-17 xuất KITTI | Nút **Xuất KITTI** (tab Metrics ở chế độ 3D, trang Dự án); đọc lại được bằng `KittiDB` của nuscenes-devkit |
 | FR-19 báo cáo CSV | Tab Metrics: **CSV từng frame**, **CSV tổng hợp** (Excel mở đúng tiếng Việt) |
+| Cài đặt trên UI | Tab **⚙ Cài đặt** (cũng mở từ thẻ dự án): optical flow cho lan truyền / QA temporal, tính lại score theo sweep, ngưỡng giữ box, số keyframe lan truyền — lưu theo workspace / dự án (`settings.json`), không phải sửa `configs/autolabel.yaml`. Nút **Áp dụng lại** (frame chưa ai mở, dùng cache detection) và **Chạy đánh giá** (so sánh trước / sau trên frame có GT, bảng ngay trên trang) chạy nền |
 | FR-27 năng suất | Tab Metrics: frame/giờ theo người và theo phiên (cách nhau > 30 phút là phiên mới); auto-label frame/giờ theo phiên chạy |
 
 Các việc chạy trên terminal gom trong `scripts\tasks.ps1` (PowerShell): `check`, `install`, `serve`, `test`, `demozip`,

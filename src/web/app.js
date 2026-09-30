@@ -1424,15 +1424,151 @@ setInterval(() => { $('timer').textContent = fmtTime(elapsed()); }, 500);
 
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
-  ['review', 'log', 'metrics'].forEach((t) => $('tab-' + t).classList.toggle('hidden', t !== tab || (t === 'review' && S.viewMode === '3d')));
+  ['review', 'log', 'metrics', 'settings'].forEach((t) => $('tab-' + t).classList.toggle('hidden', t !== tab || (t === 'review' && S.viewMode === '3d')));
   $('tab-review3d').classList.toggle('hidden', !(tab === 'review' && S.viewMode === '3d'));
   window.dispatchEvent(new CustomEvent('autolabel:tab', { detail: tab }));
+  if (tab === 'settings') { loadSettings().catch((e) => toast(e.message, true)); return; }
   if (S.viewMode === '3d' && tab !== 'log') return;
   if (tab === 'log') loadLog().catch((e) => toast(e.message, true));
   if (tab === 'metrics') loadMetrics().catch((e) => toast(e.message, true));
   if (tab === 'review') { fitCanvas(); draw(); }
 }
 document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+
+// ---------- ⚙ Cài đặt ----------
+
+const JOB_POLL = {};
+async function loadSettings() {
+  const r = await api('/settings');
+  S.settings = r.fields;
+  S.gtFrames = r.gt_frames;
+  $('settings-scope').textContent = PROJECT ? `Dự án: ${$('project-name').textContent || PROJECT}` : 'Workspace mặc định';
+  $('settings-form').innerHTML = r.fields.map(settingRow).join('');
+  $('settings-save').disabled = true;
+  $('eval-run').disabled = !r.gt_frames;
+  $('eval-run').title = r.gt_frames ? `${r.gt_frames} frame có GT` : 'Cần dữ liệu có nhãn gốc (nuScenes có sample_annotation)';
+  pollJob('relabel', true);
+  pollJob('eval', true);
+}
+function fmtSetting(f, v) {
+  if (f.kind === 'choice') return f.choices[v] || v;
+  if (f.kind === 'bool') return v ? 'bật' : 'tắt';
+  return String(v);
+}
+function settingRow(f) {
+  const id = 'set-' + f.path.replace(/\./g, '-');
+  let control;
+  if (f.kind === 'choice') {
+    control = `<select id="${id}" data-path="${esc(f.path)}">${Object.entries(f.choices).map(([k, lab]) => `<option value="${esc(k)}" ${k === f.value ? 'selected' : ''}>${esc(lab)}</option>`).join('')}</select>`;
+  } else if (f.kind === 'bool') {
+    control = `<label class="set-control"><input type="checkbox" id="${id}" data-path="${esc(f.path)}" ${f.value ? 'checked' : ''}> bật</label>`;
+  } else {
+    control = `<input type="number" id="${id}" data-path="${esc(f.path)}" value="${f.value}" min="${f.min}" max="${f.max}" step="${f.step || 1}">`;
+  }
+  const when = f.applies === 'now' ? 'áp dụng ngay' : 'áp cho frame auto-label mới — bấm Áp dụng lại cho frame cũ';
+  return `<div class="set-row">
+    <label for="${id}">${esc(f.label)}<span class="set-meta ${f.changed ? 'changed' : ''}">${f.changed ? `đã đổi · mặc định: ${esc(fmtSetting(f, f.default))}` : 'mặc định'}</span></label>
+    <div>${control}</div>
+    <div class="set-help">${esc(f.help)} <i>(${when})</i></div>
+  </div>`;
+}
+function settingValues() {
+  const out = {};
+  document.querySelectorAll('#settings-form [data-path]').forEach((el) => {
+    const f = S.settings.find((x) => x.path === el.dataset.path);
+    out[f.path] = f.kind === 'bool' ? el.checked : f.kind === 'choice' ? el.value : Number(el.value);
+  });
+  return out;
+}
+$('settings-form').addEventListener('input', () => { $('settings-save').disabled = false; });
+$('settings-form').addEventListener('submit', (e) => e.preventDefault());
+$('settings-save').addEventListener('click', async () => {
+  try {
+    const r = await api('/settings', { method: 'PUT', body: { values: settingValues() } });
+    S.settings = r.fields;
+    $('settings-form').innerHTML = r.fields.map(settingRow).join('');
+    $('settings-save').disabled = true;
+    const needs = r.fields.some((f) => f.applies === 'relabel' && f.changed);
+    toast(needs ? 'Đã lưu. Bấm "Áp dụng lại" để frame chưa mở dùng cài đặt mới.' : 'Đã lưu.');
+  } catch (err) { toast(err.message, true); }
+});
+$('settings-reset').addEventListener('click', async () => {
+  try {
+    const r = await api('/settings', { method: 'DELETE' });
+    S.settings = r.fields;
+    $('settings-form').innerHTML = r.fields.map(settingRow).join('');
+    $('settings-save').disabled = true;
+    toast('Đã về cài đặt mặc định.');
+  } catch (err) { toast(err.message, true); }
+});
+
+const JOB_URL = { relabel: '/relabel', eval: '/eval-temporal' };
+function renderJob(kind, job) {
+  const box = $(kind + '-status');
+  box.classList.toggle('error', job.state === 'error');
+  $(kind + '-run').disabled = job.state === 'running' || (kind === 'eval' && !S.gtFrames);
+  if (job.state === 'running') {
+    box.innerHTML = `<div class="progress"><div class="job-bar" style="width:${(job.progress || 0) * 100}%"></div></div><span>${esc(job.message || '')}</span>`;
+  } else if (job.state === 'error') {
+    box.textContent = 'Lỗi: ' + job.message;
+  } else if (job.state === 'done' && kind === 'relabel' && job.result) {
+    const k = job.result.skipped;
+    box.innerHTML = `✓ Đã áp dụng lại ${job.result.relabeled} frame. Bỏ qua: ${k.opened} đã mở / duyệt, ${k.propagated} có nhãn lan truyền, ${k.sweep_edited} có sweep đã sửa.`;
+  } else if (job.state === 'done' && kind === 'eval') {
+    box.textContent = '✓ Xong — xem bảng bên dưới.';
+  } else box.textContent = '';
+}
+async function pollJob(kind, once = false) {
+  clearTimeout(JOB_POLL[kind]);
+  try {
+    const r = await api(JOB_URL[kind]);
+    const job = kind === 'eval' ? r.job : r;
+    renderJob(kind, job);
+    if (kind === 'eval') renderEvalResult(r.last);
+    if (job.state === 'running' && !$('tab-settings').classList.contains('hidden')) JOB_POLL[kind] = setTimeout(() => pollJob(kind), 1500);
+    else if (job.state === 'done' && !once && kind === 'relabel') { refreshLists(); if (S.frame) openFrame(S.frame.frame_id, { preview: true }).catch(() => {}); }
+  } catch (err) { if (!once) toast(err.message, true); }
+}
+async function startJob(kind) {
+  try {
+    const job = await api(JOB_URL[kind], { method: 'POST', body: {} });
+    renderJob(kind, job);
+    JOB_POLL[kind] = setTimeout(() => pollJob(kind), 1000);
+  } catch (err) { toast(err.message, true); }
+}
+$('relabel-run').addEventListener('click', () => startJob('relabel'));
+$('eval-run').addEventListener('click', () => startJob('eval'));
+
+const VARIANT_NAME = {
+  base: 'Trước (không flow, score detector)', flow: 'So khớp sweep bằng flow', 'flow+mean': 'Flow + score trung bình 5 ảnh',
+  'flow+linked': 'Flow + score trung bình các lần thấy', mean: 'Score trung bình 5 ảnh (không flow)',
+};
+const PROP_NAME = { off: 'Đoán theo vận tốc (trước)', missing: 'Flow ở ảnh chưa detect', always: 'Flow ở mọi ảnh' };
+function renderEvalResult(last) {
+  if (!last) {
+    $('eval-result-note').textContent = 'Chưa chạy.';
+    $('eval2d-table').innerHTML = $('evalprop-table').innerHTML = '';
+    return;
+  }
+  const n = (v, d = 3) => (v == null ? '—' : Number(v).toFixed(d));
+  const frames = last.rows2d[0]?.frames ?? '—';
+  $('eval-result-note').innerHTML = `Chạy xong lúc ${esc(last.finished_at || '—')} trên ${frames} keyframe có GT. <b>Xem tay</b> = box rủi ro medium/high; <b>lọt qua</b> = box sai nằm trong nhóm low (duyệt theo lô không xem); <b>vẽ thêm</b> = vật có trong GT nhưng máy sót; <b>box sai</b> = phải xoá / sửa.`;
+  const base = last.rows2d.find((r) => r.name === 'base');
+  const delta = (v, b, lowerBetter) => {
+    if (!base || v == null || b == null || v === b) return '';
+    const good = lowerBetter ? v < b : v > b;
+    return ` <span class="${good ? 'delta-good' : 'delta-bad'}">(${v > b ? '+' : ''}${typeof v === 'number' && !Number.isInteger(v) ? (v - b).toFixed(3) : v - b})</span>`;
+  };
+  $('eval2d-table').innerHTML = '<thead><tr><th>Cách xử lý 2D</th><th class="num">mAP50</th><th class="num">F1</th><th class="num">Xem tay</th><th class="num">Lọt qua</th><th class="num">Vẽ thêm</th><th class="num">Box sai</th><th class="num">s / frame</th></tr></thead><tbody>' +
+    last.rows2d.map((r) => `<tr><td>${esc(VARIANT_NAME[r.name] || r.name)}</td><td class="num">${n(r.mAP50)}${delta(r.mAP50, base?.mAP50)}</td><td class="num">${n(r.f1)}</td>
+      <td class="num">${r.review}${delta(r.review, base?.review, true)}</td><td class="num">${r.slip}${delta(r.slip, base?.slip, true)}</td>
+      <td class="num">${r.fn}${delta(r.fn, base?.fn, true)}</td><td class="num">${r.fp}${delta(r.fp, base?.fp, true)}</td><td class="num">${n(r.s_per_frame, 2)}</td></tr>`).join('') + '</tbody>';
+  const off = last.propagation.find((r) => r.mode === 'off');
+  $('evalprop-table').innerHTML = '<thead><tr><th>Lan truyền nhãn</th><th class="num">Nhãn đúng</th><th class="num">Box ra</th><th class="num">Tỉ lệ đúng</th><th class="num">Đổi ID</th><th class="num">Mất dấu</th><th class="num">IoU TB</th><th class="num">Giây</th></tr></thead><tbody>' +
+    (last.propagation.map((r) => `<tr><td>${esc(PROP_NAME[r.mode] || r.mode)}</td><td class="num">${r.correct}${off && r !== off ? ` <span class="${r.correct >= off.correct ? 'delta-good' : 'delta-bad'}">(${r.correct - off.correct >= 0 ? '+' : ''}${r.correct - off.correct})</span>` : ''}</td>
+      <td class="num">${r.outputs}</td><td class="num">${n(r.correct_rate)}</td><td class="num">${r.id_switch}</td><td class="num">${r.lost}</td><td class="num">${n(r.mean_iou)}</td><td class="num">${n(r.seconds, 1)}</td></tr>`).join('') ||
+      '<tr><td colspan="8" class="muted">Không có scene nào đủ keyframe để thử lan truyền</td></tr>') + '</tbody>';
+}
 
 function stepFrame(delta) {
   if (S.viewMode === 'video') { stepVideo(delta); return; }
@@ -1612,6 +1748,7 @@ async function initProject() {
     const urlMode = new URLSearchParams(location.search).get('mode');
     const saved = modes.includes(urlMode) ? urlMode : storageGet('viewMode', modes[0]);
     await setMode(modes.includes(saved) ? saved : modes[0]);
+    if (new URLSearchParams(location.search).get('tab') === 'settings') switchTab('settings');
   } catch (err) {
     toast('Không tải được dữ liệu: ' + err.message, true);
   }

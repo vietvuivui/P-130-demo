@@ -9,6 +9,7 @@ from typing import Literal
 import numpy as np
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from src.config import get_settings
 from src.models.qa_config import AutoLabelConfig, get_autolabel_config
@@ -75,8 +76,16 @@ def get_store(request: Request = None) -> WorkspaceStore:
     return _store(get_settings().workspace_dir)
 
 
-def get_config() -> AutoLabelConfig:
+def get_base_config() -> AutoLabelConfig:
+    """configs/autolabel.yaml (mặc định chung, chưa áp cài đặt của workspace)."""
     return get_autolabel_config(get_settings().autolabel_config)
+
+
+def get_config(request: Request = None) -> AutoLabelConfig:
+    """Config dùng cho workspace / dự án: mặc định + cài đặt người dùng đổi trên tab ⚙ Cài đặt (settings.json)."""
+    from src.services import ui_settings
+
+    return ui_settings.apply(get_base_config(), ui_settings.load(get_store(request).root))
 
 
 def data_source(request: Request | None) -> tuple[str, str]:
@@ -164,6 +173,112 @@ def ui_config(config: AutoLabelConfig = Depends(get_config)):
         "issue_help": ISSUE_HELP,
         "reviewer": get_settings().reviewer_name,
     }
+
+
+# ---------- ⚙ Cài đặt: chỉnh trên UI, áp dụng lại, đánh giá trước / sau ----------
+
+
+class SettingsRequest(BaseModel):
+    values: dict = {}
+
+
+@router.get("/settings")
+def get_ui_settings(store: WorkspaceStore = Depends(get_store), base: AutoLabelConfig = Depends(get_base_config)):
+    from src.services import temporal_eval, ui_settings
+
+    return {"fields": ui_settings.describe(base, ui_settings.load(store.root)),
+            "gt_frames": temporal_eval.gt_frames(store)}  # fmt: skip
+
+
+@router.put("/settings")
+def put_ui_settings(req: SettingsRequest, store: WorkspaceStore = Depends(get_store),
+                    base: AutoLabelConfig = Depends(get_base_config)):  # fmt: skip
+    from src.services import ui_settings
+
+    current = {**ui_settings.load(store.root), **req.values}
+    try:
+        current = ui_settings.validate(current)
+    except ValueError as e:
+        raise _error(422, "INVALID_SETTING", str(e)) from e
+    defaults = {f["path"]: f["default"] for f in ui_settings.describe(base, {})}
+    ui_settings.save(store.root, {k: v for k, v in current.items() if v != defaults[k]})
+    store.append_event(dict(type="settings", mode="2d", values=req.values))
+    return get_ui_settings(store, base)
+
+
+@router.delete("/settings")
+def reset_ui_settings(store: WorkspaceStore = Depends(get_store), base: AutoLabelConfig = Depends(get_base_config)):
+    from src.services import ui_settings
+
+    ui_settings.save(store.root, {})
+    return get_ui_settings(store, base)
+
+
+def _job_key(store: WorkspaceStore, kind: str) -> str:
+    return f"{Path(store.root).resolve()}:{kind}"
+
+
+@router.get("/relabel")
+def relabel_status(store: WorkspaceStore = Depends(get_store)):
+    from src.services import jobs
+
+    return jobs.status(_job_key(store, "relabel"))
+
+
+@router.post("/relabel")
+def relabel(
+    request: Request, store: WorkspaceStore = Depends(get_store), config: AutoLabelConfig = Depends(get_config)
+):
+    """Auto-label lại (dùng cache detection) các frame chưa ai mở, theo cài đặt hiện tại. Chạy nền."""
+    from src.services import jobs
+    from src.services.relabel import relabel_auto_frames
+
+    ensemble = get_ensemble(request)
+    root, version = data_source(request)
+
+    def work(progress):
+        with video_service._PROCESS_LOCK:
+            return relabel_auto_frames(store, config, ensemble, root, version, progress)
+
+    return jobs.start(_job_key(store, "relabel"), work)
+
+
+@router.get("/eval-temporal")
+def eval_temporal_status(store: WorkspaceStore = Depends(get_store)):
+    import json
+
+    from src.services import jobs, temporal_eval
+
+    path = Path(store.root) / "eval_temporal" / "temporal_eval.json"
+    last = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+    return {
+        "job": jobs.status(_job_key(store, "eval_temporal")),
+        "gt_frames": temporal_eval.gt_frames(store),
+        "last": {**temporal_eval.summary_rows(last), "finished_at": last.get("finished_at")} if last else None,
+    }
+
+
+@router.post("/eval-temporal")
+def eval_temporal(request: Request, store: WorkspaceStore = Depends(get_store),
+                  config: AutoLabelConfig = Depends(get_config)):  # fmt: skip
+    """So sánh trước / sau optical flow trên các frame có nhãn gốc (GT) của workspace. Chạy nền, vài phút."""
+    from src.services import jobs, temporal_eval
+
+    if temporal_eval.gt_frames(store) == 0:
+        raise _error(409, "NO_GT", "Cần dữ liệu có nhãn gốc (nuScenes có sample_annotation) để đánh giá")
+    root, version = data_source(request)
+    try:
+        data = _nuscenes(root, version)
+    except FileNotFoundError as e:
+        raise _error(503, "DATA_UNAVAILABLE", f"Đánh giá cần bảng nuScenes: {e}") from e
+
+    def work(progress):
+        with video_service._PROCESS_LOCK:
+            res = temporal_eval.evaluate(data, Path(store.root), Path(store.root) / "eval_temporal", config,
+                                         progress=progress)  # fmt: skip
+        return temporal_eval.summary_rows(res)
+
+    return jobs.start(_job_key(store, "eval_temporal"), work)
 
 
 @router.get("/frames", response_model=list[FrameSummary])

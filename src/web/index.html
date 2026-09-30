@@ -6,7 +6,7 @@
   <title>AutoLabel 3D — Review</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
-  <link rel="stylesheet" href="styles.css?v=3d8">
+  <link rel="stylesheet" href="styles.css?v=3d9">
 </head>
 <body>
   <header class="topbar">
@@ -27,6 +27,7 @@
       <button class="tab active" data-tab="review" role="tab">Review</button>
       <button class="tab" data-tab="log" role="tab">Correction log</button>
       <button class="tab" data-tab="metrics" role="tab">Metrics &amp; Export</button>
+      <button class="tab" data-tab="settings" role="tab" title="Chỉnh cách gán nhãn / lan truyền, áp dụng lại, đánh giá trước / sau">⚙ Cài đặt</button>
     </nav>
     <label class="reviewer">Người duyệt
       <input id="reviewer" type="text" maxlength="40">
@@ -327,6 +328,47 @@
   </main>
 
   <!-- ===== Metrics & Export ===== -->
+  <!-- ===== Cài đặt ===== -->
+  <main id="tab-settings" class="tab-panel hidden">
+    <div class="page">
+      <div class="page-head">
+        <h2>Cài đặt</h2>
+        <span class="muted" id="settings-scope"></span>
+      </div>
+      <section class="card">
+        <div class="card-head">
+          <h3>Gán nhãn 2D và lan truyền</h3>
+          <span class="card-actions">
+            <button id="settings-reset" class="btn btn-ghost btn-sm" type="button">Về mặc định</button>
+            <button id="settings-save" class="btn btn-primary btn-sm" type="button" disabled>Lưu</button>
+          </span>
+        </div>
+        <p class="muted">Lưu riêng cho workspace / dự án này (không cần sửa file config). Mặc định lấy từ <code>configs/autolabel.yaml</code>.</p>
+        <form id="settings-form" class="settings-form" autocomplete="off"></form>
+      </section>
+      <div class="two-col">
+        <section class="card">
+          <h3>Áp dụng lại cho frame chưa ai mở</h3>
+          <p class="muted">Chạy lại QA / score / ngưỡng theo cài đặt hiện tại, dùng detection đã lưu nên nhanh. Không đụng frame đã mở, đã duyệt, đã nhận nhãn lan truyền hoặc có sweep đã sửa.</p>
+          <button id="relabel-run" class="btn btn-primary btn-sm" type="button">↻ Áp dụng lại</button>
+          <div class="job-status" id="relabel-status"></div>
+        </section>
+        <section class="card">
+          <h3>So sánh trước / sau optical flow</h3>
+          <p class="muted">Chạy mọi cách xử lý trên các frame có nhãn gốc (GT) của workspace này, cùng một detection, rồi so mAP, việc của người duyệt và độ chính xác lan truyền. Vài phút; chạy nền, có thể tiếp tục duyệt.</p>
+          <button id="eval-run" class="btn btn-primary btn-sm" type="button">▶ Chạy đánh giá</button>
+          <div class="job-status" id="eval-status"></div>
+        </section>
+      </div>
+      <section class="card" id="eval-result-card">
+        <h3>Kết quả đánh giá gần nhất</h3>
+        <p class="muted" id="eval-result-note">Chưa chạy.</p>
+        <div class="table-wrap"><table class="data-table" id="eval2d-table"></table></div>
+        <div class="table-wrap"><table class="data-table" id="evalprop-table"></table></div>
+      </section>
+    </div>
+  </main>
+
   <main id="tab-metrics" class="tab-panel hidden">
     <div class="page">
       <div class="page-head">
@@ -407,8 +449,8 @@
   </main>
 
   <div id="toast" class="toast hidden" role="status"></div>
-  <script src="app.js?v=3d8"></script>
-  <script type="module" src="bev2d.js?v=3d8"></script>
-  <script type="module" src="app3d.js?v=3d8"></script>
+  <script src="app.js?v=3d9"></script>
+  <script type="module" src="bev2d.js?v=3d9"></script>
+  <script type="module" src="app3d.js?v=3d9"></script>
 </body>
 </html>

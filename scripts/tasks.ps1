@@ -13,6 +13,7 @@
 #   evaltemporal  so sánh trước / sau optical flow (lan truyền nhãn, QA temporal, tính lại score theo sweep) trên
 #               dev (3 scene demo) và held-out (-Scenes, mặc định 20 scene val có đủ dữ liệu); detect chạy GPU, có cache
 #   rescore     bật / tắt tính lại score keyframe theo sweep trong configs/autolabel.yaml: -Mode off | mean | linked
+#               (trên web: tab ⚙ Cài đặt làm được việc này và evaltemporal cho từng workspace / dự án, không cần terminal)
 #   push        đẩy nhánh hiện tại lên GitHub
 #   all         check -> test -> eval3d -> label3d -> eval2d
 #

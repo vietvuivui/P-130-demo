@@ -30,6 +30,38 @@ Quy tắc:
 
 ---
 
+## 2026-09-30 (2) · Kiên · nhánh `kien`
+
+**Làm gì:** Tab **⚙ Cài đặt** trên UI (mở cả từ thẻ dự án), để không phải sửa config hay chạy terminal:
+
+- **Chỉnh:** optical flow khi lan truyền, so khớp sweep bằng flow, tính lại score theo sweep, ngưỡng giữ box, số
+  keyframe lan truyền. Lưu theo workspace / dự án.
+- **Áp dụng lại:** cho frame chưa ai mở, dùng cache detection, chạy nền có tiến độ.
+- **Chạy đánh giá:** so sánh trước / sau trên frame có GT, bảng kết quả ngay trên trang. Chạy trên 119 keyframe dev
+  cho đúng số như `eval/results/temporal/report.md`.
+
+**File chính:**
+
+- Mới: `src/services/ui_settings.py`, `jobs.py`, `relabel.py`, `temporal_eval.py` (logic chuyển từ
+  `tools2d/eval_temporal.py`, file này giờ chỉ là lệnh gọi).
+- Sửa: `routes.py`, `projects.py`, `web/app.js`, `index.html`, `projects.js`, `styles.css`.
+
+**Ảnh hưởng tới người khác:**
+
+- `routes.get_config(request)` giờ áp thêm `<workspace>/settings.json`.
+- Có thêm `get_base_config`.
+- Bước gán nhãn của dự án cũng dùng cài đặt này.
+- API mới: `/settings`, `/relabel`, `/eval-temporal`.
+
+**Cách kiểm tra:**
+
+- `pytest` (133 pass).
+- UI: tab ⚙ Cài đặt → đổi "Tính lại score" → Lưu → Áp dụng lại → Chạy đánh giá.
+
+**Còn dở / việc tiếp:** Không.
+
+---
+
 ## 2026-09-30 · Kiên · nhánh `kien`
 
 **Làm gì:** Đưa ý tưởng *Deep Feature Flow* (arXiv:1611.07715) vào sản phẩm ở mức box (optical flow OpenCV DIS, không
