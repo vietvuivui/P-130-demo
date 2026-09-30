@@ -28,6 +28,17 @@ FIELDS: dict[str, dict] = {
         "đổi ID 265 → 97, mất dấu −22%. Tốn ~1 s cho mỗi lần lan truyền 10 keyframe trên CPU.",
         "applies": "now",
     },
+    "propagation.association": {
+        "kind": "choice",
+        "label": "Lan truyền nhãn: cách ghép với detection",
+        "choices": {
+            "byte": "Hai lượt kiểu ByteTrack — box rõ trước (khuyên dùng)",
+            "single": "Một lượt với mọi box (cách cũ)",
+        },
+        "help": "Box score thấp nằm gần không còn 'cướp' track của vật có box rõ. Dev: box lan truyền sai 224 → 203, "
+        "nhãn đúng giữ nguyên; held-out 4 scene: sai 329 → 300.",
+        "applies": "now",
+    },
     "propagation.max_keyframes": {
         "kind": "int",
         "label": "Số keyframe tối đa mỗi lần lan truyền",

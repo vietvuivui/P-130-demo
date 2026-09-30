@@ -210,6 +210,12 @@ propagation:
   #             2910 -> 3329 (+14%), đổi ID 265 -> 97, mất dấu -22%; tốn ~1 s mỗi lần lan truyền 10 keyframe (CPU)
   flow: always
   flow_scale: 0.5
+  # Ghép track với detection: single = một lượt (như trước) | byte = hai lượt kiểu ByteTrack: box score ≥ byte_high_score
+  # trước, box score thấp chỉ cho track còn thiếu với IoU ≥ byte_low_iou. Dev (cùng flow always): box lan truyền sai
+  # 224 -> 203, nhãn đúng giữ nguyên (791 -> 789), tỉ lệ đúng 0.762 -> 0.779; held-out 4 scene: sai 329 -> 300
+  association: byte
+  byte_high_score: 0.3
+  byte_low_iou: 0.5
   # Số keyframe tối đa đi tới trong một lần lan truyền
   max_keyframes: 20
   # Detector ở frame đích gán lớp khác lớp lan truyền với score >= ngưỡng -> PROP_CLASS_DIFFERS

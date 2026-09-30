@@ -30,6 +30,38 @@ Quy tắc:
 
 ---
 
+## 2026-09-30 (3) · Kiên · nhánh `kien`
+
+**Làm gì:**
+
+- Tracker lan truyền ghép hai lượt kiểu **ByteTrack** (`propagation.association: byte`, mặc định; chỉnh được ở tab
+  ⚙ Cài đặt).
+  - Dev: box lan truyền sai 224 → 203, nhãn đúng giữ nguyên.
+  - Held-out 4 scene: sai 329 → 300.
+- Đo thêm 20 scene held-out trên GPU cho optical flow: lan truyền +14% nhãn đúng.
+- Thử "tin box sweep score thấp" cho QA: lỗi lọt qua tăng, nên không bật (`qa.temporal.sweep_min_score`, mặc định
+  tắt).
+- `tasks.ps1 serve -Workspace` để demo. Ẩn cảnh báo `'half' is deprecated`.
+
+**File chính:**
+
+- Sửa: `src/services/propagation.py`, `temporal_eval.py`, `ui_settings.py`, `configs/autolabel.yaml`.
+- Kết quả: `eval/results/temporal/report.md` mục 0, 5, 6.
+
+**Ảnh hưởng tới người khác:**
+
+- Config: `propagation.association`, `byte_high_score`, `byte_low_iou`, `qa.temporal.sweep_min_score`.
+- Bảng đánh giá lan truyền có thêm dòng `always+byte`.
+
+**Cách kiểm tra:** `pytest` (134 pass).
+
+**Còn dở / việc tiếp:**
+
+- Lan truyền box 3D đã duyệt (idea 1 cho 3D).
+- Đo thời gian từng bước để tìm chỗ tốn 2–3 phút/frame.
+
+---
+
 ## 2026-09-30 (2) · Kiên · nhánh `kien`
 
 **Làm gì:** Tab **⚙ Cài đặt** trên UI (mở cả từ thẻ dự án), để không phải sửa config hay chạy terminal:

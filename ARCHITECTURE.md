@@ -114,7 +114,8 @@ Người approve một keyframe → `POST /frames/{id}/propagate` (UI tự gọi
    10 fps của video tải lên (timeline trong record; `sequence.WorkspaceSequenceSource` chọn nguồn), dự đoán box
    ở ảnh kế tiếp bằng **optical flow** giữa hai ảnh (`src/services/flow.py`, OpenCV DIS; `propagation.flow`:
    `always` mặc định, `missing` chỉ ở ảnh chưa có detection, `off` = vận tốc không đổi như trước), ghép với
-   detection đã cache (IoU ≥ 0.3, một-một). Sweep người đã sửa (xem dưới) thay cho cache detector. Ảnh chưa có
+   detection đã cache theo hai lượt kiểu ByteTrack (`propagation.association: byte`): box score ≥ 0.3 trước
+   (IoU ≥ 0.3), box score thấp chỉ cho track còn thiếu (IoU ≥ 0.5), một-một. Sweep người đã sửa (xem dưới) thay cho cache detector. Ảnh chưa có
    detection: box đi theo flow. Dừng track khi > 6 ảnh liền không khớp, ra khỏi khung, hoặc box quá nhỏ.
 3. **Ở mỗi keyframe đích còn "auto"**: tính c_prop; track nhận box pre-label trùng nó (IoU ≥ 0.5) → object
    `source="propagated"`, lớp của người, box của detector ở chính frame đó. Detector không thấy → thêm box

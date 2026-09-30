@@ -156,6 +156,12 @@ class PropagationCfg(BaseModel):
     # Optical flow cho tracker lan truyền: off (dự đoán theo vận tốc) | missing (chỉ ảnh chưa có detection) | always
     flow: Literal["off", "missing", "always"] = "always"
     flow_scale: float = 0.5
+    # Ghép track với detection: single = một lượt với mọi box ≥ score_threshold (như trước) | byte = hai lượt kiểu
+    # ByteTrack (Zhang et al. 2022): box score ≥ byte_high_score trước, box score thấp chỉ cho track còn thiếu (IoU chặt
+    # hơn byte_low_iou), để box score thấp nằm gần không "cướp" track của vật có box rõ
+    association: Literal["single", "byte"] = "byte"
+    byte_high_score: float = 0.3
+    byte_low_iou: float = 0.5
     max_keyframes: int = 20
     class_differs_score: float = 0.5
 

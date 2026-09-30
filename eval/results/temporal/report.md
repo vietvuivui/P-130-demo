@@ -130,3 +130,21 @@ thêm vật ở sweep → object keyframe hết `FLICKER`.
 Bỏ đi 70 cờ FLICKER thì 49 cờ là lỗi thật: box sai của detector cũng hay có "bóng" score thấp ở frame bên cạnh, nên
 tin chúng làm lỗi lọt qua tăng. Kết luận chung của mục 3–5: với detector này, "thấy lại ở frame bên cạnh" là bằng
 chứng yếu cho việc box đúng; thông tin thời gian có ích nhất ở chỗ bám vật khi lan truyền (idea 1).
+
+## 6. Ghép hai lượt kiểu ByteTrack trong tracker lan truyền — bật mặc định
+
+Tracker trước đây ghép box dự đoán với mọi detection ≥ 0.10 trong một lượt, nên box score thấp nằm sát có thể giành track
+của vật có box rõ. `propagation.association: byte` (Zhang et al. 2022, ByteTrack): lượt 1 chỉ box score ≥ 0.3 (ngưỡng
+giữ box sẵn có), lượt 2 box score thấp cho track còn thiếu với IoU ≥ 0.5. Tham số lấy theo bài báo / config, không dò.
+
+| Cấu hình (thí nghiệm keyframe hoàn hảo) | Dev: đúng / box ra | Sai | Đổi ID | Mất dấu | Tỉ lệ đúng | Held-out 4: đúng / box ra | Sai | Đổi ID | Mất dấu | Tỉ lệ đúng |
+|---|---|---|---|---|---|---|---|---|---|---|
+| vận tốc, một lượt (trước) | 725 / 1041 | 267 | 49 | 273 | 0.696 | 785 / 1106 | 295 | 26 | 237 | 0.710 |
+| vận tốc, ByteTrack | 696 / 986 | 233 | 57 | 314 | 0.706 | 787 / 1093 | 286 | 20 | 244 | 0.720 |
+| flow, một lượt | 791 / 1038 | 224 | 23 | 251 | 0.762 | 873 / 1213 | 329 | 11 | 183 | 0.720 |
+| **flow + ByteTrack** (mặc định) | 789 / 1013 | **203** | **21** | 267 | **0.779** | 876 / 1185 | **300** | **9** | 201 | **0.739** |
+
+Chọn trên dev theo tỉ lệ đúng (như mục 2). Với flow, ByteTrack giữ nguyên số nhãn đúng, bớt ~9% box lan truyền sai
+(người phải sửa), đổi lại dừng sớm hơn một ít track (mất dấu +16 / +18 — vật vẫn còn box pre-label để người duyệt).
+Số liệu: `bytetrack.json`. Chạy lại trên 20 scene: `scripts\tasks.ps1 evaltemporal` (bảng lan truyền có dòng
+`always+byte`).

@@ -28,7 +28,13 @@ VARIANTS = {
 # Mặc định chỉ chạy 5 cấu hình chính (nút trên web); "low*" = nhận cả box sweep score ≥ 0.1 làm bằng chứng (kiểu
 # ByteTrack) — đã đo, làm lỗi lọt qua tăng (report.md mục 5), chạy thêm bằng --variants nếu cần.
 DEFAULT_VARIANTS = ["base", "flow", "flow+mean", "flow+linked", "mean"]
-PROP_MODES = ("off", "missing", "always")
+# tên -> (propagation.flow, propagation.association). "off" = cách làm trước khi có flow / ByteTrack
+PROP_MODES = {
+    "off": ("off", "single"),
+    "missing": ("missing", "single"),
+    "always": ("always", "single"),
+    "always+byte": ("always", "byte"),
+}
 
 
 def metrics_2d(store) -> dict:
@@ -101,9 +107,9 @@ def run_propagation(data, ws: Path, config, scenes=None) -> dict:
 
     store = WorkspaceStore(ws)
     out = {}
-    for mode in PROP_MODES:
+    for mode, (flow, assoc) in PROP_MODES.items():
         cfg = config.model_copy(deep=True)
-        cfg.propagation.flow = mode
+        cfg.propagation.flow, cfg.propagation.association = flow, assoc
         source = NuScenesSequenceSource(data, DetectorEnsemble(cfg, ws / "cache" / "detections"))
         t0 = time.perf_counter()
         r = evaluate_propagation(store, source, cfg, scenes, max_frames=10, start_every=5)

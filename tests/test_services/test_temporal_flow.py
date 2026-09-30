@@ -118,3 +118,17 @@ def test_sweep_edits_override_detector_for_tracking():
     assert [(d.label, d.score) for d in dets] == [("truck", 1.0)]
     assert effective_detections(untouched) == untouched.detections
     assert set(sweep_overrides([frame])) == {"sd-1"}  # sweep chưa sửa vẫn đọc cache detector
+
+
+def test_byte_association_prefers_confident_boxes():
+    """Box score thấp nằm sát hơn không được giành track của vật có box rõ (ghép hai lượt kiểu ByteTrack)."""
+    track_box = np.array([100.0, 100, 200, 200])
+    confident = Detection(bbox=[112, 100, 212, 200], label="car", score=0.9)  # IoU ~0.79 với dự đoán
+    faint = Detection(bbox=[102, 100, 202, 200], label="car", score=0.15)  # IoU ~0.96 nhưng score thấp
+    img = TimelineImage(sd_token="sd1", timestamp=83_333, path="")
+    out = {}
+    for assoc in ("single", "byte"):
+        t = Track("t", "car", track_box.copy(), "keep", "k", "1", last_t=0)
+        Tracker([t], PropagationCfg(flow="off", association=assoc), 1600, 900).step(img, [faint, confident])
+        out[assoc] = t.last_match.score
+    assert out == {"single": 0.15, "byte": 0.9}

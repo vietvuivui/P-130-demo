@@ -247,17 +247,24 @@ class Tracker:
         Người hay xoá box trùng/lệch và giữ box đúng của cùng một object: nếu hai loại track tranh nhau thì
         track "suppress" có thể giành mất detection, làm nhãn thật bị coi là mất dấu.
         """
+        cfg = self.cfg
         pairs: dict[int, tuple[int, float]] = {}
-        free = list(range(len(detections)))
-        for kind in ("keep", "suppress"):
-            idx = [i for i, t in enumerate(tracks) if t.kind == kind]
-            if not idx or not free:
-                continue
-            found = _greedy_match(pred[idx], [detections[j].bbox for j in free], self.cfg.match_iou)
-            for a, (b, v) in found.items():
-                pairs[idx[a]] = (free[b], v)
-            used = {free[b] for b, _ in found.values()}
-            free = [j for j in free if j not in used]
+        if cfg.association == "byte":  # ByteTrack: box rõ trước, box score thấp chỉ để giữ track còn thiếu
+            high = [j for j, d in enumerate(detections) if d.score >= cfg.byte_high_score]
+            low = [j for j, d in enumerate(detections) if d.score < cfg.byte_high_score]
+            stages = [(high, cfg.match_iou), (low, max(cfg.match_iou, cfg.byte_low_iou))]
+        else:
+            stages = [(list(range(len(detections))), cfg.match_iou)]
+        for free, thr in stages:
+            for kind in ("keep", "suppress"):
+                idx = [i for i, t in enumerate(tracks) if t.kind == kind and i not in pairs]
+                if not idx or not free:
+                    continue
+                found = _greedy_match(pred[idx], [detections[j].bbox for j in free], thr)
+                for a, (b, v) in found.items():
+                    pairs[idx[a]] = (free[b], v)
+                used = {free[b] for b, _ in found.values()}
+                free = [j for j in free if j not in used]
         return pairs
 
     def _check_stop(self, t: Track) -> None:

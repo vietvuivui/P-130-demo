@@ -1543,7 +1543,7 @@ const VARIANT_NAME = {
   base: 'Trước (không flow, score detector)', flow: 'So khớp sweep bằng flow', 'flow+mean': 'Flow + score trung bình 5 ảnh',
   'flow+linked': 'Flow + score trung bình các lần thấy', mean: 'Score trung bình 5 ảnh (không flow)',
 };
-const PROP_NAME = { off: 'Đoán theo vận tốc (trước)', missing: 'Flow ở ảnh chưa detect', always: 'Flow ở mọi ảnh' };
+const PROP_NAME = { off: 'Đoán theo vận tốc (trước)', missing: 'Flow ở ảnh chưa detect', always: 'Flow ở mọi ảnh', 'always+byte': 'Flow ở mọi ảnh + ghép 2 lượt (ByteTrack)' };
 function renderEvalResult(last) {
   if (!last) {
     $('eval-result-note').textContent = 'Chưa chạy.';
