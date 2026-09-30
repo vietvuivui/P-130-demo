@@ -21,7 +21,13 @@ VARIANTS = {
     "flow+mean": dict(flow=True, rescore="mean"),
     "flow+linked": dict(flow=True, rescore="linked"),
     "mean": dict(flow=False, rescore="mean"),
+    "low": dict(flow=False, rescore="off", sweep_min_score=0.1),
+    "low+mean": dict(flow=False, rescore="mean", sweep_min_score=0.1),
+    "low+flow+mean": dict(flow=True, rescore="mean", sweep_min_score=0.1),
 }
+# Mặc định chỉ chạy 5 cấu hình chính (nút trên web); "low*" = nhận cả box sweep score ≥ 0.1 làm bằng chứng (kiểu
+# ByteTrack) — đã đo, làm lỗi lọt qua tăng (report.md mục 5), chạy thêm bằng --variants nếu cần.
+DEFAULT_VARIANTS = ["base", "flow", "flow+mean", "flow+linked", "mean"]
 PROP_MODES = ("off", "missing", "always")
 
 
@@ -72,6 +78,7 @@ def run_variant(name: str, opts: dict, data, base_ws: Path, out_ws: Path, config
     cfg = config.model_copy(deep=True)
     cfg.qa.temporal.flow = opts["flow"]
     cfg.qa.temporal.rescore = opts["rescore"]
+    cfg.qa.temporal.sweep_min_score = opts.get("sweep_min_score")
     store = WorkspaceStore(out_ws)
     keys = sorted(
         (f.scene, f.index, f.sample_token)
@@ -131,7 +138,7 @@ def evaluate(data, base_ws: Path, out_dir: Path, config, variants=None, scenes=N
     """Chạy mọi cấu hình 2D + lan truyền; ghi out_dir/temporal_eval.json; xoá workspace tạm."""
     from src.services.store import WorkspaceStore
 
-    variants = variants or list(VARIANTS)
+    variants = variants or DEFAULT_VARIANTS
     out_dir.mkdir(parents=True, exist_ok=True)
     steps = len(variants) + 1
     result = {"workspace": str(base_ws), "as_run": metrics_2d(WorkspaceStore(base_ws)), "variants": {},

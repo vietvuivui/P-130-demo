@@ -135,9 +135,12 @@ def label_keyframe(
     det_cfg, tcfg = config.detection, config.qa.temporal
     raw = ensemble.detect_batch(images)
     # Ngưỡng giữ box áp cho sweep để check temporal/tracking nhất quán với box người thấy
-    sweep_dets = {
-        o: [d for d in dets if det_cfg.keep(d.label, d.score)] for o, dets in zip(offsets, raw[1:], strict=True)
-    }
+    sweep_min = tcfg.sweep_min_score
+
+    def keep_sweep(d) -> bool:
+        return d.score >= sweep_min if sweep_min is not None else det_cfg.keep(d.label, d.score)
+
+    sweep_dets = {o: [d for d in dets if keep_sweep(d)] for o, dets in zip(offsets, raw[1:], strict=True)}
     warped = sweep_warps(image, sweeps, sweep_dets, image_file, tcfg) if offsets else {}
     # Score keyframe tính lại theo sweep trước khi lọc ngưỡng: vật thấy ổn định được giữ, box chỉ loé lên bị bỏ
     key_all = rescore(raw[0], sweep_dets, warped, tcfg.rescore, tcfg.match_iou)

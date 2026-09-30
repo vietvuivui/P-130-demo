@@ -96,6 +96,9 @@ class TemporalCfg(BaseModel):
     flow_scale: float = 0.5
     # Tính lại score keyframe theo các sweep (src/services/temporal_fusion.py): off | mean | linked
     rescore: Literal["off", "mean", "linked"] = "off"
+    # Ngưỡng score cho box ở sweep khi làm bằng chứng cho keyframe (kiểu ByteTrack: ngưỡng cao để tạo box, ngưỡng
+    # thấp để xác nhận vật đã thấy ở keyframe). None = như detection.min_score
+    sweep_min_score: float | None = None
 
 
 class GeometryCfg(BaseModel):

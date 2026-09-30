@@ -148,6 +148,9 @@ qa:
     # mAP gần như không đổi. Held-out 20 scene, mean (flow tắt): box phải xem tay 1707 -> 648, box sai 2980 -> 1860,
     # lỗi còn lại sau duyệt như cũ (4197 -> 4190) nhưng vật sót 2565 -> 2791. Tắt mặc định (chọn trên dev), nhóm quyết.
     rescore: "off"
+    # Ngưỡng score của box ở sweep khi làm bằng chứng cho keyframe (null = như detection.min_score). Đã thử 0.1 (kiểu
+    # ByteTrack): FLICKER giảm 190 -> 120 nhưng phần lớn là cờ đúng, lỗi còn lại dev 704 -> 736, held-out 662 -> 693
+    sweep_min_score: null
   geometry:
     max_area_ratio: 0.35
     border_margin_px: 4

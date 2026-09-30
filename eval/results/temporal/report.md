@@ -113,3 +113,20 @@ Box ở t−2…t+2 giờ sửa được trên UI (keep / xoá / đổi lớp / 
 lan truyền dùng bản đã sửa. Không nằm trong số liệu trên (cần người duyệt thật); kiểm tra bằng
 `tests/test_api/test_sweep_edit.py`: vẽ vật detector sót ở t−1, t+1 → keyframe có đề xuất `RECOVERED_BY_TRACK`;
 thêm vật ở sweep → object keyframe hết `FLICKER`.
+
+## 5. Tin box sweep score thấp khi keyframe đã thấy vật (kiểu ByteTrack) — không dùng
+
+Ý tưởng: box ở frame giữa score thấp (0.1–0.3) nhưng trùng vật keyframe đã thấy thì vẫn tính là "thấy lại"
+(`qa.temporal.sweep_min_score: 0.1`), để bớt cờ FLICKER sai và cho score theo sweep nhiều bằng chứng hơn.
+
+| Cấu hình | mAP50 dev | Xem tay | Lỗi còn lại (lọt + sót) | FLICKER (cờ / đúng) | mAP50 held-out 4 | Xem tay | Lỗi còn lại |
+|---|---|---|---|---|---|---|---|
+| base | 0.377 | 304 | **704** | 190 / 135 | 0.359 | 240 | 662 |
+| mean | 0.365 | 121 | 724 | 24 / 11 | 0.338 | 102 | **659** |
+| low | 0.377 | 260 | 736 | 120 / 86 | 0.359 | 204 | 693 |
+| low + mean | 0.370 | 147 | 733 | 23 / 10 | 0.342 | 104 | 673 |
+| low + flow + mean | 0.375 | 135 | 779 | 5 / 2 | 0.361 | 102 | 719 |
+
+Bỏ đi 70 cờ FLICKER thì 49 cờ là lỗi thật: box sai của detector cũng hay có "bóng" score thấp ở frame bên cạnh, nên
+tin chúng làm lỗi lọt qua tăng. Kết luận chung của mục 3–5: với detector này, "thấy lại ở frame bên cạnh" là bằng
+chứng yếu cho việc box đúng; thông tin thời gian có ích nhất ở chỗ bám vật khi lan truyền (idea 1).

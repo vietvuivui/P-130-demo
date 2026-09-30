@@ -26,7 +26,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.services.temporal_eval import VARIANTS, evaluate, print_summary  # noqa: E402
+from src.services.temporal_eval import DEFAULT_VARIANTS, VARIANTS, evaluate, print_summary  # noqa: E402
 
 
 def main() -> None:
@@ -37,7 +37,7 @@ def main() -> None:
         "--workspace", required=True, type=Path, help="workspace đã chạy `src.cli run` (có cache detection)"
     )
     ap.add_argument("--out", required=True, type=Path)
-    ap.add_argument("--variants", nargs="*", default=list(VARIANTS))
+    ap.add_argument("--variants", nargs="*", default=DEFAULT_VARIANTS, choices=list(VARIANTS))
     ap.add_argument("--scenes", nargs="*", help="chỉ các scene này (mặc định: mọi scene của workspace)")
     ap.add_argument("--config", default=str(ROOT / "configs" / "autolabel.yaml"))
     args = ap.parse_args()
