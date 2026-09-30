@@ -10,20 +10,28 @@
 #   eval3d      chấm 3D trên các scene val có trên máy: 4 mô hình LiDAR (+ lật trục) rồi eval (tách dev / held-out)
 #   label3d     tạo frame 3D cho UI "Workspace nhóm" bằng ensemble (chạy sau eval3d)
 #   eval2d      chấm detector 2D trên dev / held-out (thêm -Weights để so trọng số đã fine-tune)
+#   evaltemporal  so sánh trước / sau optical flow (lan truyền nhãn, QA temporal, tính lại score theo sweep) trên
+#               dev (3 scene demo) và held-out (-Scenes, mặc định 20 scene val có đủ dữ liệu); detect chạy GPU, có cache
+#   rescore     bật / tắt tính lại score keyframe theo sweep trong configs/autolabel.yaml: -Mode off | mean | linked
 #   push        đẩy nhánh hiện tại lên GitHub
 #   all         check -> test -> eval3d -> label3d -> eval2d
 #
 # Tuỳ chọn: -Dataroot ..\v1.0-trainval  -Scene scene-0035  -Weights weights\yoloe-26l-nuimages.pt  -NoTta  -Port 8000
+#           -Scenes scene-0003 scene-0016 (held-out cho evaltemporal)  -Mode mean (cho rescore)
 
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("check", "install", "serve", "test", "demozip", "eval3d", "label3d", "eval2d", "push", "all")]
+    [ValidateSet("check", "install", "serve", "test", "demozip", "eval3d", "label3d", "eval2d", "evaltemporal", "rescore",
+        "push", "all")]
     [string]$Task = "check",
     [string]$Dataroot = "..\v1.0-trainval",
     [string]$Scene = "scene-0035",
     [string]$Weights = "",
     [switch]$NoTta,
-    [int]$Port = 8000
+    [int]$Port = 8000,
+    [string[]]$Scenes = @(),
+    [ValidateSet("off", "mean", "linked")]
+    [string]$Mode = "off"
 )
 
 $ErrorActionPreference = "Stop"
@@ -117,6 +125,48 @@ function Eval2d {
     Run "python" (@("tools2d\eval2d.py", "--dataroot", $Dataroot, "--weights") + $w)
 }
 
+function EvalTemporal {
+    $dev = @("scene-0035", "scene-0097", "scene-0101")
+    $held = if ($Scenes.Count) { $Scenes } else {
+        @("scene-0003", "scene-0012", "scene-0013", "scene-0014", "scene-0015", "scene-0016", "scene-0017", "scene-0018",
+          "scene-0036", "scene-0038", "scene-0039", "scene-0092", "scene-0093", "scene-0094", "scene-0095", "scene-0096",
+          "scene-0098", "scene-0099", "scene-0100", "scene-0102")
+    }
+    $saved = @{ NUSCENES_DATAROOT = $env:NUSCENES_DATAROOT; NUSCENES_VERSION = $env:NUSCENES_VERSION; WORKSPACE_DIR = $env:WORKSPACE_DIR }
+    try {
+        foreach ($split in @(@("dev", $dev), @("heldout", $held))) {
+            $name, $list = $split[0], $split[1]
+            $ws = "data\eval_temporal\ws_$name"
+            $env:NUSCENES_DATAROOT = $Dataroot
+            $env:NUSCENES_VERSION = "v1.0-trainval"
+            $env:WORKSPACE_DIR = $ws
+            Step "Auto-label $name ($($list.Count) scene) vào $ws (detect keyframe + sweep t-2..t+2, có cache)"
+            Run "python" (@("-m", "src.cli", "run", "--scenes") + $list)
+            Step "Trước / sau optical flow: $name"
+            Run "python" @("tools2d\eval_temporal.py", "--dataroot", $Dataroot, "--workspace", $ws, "--out", "data\eval_temporal\result_$name")
+        }
+    }
+    finally {
+        foreach ($k in $saved.Keys) {
+            if ($saved[$k]) { Set-Item "env:$k" $saved[$k] } else { Remove-Item "env:$k" -ErrorAction SilentlyContinue }
+        }
+    }
+    Write-Host "Kết quả đầy đủ: data\eval_temporal\result_dev\temporal_eval.json, result_heldout\temporal_eval.json" -ForegroundColor Green
+}
+
+function Rescore {
+    $path = "configs\autolabel.yaml"
+    $text = [IO.File]::ReadAllText((Resolve-Path $path))
+    $flow = if ($Mode -eq "off") { "false" } else { "true" }
+    $text = [regex]::Replace($text, '(?m)^    flow: (true|false)', "    flow: $flow")
+    $text = [regex]::Replace($text, '(?m)^    rescore: "?(off|mean|linked)"?', "    rescore: ""$Mode""")
+    [IO.File]::WriteAllText((Resolve-Path $path), $text, (New-Object System.Text.UTF8Encoding($false)))
+    Step "qa.temporal.flow = $flow, qa.temporal.rescore = $Mode"
+    Select-String -Path $path -Pattern '^    (flow|rescore):' | ForEach-Object { Write-Host $_.Line }
+    Write-Host "Áp cho frame mới auto-label. Frame cũ chưa ai mở: python -m src.cli run --overwrite (dùng cache detection, nhanh)." -ForegroundColor Yellow
+    Write-Host "Khởi động lại web (scripts\tasks.ps1 serve) để server đọc config mới." -ForegroundColor Yellow
+}
+
 function Push {
     Step "git push"
     $branch = (git rev-parse --abbrev-ref HEAD).Trim()
@@ -133,6 +183,8 @@ switch ($Task) {
     "eval3d" { Eval3d }
     "label3d" { Label3d }
     "eval2d" { Eval2d }
+    "evaltemporal" { EvalTemporal }
+    "rescore" { Rescore }
     "push" { Push }
     "all" { Check; Test; Eval3d; Label3d; Eval2d }
 }

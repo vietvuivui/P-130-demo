@@ -79,7 +79,11 @@ def run_variant(name: str, opts: dict, data, base_ws: Path, out_ws: Path, config
     if out_ws.exists():
         shutil.rmtree(out_ws)
     (out_ws / "cache").mkdir(parents=True)
-    (out_ws / "cache" / "detections").symlink_to((base_ws / "cache" / "detections").resolve())
+    src_cache = (base_ws / "cache" / "detections").resolve()
+    try:
+        (out_ws / "cache" / "detections").symlink_to(src_cache, target_is_directory=True)
+    except OSError:  # Windows không bật Developer Mode thì không tạo được symlink: chép cache (file JSON nhỏ)
+        shutil.copytree(src_cache, out_ws / "cache" / "detections")
     cfg = config.model_copy(deep=True)
     cfg.qa.temporal.flow = opts["flow"]
     cfg.qa.temporal.rescore = opts["rescore"]
@@ -155,8 +159,24 @@ def main() -> None:
     (args.out / "temporal_eval.json").write_text(json.dumps(result, indent=1, ensure_ascii=False), encoding="utf-8")
     for name in args.variants:
         shutil.rmtree(args.out / f"ws_{name}", ignore_errors=True)
-    print(json.dumps({k: {m: v[m] for m in ("mAP50", "mAP70", "low_risk_share", "low_risk_error_rate", "fn_recovered")}
-                      for k, v in result["variants"].items()}, indent=1))  # fmt: skip
+    print_summary(result)
+
+
+def print_summary(result: dict) -> None:
+    """Bảng ngắn: 2D (mAP, việc của người) và lan truyền, để đọc ngay trên terminal."""
+    print("\n== 2D: cùng detection, khác xử lý sau detector ==")
+    print(f"{'cấu hình':<12} {'mAP50':>6} {'F1':>6} {'xem tay':>8} {'lọt lô':>7} {'vẽ thêm':>8} {'box sai':>8} {'s/frame':>8}")
+    for name, v in result["variants"].items():
+        low = round(v["objects"] * (v["low_risk_share"] or 0))
+        slip = round(low * (v["low_risk_error_rate"] or 0))
+        print(f"{name:<12} {v['mAP50']:>6.3f} {v['f1'] or 0:>6.3f} {v['objects'] - low:>8} {slip:>7} {v['fn']:>8} "
+              f"{v['fp']:>8} {v['s_per_frame'] or 0:>8.2f}")  # fmt: skip
+    print("xem tay = box medium/high; lọt lô = box sai nằm trong nhóm low (duyệt theo lô); vẽ thêm = GT bị sót")
+    print("\n== Lan truyền nhãn (GT keyframe 0, 5, 10… làm nhãn người; tối đa 10 keyframe) ==")
+    print(f"{'flow':<8} {'đúng':>6} {'box ra':>7} {'tỉ lệ':>6} {'đổi ID':>7} {'mất dấu':>8} {'IoU TB':>7} {'giây':>6}")
+    for mode, v in result.get("propagation", {}).items():
+        print(f"{mode:<8} {v['correct']:>6} {v['outputs']:>7} {v['correct_rate'] or 0:>6.3f} {v['id_switch']:>7} "
+              f"{v['lost']:>8} {v['mean_iou'] or 0:>7.3f} {v['seconds']:>6.1f}")  # fmt: skip
 
 
 if __name__ == "__main__":
