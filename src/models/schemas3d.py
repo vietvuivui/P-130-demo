@@ -90,6 +90,8 @@ class Frame3DRecord(BaseModel):
     rejected_at: str | None = None
     autolabel_s: float | None = None
     autolabel_run: str | None = None
+    # Giây theo từng bước (detect, lidar, flow, qa / detect_6cam, points, verify), src/services/timing.py
+    autolabel_timing: dict[str, float] | None = None
 
 
 class Frame3DSummary(BaseModel):

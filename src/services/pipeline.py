@@ -18,6 +18,7 @@ from src.services.nuscenes_data import CameraFrame, NuScenesMini
 from src.services.review import now_iso
 from src.services.store import WORKSPACE_PREFIX, WorkspaceStore
 from src.services.temporal_fusion import rescore
+from src.services.timing import Stopwatch
 
 log = logging.getLogger(__name__)
 
@@ -76,6 +77,7 @@ class AutoLabelPipeline:
         uv, depth = (
             self.data.lidar_in_image(frame, self.config.qa.lidar.min_depth_m) if frame.lidar_sd_token else (None, None)
         )
+        t_lidar = time.perf_counter() - t0
         record = label_keyframe(
             self.ensemble,
             self.config,
@@ -92,6 +94,8 @@ class AutoLabelPipeline:
             depth=depth,
         )
         record.autolabel_s, record.autolabel_run = round(time.perf_counter() - t0, 3), self.run_id
+        if frame.lidar_sd_token:
+            record.autolabel_timing = {"lidar": round(t_lidar, 3), **(record.autolabel_timing or {})}
         self.store.save_frame(record)
         self._save_aux(frame, uv, depth)
         return record
@@ -133,7 +137,11 @@ def label_keyframe(
         (sweeps[o].sd_token, image_file(sweeps[o].path)) for o in offsets
     ]
     det_cfg, tcfg = config.detection, config.qa.temporal
-    raw = ensemble.detect_batch(images)
+    sw = Stopwatch()
+    n0 = getattr(ensemble, "model_images", 0)
+    with sw("detect"):
+        raw = ensemble.detect_batch(images)
+    sw.add("n_model_images", getattr(ensemble, "model_images", 0) - n0)
     # Ngưỡng giữ box áp cho sweep để check temporal/tracking nhất quán với box người thấy
     sweep_min = tcfg.sweep_min_score
 
@@ -141,7 +149,8 @@ def label_keyframe(
         return d.score >= sweep_min if sweep_min is not None else det_cfg.keep(d.label, d.score)
 
     sweep_dets = {o: [d for d in dets if keep_sweep(d)] for o, dets in zip(offsets, raw[1:], strict=True)}
-    warped = sweep_warps(image, sweeps, sweep_dets, image_file, tcfg) if offsets else {}
+    with sw("flow"):
+        warped = sweep_warps(image, sweeps, sweep_dets, image_file, tcfg) if offsets else {}
     # Score keyframe tính lại theo sweep trước khi lọc ngưỡng: vật thấy ổn định được giữ, box chỉ loé lên bị bỏ
     key_all = rescore(raw[0], sweep_dets, warped, tcfg.rescore, tcfg.match_iou)
     key_dets = sorted((d for d in key_all if det_cfg.keep(d.label, d.score)), key=lambda d: -d.score)
@@ -159,6 +168,7 @@ def label_keyframe(
         )
         for i, d in enumerate(key_dets)
     ]
+    qa_t0 = time.perf_counter()
     state = qa_agent.invoke(
         {
             "config": config,
@@ -171,7 +181,11 @@ def label_keyframe(
             "lidar_depth": depth,
         }
     )
+    sw.add("qa", time.perf_counter() - qa_t0)
+    if not tcfg.flow:
+        sw.t.pop("flow", None)
     return FrameRecord(
+        autolabel_timing=sw.result(),
         frame_id=frame_id,
         sample_token=sample_token,
         scene=scene,

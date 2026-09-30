@@ -6,7 +6,7 @@
   <title>AutoLabel 3D — Review</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
-  <link rel="stylesheet" href="styles.css?v=3d10">
+  <link rel="stylesheet" href="styles.css?v=3d11">
 </head>
 <body>
   <header class="topbar">
@@ -437,6 +437,15 @@
       </section>
       </section>
 
+      <section class="card timing-card">
+        <div class="card-head">
+          <h3>Thời gian từng bước xử lý</h3>
+          <span class="card-actions"><button id="timing-refresh" class="btn btn-ghost btn-sm" type="button">Tải lại</button></span>
+        </div>
+        <p class="muted" id="timing-note">Đo lúc auto-label: mỗi frame ghi thời gian detect, chiếu LiDAR, optical flow, QA (2D) và detect 6 camera, đọc point cloud, kiểm chứng (3D).</p>
+        <div class="table-wrap"><table class="data-table" id="timing-table"></table></div>
+      </section>
+
       <div class="page-head"><h2>Auto-labeled dataset</h2></div>
       <section class="card export-card">
         <p>Chỉ frame đã <strong>Approve</strong> được xuất. Gồm <code>coco.json</code>, <code>labels.jsonl</code> (box, lớp, risk, issue, hành động của người), <code>corrections.jsonl</code>, <code>manifest.json</code>.</p>
@@ -449,8 +458,8 @@
   </main>
 
   <div id="toast" class="toast hidden" role="status"></div>
-  <script src="app.js?v=3d10"></script>
-  <script type="module" src="bev2d.js?v=3d10"></script>
-  <script type="module" src="app3d.js?v=3d10"></script>
+  <script src="app.js?v=3d11"></script>
+  <script type="module" src="bev2d.js?v=3d11"></script>
+  <script type="module" src="app3d.js?v=3d11"></script>
 </body>
 </html>

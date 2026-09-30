@@ -30,6 +30,29 @@ Quy tắc:
 
 ---
 
+## 2026-09-30 (4) · Kiên · nhánh `kien`
+
+**Làm gì:** Đo một frame tốn thời gian ở bước nào.
+
+- Mỗi frame 2D / 3D ghi `autolabel_timing`:
+  - 2D: detect, chiếu LiDAR, flow, QA;
+  - 3D: detect 6 camera, point cloud, kiểm chứng.
+- Server ghi thêm thời gian nạp model và làm mờ ảnh lần đầu.
+- Bảng "Thời gian từng bước" ở tab Metrics, gồm cả thời gian mỗi bước của dự án.
+- `python -m src.cli profile` / `tasks.ps1 profile`: đo từ đầu, không dùng cache.
+- Trên CPU 2 nhân:
+  - detect 17.7 s/frame (99.9% thời gian gán nhãn);
+  - làm mờ ảnh lần đầu 4.1 s/ảnh, tức ~19 s mỗi lần mở một frame mới trên web.
+
+**Ảnh hưởng tới người khác:**
+
+- Schema: `FrameRecord.autolabel_timing`, `Frame3DRecord.autolabel_timing`.
+- API: `GET /timing`.
+
+**Cách kiểm tra:** `pytest` (136 pass), `python -m src.cli profile --limit 5`.
+
+---
+
 ## 2026-09-30 (3) · Kiên · nhánh `kien`
 
 **Làm gì:**

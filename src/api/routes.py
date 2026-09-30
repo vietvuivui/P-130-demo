@@ -281,6 +281,42 @@ def eval_temporal(request: Request, store: WorkspaceStore = Depends(get_store),
     return jobs.start(_job_key(store, "eval_temporal"), work)
 
 
+@router.get("/timing")
+def timing_report(request: Request, store: WorkspaceStore = Depends(get_store)):
+    """Thời gian từng bước: 2D / 3D theo frame đã auto-label, việc của server (nạp model, làm mờ), bước của dự án."""
+    from datetime import datetime
+
+    from src.services import timing
+
+    frames = store.list_frames()
+    t2d = [f.autolabel_timing for f in frames if f.autolabel_timing]
+    out = {
+        "frames2d": len(t2d),
+        "rows2d": timing.summarize(t2d),
+        "mean_total2d": round(sum(f.autolabel_s for f in frames if f.autolabel_timing) / len(t2d), 3) if t2d else None,
+        "model_images_per_frame": round(sum(t.get("n_model_images", 0) for t in t2d) / len(t2d), 2) if t2d else None,
+        "rows3d": {},
+        "server": {k: {**v, "name": timing.STAGE_NAME.get(k, k)} for k, v in timing.snapshot().items()},
+        "steps": [],
+    }
+    for model in store.models3d():
+        t3d = [f.autolabel_timing for f in store.list_frames3d(model) if f.autolabel_timing]
+        if t3d:
+            out["rows3d"][model] = {"frames": len(t3d), "rows": timing.summarize(t3d)}
+    pid = _project_id(request)
+    if pid:
+        from src.services.projects import get_manager
+
+        p = get_manager().get(pid)
+        n = (p.stats or {}).get("frames") or (p.stats or {}).get("frames2d")
+        for st in p.steps:
+            if st.started_at and st.finished_at and st.status == "done":
+                sec = (datetime.fromisoformat(st.finished_at) - datetime.fromisoformat(st.started_at)).total_seconds()
+                out["steps"].append({"name": st.name, "label": st.label, "seconds": round(sec, 1), "frames": n,
+                                     "s_per_frame": round(sec / n, 2) if n else None})  # fmt: skip
+    return out
+
+
 @router.get("/frames", response_model=list[FrameSummary])
 def list_frames(
     status: Literal["auto", "editing", "approved", "rejected"] | None = None,

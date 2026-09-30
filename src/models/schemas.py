@@ -153,6 +153,8 @@ class FrameRecord(BaseModel):
     # Thời gian auto-label (detect + QA) của frame và phiên chạy, để đo throughput inference (FR-27)
     autolabel_s: float | None = None
     autolabel_run: str | None = None
+    # Giây theo từng bước (detect, lidar, flow, qa / detect_6cam, points, verify), src/services/timing.py
+    autolabel_timing: dict[str, float] | None = None
     # Lan truyền: frame gốc và lúc lan truyền. prelabel giữ bản pre-label trước lần lan truyền
     # đầu tiên, để lan truyền lại (từ keyframe khác) luôn bắt đầu từ cùng một điểm.
     propagated_from: str | None = None

@@ -11,6 +11,7 @@
 #   eval3d      chấm 3D trên các scene val có trên máy: 4 mô hình LiDAR (+ lật trục) rồi eval (tách dev / held-out)
 #   label3d     tạo frame 3D cho UI "Workspace nhóm" bằng ensemble (chạy sau eval3d)
 #   eval2d      chấm detector 2D trên dev / held-out (thêm -Weights để so trọng số đã fine-tune)
+#   profile     đo một frame tốn thời gian ở bước nào (detect, LiDAR, QA, làm mờ ảnh, nạp model), không dùng cache: -Limit 10
 #   evaltemporal  so sánh trước / sau optical flow (lan truyền nhãn, QA temporal, tính lại score theo sweep) trên
 #               dev (3 scene demo) và held-out (-Scenes, mặc định 20 scene val có đủ dữ liệu); detect chạy GPU, có cache
 #   rescore     bật / tắt tính lại score keyframe theo sweep trong configs/autolabel.yaml: -Mode off | mean | linked
@@ -23,7 +24,7 @@
 
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("check", "install", "serve", "test", "demozip", "eval3d", "label3d", "eval2d", "evaltemporal", "rescore",
+    [ValidateSet("check", "install", "serve", "test", "demozip", "eval3d", "label3d", "eval2d", "evaltemporal", "rescore", "profile",
         "push", "all")]
     [string]$Task = "check",
     [string]$Dataroot = "..\v1.0-trainval",
@@ -33,6 +34,7 @@ param(
     [int]$Port = 8000,
     [string[]]$Scenes = @(),
     [string]$Workspace = "",
+    [int]$Limit = 10,
     [ValidateSet("off", "mean", "linked")]
     [string]$Mode = "off"
 )
@@ -175,6 +177,14 @@ function Rescore {
     Write-Host "Khởi động lại web (scripts\tasks.ps1 serve) để server đọc config mới." -ForegroundColor Yellow
 }
 
+function Profile {
+    Step "Đo thời gian từng bước trên $Limit keyframe (workspace tạm, không dùng cache)"
+    $argv = @("-m", "src.cli", "profile", "--limit", "$Limit")
+    if ($Scenes.Count) { $argv += @("--scenes") + $Scenes }
+    if ($PSBoundParameters.ContainsKey("Dataroot")) { $env:NUSCENES_DATAROOT = $Dataroot; $env:NUSCENES_VERSION = "v1.0-trainval" }
+    Run "python" $argv
+}
+
 function Push {
     Step "git push"
     $branch = (git rev-parse --abbrev-ref HEAD).Trim()
@@ -193,6 +203,7 @@ switch ($Task) {
     "eval2d" { Eval2d }
     "evaltemporal" { EvalTemporal }
     "rescore" { Rescore }
+    "profile" { Profile }
     "push" { Push }
     "all" { Check; Test; Eval3d; Label3d; Eval2d }
 }

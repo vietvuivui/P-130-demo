@@ -1428,6 +1428,7 @@ function switchTab(tab) {
   $('tab-review3d').classList.toggle('hidden', !(tab === 'review' && S.viewMode === '3d'));
   window.dispatchEvent(new CustomEvent('autolabel:tab', { detail: tab }));
   if (tab === 'settings') { loadSettings().catch((e) => toast(e.message, true)); return; }
+  if (tab === 'metrics') loadTiming().catch((e) => toast(e.message, true));
   if (S.viewMode === '3d' && tab !== 'log') return;
   if (tab === 'log') loadLog().catch((e) => toast(e.message, true));
   if (tab === 'metrics') loadMetrics().catch((e) => toast(e.message, true));
@@ -1569,6 +1570,35 @@ function renderEvalResult(last) {
       <td class="num">${r.outputs}</td><td class="num">${n(r.correct_rate)}</td><td class="num">${r.id_switch}</td><td class="num">${r.lost}</td><td class="num">${n(r.mean_iou)}</td><td class="num">${n(r.seconds, 1)}</td></tr>`).join('') ||
       '<tr><td colspan="8" class="muted">Không có scene nào đủ keyframe để thử lan truyền</td></tr>') + '</tbody>';
 }
+
+// ---------- thời gian từng bước ----------
+async function loadTiming() {
+  const t = await api('/timing');
+  const n = (v, d = 2) => (v == null ? '—' : Number(v).toFixed(d));
+  const rows = [];
+  const section = (title) => rows.push(`<tr class="timing-sec"><td colspan="5">${esc(title)}</td></tr>`);
+  if (t.steps.length) {
+    section('Các bước của dự án (tổng thời gian ÷ số frame)');
+    t.steps.forEach((s) => rows.push(`<tr><td>${esc(s.label)}</td><td class="num">${s.frames ?? '—'}</td><td class="num"><b>${n(s.s_per_frame)}</b></td><td class="num">${n(s.seconds, 0)}</td><td></td></tr>`));
+  }
+  if (t.rows2d.length) {
+    section(`Gán nhãn 2D — ${t.frames2d} frame, TB ${n(t.mean_total2d)} s/frame, ${n(t.model_images_per_frame, 1)} ảnh chạy model/frame (0 = dùng cache)`);
+    t.rows2d.forEach((r) => rows.push(`<tr><td>${esc(r.name)}</td><td class="num">${r.frames}</td><td class="num"><b>${n(r.mean_s)}</b></td><td class="num">${n(r.total_s, 1)}</td><td>${meterCell(r.share)}</td></tr>`));
+  }
+  Object.entries(t.rows3d).forEach(([model, v]) => {
+    section(`Kiểm chứng 3D (${model}) — ${v.frames} frame`);
+    v.rows.forEach((r) => rows.push(`<tr><td>${esc(r.name)}</td><td class="num">${r.frames}</td><td class="num"><b>${n(r.mean_s)}</b></td><td class="num">${n(r.total_s, 1)}</td><td>${meterCell(r.share)}</td></tr>`));
+  });
+  const srv = Object.entries(t.server);
+  if (srv.length) {
+    section('Việc của server từ lúc khởi động (không gắn với frame)');
+    srv.forEach(([, v]) => rows.push(`<tr><td>${esc(v.name)}</td><td class="num">${v.n} lần</td><td class="num"><b>${n(v.mean_s)}</b></td><td class="num">${n(v.total_s, 1)}</td><td class="muted">lâu nhất ${n(v.max_s)} s</td></tr>`));
+  }
+  $('timing-table').innerHTML = rows.length
+    ? '<thead><tr><th>Bước</th><th class="num">Số frame / lần</th><th class="num">Giây TB</th><th class="num">Tổng (s)</th><th>Phần trăm</th></tr></thead><tbody>' + rows.join('') + '</tbody>'
+    : '<tbody><tr><td class="muted">Chưa có số đo: frame auto-label trước bản này chưa ghi thời gian từng bước. Chạy lại (tab ⚙ Cài đặt → Áp dụng lại, hoặc tạo dự án mới).</td></tr></tbody>';
+}
+$('timing-refresh').addEventListener('click', () => loadTiming().catch((e) => toast(e.message, true)));
 
 function stepFrame(delta) {
   if (S.viewMode === 'video') { stepVideo(delta); return; }
