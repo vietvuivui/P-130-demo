@@ -17,6 +17,13 @@ class NothingToExportError(ValueError):
     pass
 
 
+def valid_mask(obj) -> list[float] | None:
+    """Mask còn dùng được: có mask, object không bị xoá, người không sửa box / không vẽ lại."""
+    if not obj.mask or obj.review.status == "deleted" or obj.review.action in ("EDIT_BOX", "ADD_BOX"):
+        return None
+    return obj.mask
+
+
 def export_dataset(store: WorkspaceStore, config: AutoLabelConfig) -> ExportResponse:
     frames = store.list_frames()
     # FR-18: chỉ frame đã approve mới được xuất
@@ -75,6 +82,8 @@ def export_dataset(store: WorkspaceStore, config: AutoLabelConfig) -> ExportResp
                     "bbox": [x1, y1, round(x2 - x1, 1), round(y2 - y1, 1)],
                     "area": round((x2 - x1) * (y2 - y1), 1),
                     "iscrowd": 0,
+                    # mask sơ bộ của model (FR-04); rỗng khi không có hoặc người đã sửa box (mask không còn khớp)
+                    "segmentation": [valid_mask(obj)] if valid_mask(obj) else [],
                     **{k: v for k, v in record.items() if k not in ("bbox", "class")},
                 }
             )

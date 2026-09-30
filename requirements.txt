@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Core (API, QA Agent, review UI) — đủ để chạy server, test và CI, không cần GPU
 fastapi>=0.115.0
 uvicorn[standard]>=0.34.0
@@ -21,3 +22,4 @@ pytest-asyncio>=0.24.0
 httpx>=0.28.0
 
 # Model 2D (YOLO-World, Grounding DINO, Florence-2) nằm ở requirements-ml.txt
+scipy>=1.10           # ghép box 3D với box 2D (Hungarian) ở phần kiểm chứng 3D

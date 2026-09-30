@@ -7,10 +7,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from src.api.projects_routes import projects_router
 from src.api.routes import resume_videos, router
+from src.api.routes3d import router3d
 from src.config import get_settings
 
 WEB_DIR = Path(__file__).parent / "web"
+
+
+def _resume_projects() -> None:
+    from src.services.projects import get_manager
+
+    try:
+        get_manager().resume()
+    except Exception:  # không để lỗi ở đây làm hỏng lúc khởi động server
+        import logging
+
+        logging.getLogger(__name__).exception("Không xếp hàng lại được dự án")
 
 
 @asynccontextmanager
@@ -19,13 +32,15 @@ async def lifespan(app: FastAPI):
     print(f"Starting {settings.app_name} in {settings.app_env} mode — UI: http://localhost:{settings.app_port}/")
     # Video tải lên còn dở (server tắt / --reload giữa lúc auto-label): làm tiếp ở luồng nền
     threading.Thread(target=resume_videos, name="resume-videos", daemon=True).start()
+    # Dự án của end-user đang chờ / xử lý dở: xếp hàng lại
+    threading.Thread(target=_resume_projects, name="resume-projects", daemon=True).start()
     yield
     print("Shutting down...")
 
 
 app = FastAPI(
-    title="AutoLabel 2D",
-    description="Auto-label 2D trên nuScenes + QA Agent đa tín hiệu + review by exception",
+    title="AutoLabel 3D",
+    description="Auto-label 2D + 3D (nuScenes, KITTI, LiDAR + camera, video, ảnh) + QA Agent + review by exception",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -40,6 +55,11 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api/v1")
+app.include_router(router3d, prefix="/api/v1")
+app.include_router(projects_router, prefix="/api/v1")
+# Cùng API duyệt, gắn theo dự án: /p/<id>/api/v1/frames ... (UI mở bằng /ui/?project=<id>)
+app.include_router(router, prefix="/p/{project_id}/api/v1", include_in_schema=False)
+app.include_router(router3d, prefix="/p/{project_id}/api/v1", include_in_schema=False)
 
 
 @app.middleware("http")
@@ -57,7 +77,7 @@ app.mount("/ui", StaticFiles(directory=WEB_DIR, html=True), name="ui")
 
 @app.get("/", include_in_schema=False)
 async def index():
-    return RedirectResponse("/ui/login.html")
+    return RedirectResponse("/ui/projects.html")
 
 
 @app.get("/health")

@@ -3,118 +3,85 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dự án — AutoLabel</title>
+  <title>AutoLabel 3D — Dự án</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
-  <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="ui-flow.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="styles.css?v=3d7">
 </head>
-<body>
-
-  <!-- Top Navigation Bar (Image 2) -->
-  <header class="header">
-    <div class="header-left">
-      <a href="projects.html" class="logo">
-        <i class="ri-box-3-fill logo-icon"></i>
-        <span>AutoLabel</span>
-      </a>
-      <nav class="nav">
-        <a href="projects.html" class="nav-item active">Dự án</a>
-        <a href="frames.html" class="nav-item">Tasks &amp; Frames</a>
-        <a href="export.html" class="nav-item">Xuất dữ liệu</a>
-      </nav>
-    </div>
-
-    <div class="header-right">
-      <div class="user-profile" onclick="window.location.href='login.html'" title="Tài khoản người dùng">
-        <i class="ri-user-line avatar-icon"></i>
-        <span class="user-name">Người dùng</span>
+<body class="projects-page">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">AL</span>
+      <div>
+        <div class="brand-title">AutoLabel 3D</div>
+        <div class="brand-sub">Tự động gán nhãn ảnh, video và LiDAR · người chỉ duyệt phần khó</div>
       </div>
     </div>
+    <nav class="tabs">
+      <span class="tab active">Dự án</span>
+      <a class="tab" href="frames.html" title="Tasks & Frames">Tasks &amp; Frames</a>
+      <a class="tab" href="export.html" title="Xuất dữ liệu">Xuất dữ liệu</a>
+      <a class="tab" href="/ui/" title="Workspace mặc định cấu hình trong .env (nuScenes của nhóm)">Workspace nhóm</a>
+    </nav>
   </header>
 
-  <!-- Main Content -->
-  <main class="page-wrap">
-    <!-- Controls Toolbar (Image 2) -->
-    <div class="toolbar-row">
-      <div class="search-box">
-        <input type="text" id="projectSearchInput" placeholder="Tìm kiếm dự án...">
-        <button class="search-btn" title="Tìm kiếm">
-          <i class="ri-search-line"></i>
-        </button>
-      </div>
-
-      <div style="position: relative;">
-        <button class="filter-btn" id="projectSortBtn" title="Sắp xếp">
-          <span id="projectSortLabel">Sắp xếp: Mới nhất</span>
-          <i class="ri-list-check"></i>
-        </button>
-        <div id="projectSortMenu" style="display: none; position: absolute; left: 0; top: calc(100% + 4px); background: #fff; border: 1px solid var(--border-light); border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); width: 180px; z-index: 100; padding: 4px 0;">
-          <a href="javascript:void(0)" onclick="setProjectSort('newest')" style="display: block; padding: 8px 14px; font-size: 13px; color: var(--text-main); text-decoration: none;">Mới nhất</a>
-          <a href="javascript:void(0)" onclick="setProjectSort('name')" style="display: block; padding: 8px 14px; font-size: 13px; color: var(--text-main); text-decoration: none;">Tên (A-Z)</a>
-          <a href="javascript:void(0)" onclick="setProjectSort('frames')" style="display: block; padding: 8px 14px; font-size: 13px; color: var(--text-main); text-decoration: none;">Số lượng frame</a>
+  <div id="pj-env" class="pj-env hidden" role="alert"></div>
+  <main class="pj-main">
+    <section class="pj-new card">
+      <h2>Dự án mới</h2>
+      <form id="pj-form">
+        <label class="pj-field">Tên dự án
+          <input id="pj-name" type="text" maxlength="60" placeholder="vd. Dashcam Hà Nội tháng 9">
+        </label>
+        <div id="pj-drop" class="pj-drop" tabindex="0">
+          <input id="pj-files" type="file" multiple hidden
+                 accept=".zip,.tar,.tgz,.gz,.mp4,.mov,.avi,.mkv,.webm,.jpg,.jpeg,.png,.bmp">
+          <div class="pj-drop-main">Kéo thả file vào đây hoặc <button type="button" id="pj-pick" class="linklike">chọn file</button></div>
+          <div class="muted" id="pj-picked">Một video, nhiều ảnh, hoặc một file .zip</div>
         </div>
-      </div>
-
-      <div style="position: relative;">
-        <button class="filter-btn" id="projectFilterBtn" title="Lọc dự án">
-          <span id="projectFilterLabel">Lọc: Tất cả</span>
-          <i class="ri-filter-3-line"></i>
-        </button>
-        <div id="projectFilterMenu" style="display: none; position: absolute; left: 0; top: calc(100% + 4px); background: #fff; border: 1px solid var(--border-light); border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); width: 180px; z-index: 100; padding: 4px 0;">
-          <a href="javascript:void(0)" onclick="setProjectFilter('all')" style="display: block; padding: 8px 14px; font-size: 13px; color: var(--text-main); text-decoration: none;">Tất cả dự án</a>
-          <a href="javascript:void(0)" onclick="setProjectFilter('in_progress')" style="display: block; padding: 8px 14px; font-size: 13px; color: var(--text-main); text-decoration: none;">Đang gán nhãn</a>
-          <a href="javascript:void(0)" onclick="setProjectFilter('completed')" style="display: block; padding: 8px 14px; font-size: 13px; color: var(--text-main); text-decoration: none;">Đã hoàn thành</a>
+        <div class="pj-row">
+          <label class="pj-field">Loại dữ liệu
+            <select id="pj-kind">
+              <option value="auto">Tự nhận dạng</option>
+              <option value="video">Video (2D)</option>
+              <option value="images">Ảnh (2D)</option>
+              <option value="nuscenes">nuScenes (2D + 3D)</option>
+              <option value="kitti">KITTI (2D + 3D)</option>
+              <option value="lidar_cam">LiDAR + camera (2D + 3D)</option>
+            </select>
+          </label>
+          <label class="pj-field">Giới hạn frame
+            <input id="pj-max" type="number" min="1" placeholder="tất cả">
+          </label>
         </div>
-      </div>
-
-      <button class="clear-filters" id="btnClearProjectFilters">
-        Xóa bộ lọc
-      </button>
-
-      <button class="add-btn" onclick="openModal('createProjectModal')" title="Tạo dự án mới hoặc tải video">
-        <i class="ri-add-line"></i>
-      </button>
-    </div>
-
-    <!-- Projects Grid (Image 2) -->
-    <div class="projects-grid" id="projectsGrid">
-      <!-- Populated dynamically via ui-flow.js -->
-    </div>
-
-    <!-- Pagination (Image 2) -->
-    <div class="pagination">
-      <button class="page-arrow" title="Trang trước"><i class="ri-arrow-left-s-line"></i></button>
-      <span class="page-num">1</span>
-      <button class="page-arrow" title="Trang sau"><i class="ri-arrow-right-s-line"></i></button>
-    </div>
-  </main>
-
-  <!-- Create Project / Upload Video Modal -->
-  <div id="createProjectModal" class="modal-overlay" style="display: none;">
-    <div class="modal-card">
-      <div class="modal-header">Tạo dự án mới</div>
-      <div class="modal-sub">Khởi tạo dự án gán nhãn hoặc tải lên tệp video (MP4) để AI tự động cắt frame và auto-label.</div>
-      <form id="createProjectForm">
-        <div class="form-item">
-          <label class="form-label" for="newProjectName">Tên dự án</label>
-          <input type="text" id="newProjectName" class="form-control" placeholder="Ví dụ: Dự án 4 (VF_Highway_Day02)">
+        <label class="toggle" title="Bỏ chọn: mỗi ảnh được gán nhãn riêng"><input type="checkbox" id="pj-seq"> Ảnh là các frame liên tiếp của video (~10 fps): máy gán nhãn 1/5 số ảnh, phần còn lại lan truyền</label>
+        <label class="toggle"><input type="checkbox" id="pj-tta"> 3D chính xác hơn (lật trục khi suy luận, chậm ~4 lần)</label>
+        <div class="pj-upload hidden" id="pj-upload">
+          <div class="progress"><div id="pj-upload-bar" class="m3-progress-bar"></div></div>
+          <span id="pj-upload-text" class="muted"></span>
         </div>
-
-        <div class="form-item">
-          <label class="form-label" for="videoFileInput">Tải lên video MP4 (tùy chọn)</label>
-          <input type="file" id="videoFileInput" accept="video/mp4,video/quicktime,video/x-msvideo,video/x-matroska,video/webm,.mp4" class="form-control" style="padding: 4px;">
-        </div>
-
-        <div class="modal-actions">
-          <button type="button" class="btn-default" onclick="closeModal('createProjectModal')">Hủy</button>
-          <button type="submit" class="btn-primary">Tạo dự án</button>
-        </div>
+        <button id="pj-submit" class="btn btn-primary wide" type="submit">Tạo dự án và xử lý</button>
       </form>
-    </div>
-  </div>
+      <details class="pj-help">
+        <summary>Dữ liệu được nhận</summary>
+        <ul>
+          <li><b>Video</b> mp4/mov/avi/mkv/webm: cắt 10 fps, gán nhãn 2 fps, lan truyền nhãn theo video.</li>
+          <li><b>Ảnh</b> jpg/png (chọn nhiều file hoặc nén .zip): mặc định mỗi ảnh gán nhãn riêng; chọn "frame liên tiếp" nếu ảnh được cắt từ video.</li>
+          <li><b>nuScenes</b>: .zip gồm <code>v1.0-*/</code> (bảng json), <code>samples/</code>, <code>sweeps/</code>.</li>
+          <li><b>KITTI</b>: .zip object (<code>velodyne/ image_2/ calib/</code>) hoặc tracking (<code>velodyne/0000/ image_02/0000/ calib/0000.txt</code>, <code>oxts/</code> tuỳ chọn).</li>
+          <li><b>LiDAR + camera</b>: .zip gồm <code>calib.json</code>, <code>lidar/000000.bin|.pcd</code>, mỗi camera một thư mục ảnh cùng tên frame, <code>poses.json</code> tuỳ chọn. Xem mẫu ở README.</li>
+        </ul>
+        <p class="muted">Dữ liệu có LiDAR được gán cả nhãn 2D (camera trước) và 3D (ensemble 4 mô hình LiDAR + tinh chỉnh theo track), rồi xuất ra định dạng nuScenes.</p>
+      </details>
+    </section>
 
-  <div id="toastContainer" class="toast-container"></div>
-  <script src="ui-flow.js"></script>
+    <section class="pj-list">
+      <div class="panel-head"><h2>Dự án</h2><span class="muted" id="pj-count"></span></div>
+      <div id="pj-items"></div>
+      <p class="muted pj-empty hidden" id="pj-empty">Chưa có dự án nào. Tải dữ liệu lên ở khung bên trái để bắt đầu.</p>
+    </section>
+  </main>
+  <div id="toast" class="toast hidden" role="status"></div>
+  <script src="projects.js?v=3d7"></script>
 </body>
 </html>

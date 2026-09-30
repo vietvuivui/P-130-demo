@@ -1,0 +1,14 @@
+{
+ "model": "pointpillars",
+ "label": "PointPillars (FPN)",
+ "sensor": "LiDAR",
+ "paper": {
+  "mAP": 39.7,
+  "NDS": 53.2
+ },
+ "results": "C:\\Users\\Admin\\OneDrive\\Desktop\\AI20K\\Final\\P-130\\tools3d\\work\\preds\\pointpillars\\pred_instances_3d\\results_nusc.json",
+ "seconds": 913.3,
+ "n_samples": 1076,
+ "s_per_sample": 0.849,
+ "peak_gpu_gb": 1.74
+}

@@ -1,0 +1,364 @@
+{
+ "min_score": 0.1,
+ "mode": "none",
+ "scenes": {
+  "scene-0031": {
+   "stats": {
+    "flagged": 159,
+    "KEEP": 27,
+    "DELETE": 131,
+    "CHANGE_CLASS": 1,
+    "ADD_BOX": 40,
+    "frames_propagated": 0
+   },
+   "per_frame": [
+    {
+     "frame": "scene-0031_000",
+     "propagated_from": null,
+     "flagged": 7,
+     "DELETE": 5,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 3
+    },
+    {
+     "frame": "scene-0031_001",
+     "propagated_from": null,
+     "flagged": 11,
+     "DELETE": 10,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 4
+    },
+    {
+     "frame": "scene-0031_002",
+     "propagated_from": null,
+     "flagged": 9,
+     "DELETE": 8,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 3
+    },
+    {
+     "frame": "scene-0031_003",
+     "propagated_from": null,
+     "flagged": 8,
+     "DELETE": 7,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 3
+    },
+    {
+     "frame": "scene-0031_004",
+     "propagated_from": null,
+     "flagged": 12,
+     "DELETE": 9,
+     "CHANGE_CLASS": 1,
+     "ADD_BOX": 2
+    },
+    {
+     "frame": "scene-0031_005",
+     "propagated_from": null,
+     "flagged": 14,
+     "DELETE": 12,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 2
+    },
+    {
+     "frame": "scene-0031_006",
+     "propagated_from": null,
+     "flagged": 11,
+     "DELETE": 8,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 2
+    },
+    {
+     "frame": "scene-0031_007",
+     "propagated_from": null,
+     "flagged": 10,
+     "DELETE": 10,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 2
+    },
+    {
+     "frame": "scene-0031_008",
+     "propagated_from": null,
+     "flagged": 10,
+     "DELETE": 9,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1
+    },
+    {
+     "frame": "scene-0031_009",
+     "propagated_from": null,
+     "flagged": 11,
+     "DELETE": 10,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 3
+    },
+    {
+     "frame": "scene-0031_010",
+     "propagated_from": null,
+     "flagged": 13,
+     "DELETE": 12,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 5
+    },
+    {
+     "frame": "scene-0031_011",
+     "propagated_from": null,
+     "flagged": 10,
+     "DELETE": 8,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 2
+    },
+    {
+     "frame": "scene-0031_012",
+     "propagated_from": null,
+     "flagged": 8,
+     "DELETE": 7,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 3
+    },
+    {
+     "frame": "scene-0031_013",
+     "propagated_from": null,
+     "flagged": 7,
+     "DELETE": 5,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1
+    },
+    {
+     "frame": "scene-0031_014",
+     "propagated_from": null,
+     "flagged": 5,
+     "DELETE": 3,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 0
+    },
+    {
+     "frame": "scene-0031_015",
+     "propagated_from": null,
+     "flagged": 5,
+     "DELETE": 2,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1
+    },
+    {
+     "frame": "scene-0031_016",
+     "propagated_from": null,
+     "flagged": 1,
+     "DELETE": 1,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1
+    },
+    {
+     "frame": "scene-0031_017",
+     "propagated_from": null,
+     "flagged": 3,
+     "DELETE": 2,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 0
+    },
+    {
+     "frame": "scene-0031_018",
+     "propagated_from": null,
+     "flagged": 3,
+     "DELETE": 3,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1
+    },
+    {
+     "frame": "scene-0031_019",
+     "propagated_from": null,
+     "flagged": 1,
+     "DELETE": 0,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1
+    }
+   ],
+   "quality": {
+    "tp": 102,
+    "fp": 30,
+    "fn": 1,
+    "precision": 0.773,
+    "recall": 0.99
+   }
+  },
+  "scene-0065": {
+   "stats": {
+    "flagged": 115,
+    "KEEP": 25,
+    "DELETE": 89,
+    "CHANGE_CLASS": 1,
+    "ADD_BOX": 21,
+    "frames_propagated": 0
+   },
+   "per_frame": [
+    {
+     "frame": "scene-0065_000",
+     "propagated_from": null,
+     "flagged": 5,
+     "DELETE": 4,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 0
+    },
+    {
+     "frame": "scene-0065_001",
+     "propagated_from": null,
+     "flagged": 6,
+     "DELETE": 6,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 0
+    },
+    {
+     "frame": "scene-0065_002",
+     "propagated_from": null,
+     "flagged": 6,
+     "DELETE": 5,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1
+    },
+    {
+     "frame": "scene-0065_003",
+     "propagated_from": null,
+     "flagged": 5,
+     "DELETE": 4,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 0
+    },
+    {
+     "frame": "scene-0065_004",
+     "propagated_from": null,
+     "flagged": 4,
+     "DELETE": 4,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1
+    },
+    {
+     "frame": "scene-0065_005",
+     "propagated_from": null,
+     "flagged": 6,
+     "DELETE": 5,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 0
+    },
+    {
+     "frame": "scene-0065_006",
+     "propagated_from": null,
+     "flagged": 2,
+     "DELETE": 2,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 0
+    },
+    {
+     "frame": "scene-0065_007",
+     "propagated_from": null,
+     "flagged": 8,
+     "DELETE": 6,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 0
+    },
+    {
+     "frame": "scene-0065_008",
+     "propagated_from": null,
+     "flagged": 5,
+     "DELETE": 5,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 0
+    },
+    {
+     "frame": "scene-0065_009",
+     "propagated_from": null,
+     "flagged": 5,
+     "DELETE": 5,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 2
+    },
+    {
+     "frame": "scene-0065_010",
+     "propagated_from": null,
+     "flagged": 3,
+     "DELETE": 1,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 2
+    },
+    {
+     "frame": "scene-0065_011",
+     "propagated_from": null,
+     "flagged": 5,
+     "DELETE": 4,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1
+    },
+    {
+     "frame": "scene-0065_012",
+     "propagated_from": null,
+     "flagged": 5,
+     "DELETE": 4,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 2
+    },
+    {
+     "frame": "scene-0065_013",
+     "propagated_from": null,
+     "flagged": 5,
+     "DELETE": 3,
+     "CHANGE_CLASS": 1,
+     "ADD_BOX": 2
+    },
+    {
+     "frame": "scene-0065_014",
+     "propagated_from": null,
+     "flagged": 4,
+     "DELETE": 4,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 2
+    },
+    {
+     "frame": "scene-0065_015",
+     "propagated_from": null,
+     "flagged": 8,
+     "DELETE": 7,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1
+    },
+    {
+     "frame": "scene-0065_016",
+     "propagated_from": null,
+     "flagged": 8,
+     "DELETE": 4,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 1
+    },
+    {
+     "frame": "scene-0065_017",
+     "propagated_from": null,
+     "flagged": 8,
+     "DELETE": 3,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 2
+    },
+    {
+     "frame": "scene-0065_018",
+     "propagated_from": null,
+     "flagged": 4,
+     "DELETE": 2,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 2
+    },
+    {
+     "frame": "scene-0065_019",
+     "propagated_from": null,
+     "flagged": 13,
+     "DELETE": 11,
+     "CHANGE_CLASS": 0,
+     "ADD_BOX": 2
+    }
+   ],
+   "quality": {
+    "tp": 102,
+    "fp": 39,
+    "fn": 6,
+    "precision": 0.723,
+    "recall": 0.944
+   }
+  }
+ }
+}

@@ -4,9 +4,9 @@ Hai cách chạy, cùng một UI:
 
 | | Demo nhanh | Demo nuScenes thật |
 |---|---|---|
-| Cần gì | `pip install -r requirements.txt` | GPU + nuScenes v1.0-mini, hoặc zip tải từ notebook Kaggle |
+| Cần gì | `pip install -r requirements.txt` | GPU + nuScenes (v1.0-mini, hoặc trainval rút gọn bằng `scripts/pack_nuscenes_subset.py`) |
 | Lệnh | `python -m src.demo` (hoặc `make demo`) | `python -m src.cli run --scenes scene-0061 scene-0103` rồi `uvicorn src.main:app` |
-| Dữ liệu | video tổng hợp 16 s, detector theo màu | CAM_FRONT + LiDAR thật, YOLO-World |
+| Dữ liệu | video tổng hợp 16 s, detector theo màu | CAM_FRONT + LiDAR thật, YOLOE-26 |
 | Workspace | `data/demo/workspace` (riêng) | `data/workspace` |
 
 Trình diễn tổng cộng khoảng 5 phút (giới hạn video demo của BTC). Thời lượng từng đoạn ghi trong ngoặc.
@@ -86,7 +86,7 @@ frame hàng chục object. Hệ thống làm hai việc để giảm việc củ
 ## Bản nuScenes thật
 
 ```bash
-python -m src.cli run --scenes scene-0061 scene-0103   # GPU; hoặc giải nén zip từ notebook Kaggle
+python -m src.cli run --scenes scene-0061 scene-0103   # GPU
 python -m src.cli detect-sweeps --scenes scene-0061    # tuỳ chọn: detection ở mọi ảnh 12Hz cho tracker
 uvicorn src.main:app --port 8000
 ```

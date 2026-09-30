@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import threading
+import time
 import uuid
 from collections import defaultdict
 from pathlib import Path
@@ -38,7 +39,7 @@ log = logging.getLogger(__name__)
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 UPLOAD_CAMERA = "video"
-# Mỗi lúc chỉ xử lý một video: detector (YOLO-World...) không an toàn khi hai luồng cùng gọi, và một GPU cũng
+# Mỗi lúc chỉ xử lý một video: detector (YOLOE, YOLO-World...) không an toàn khi hai luồng cùng gọi, và một GPU cũng
 # không nhanh hơn khi chạy song song
 _PROCESS_LOCK = threading.Lock()
 
@@ -78,7 +79,9 @@ def new_video_id(name: str) -> str:
     return f"vid-{slug}-{uuid.uuid4().hex[:6]}"
 
 
-def extract_frames(src: Path, store: WorkspaceStore, video: VideoRecord, max_seconds: float) -> VideoRecord:
+def extract_frames(
+    src: Path, store: WorkspaceStore, video: VideoRecord, max_seconds: float, max_frames: int | None = None
+) -> VideoRecord:
     """Cắt frame bằng OpenCV, ghi vào workspace, điền timeline/kích thước/thời lượng cho record."""
     import cv2
 
@@ -96,7 +99,7 @@ def extract_frames(src: Path, store: WorkspaceStore, video: VideoRecord, max_sec
     try:
         while True:
             ok, frame = cap.read()
-            if not ok or idx / src_fps > max_seconds:
+            if not ok or idx / src_fps > max_seconds or (max_frames and len(timeline) >= max_frames):
                 break
             if idx % step == 0:
                 n = len(timeline)
@@ -123,9 +126,10 @@ def extract_frames(src: Path, store: WorkspaceStore, video: VideoRecord, max_sec
 
 
 def import_video(
-    store: WorkspaceStore, config: AutoLabelConfig, src: Path, name: str, detectors: list[str]
-) -> VideoRecord:
-    """Tạo record + cắt frame. Việc detect/QA (nặng) chạy riêng bằng process_video."""
+    store: WorkspaceStore, config: AutoLabelConfig, src: Path, name: str, detectors: list[str],
+    max_frames: int | None = None,
+) -> VideoRecord:  # fmt: skip
+    """Tạo record + cắt frame. Việc detect/QA (nặng) chạy riêng bằng process_video. max_frames: chỉ cắt N frame đầu."""
     cfg = config.video
     video = VideoRecord(
         video_id=new_video_id(name),
@@ -137,10 +141,65 @@ def import_video(
         message="Đang cắt frame",
     )
     try:
-        extract_frames(src, store, video, cfg.max_seconds)
+        extract_frames(src, store, video, cfg.max_seconds, max_frames)
     except Exception:
         shutil.rmtree(store.video_dir(video.video_id), ignore_errors=True)  # không để lại frame dở dang
         raise
+    video.message = "Đang auto-label"
+    store.save_video(video)
+    return video
+
+
+def import_images(
+    store: WorkspaceStore, config: AutoLabelConfig, files: list[Path], name: str, detectors: list[str],
+    sequential: bool = False,
+) -> VideoRecord:  # fmt: skip
+    """Bộ ảnh -> record giống video. sequential=True: ảnh là chuỗi liên tục (như frame video 10 fps, keyframe 2 fps, lan
+    truyền được); False: ảnh rời, mỗi ảnh một keyframe, không dùng ảnh lân cận cho QA temporal và không lan truyền."""
+    import cv2
+    import numpy as np
+
+    if not files:
+        raise VideoError("NO_IMAGES", "Không có ảnh nào (jpg, png)")
+    cfg = config.video
+    video = VideoRecord(
+        video_id=new_video_id(name), name=Path(name).name, source="upload" if sequential else "images",
+        track_fps=cfg.track_fps, label_fps=cfg.label_fps if sequential else cfg.track_fps, detectors=detectors,
+        created_at=now_iso(), message="Đang chuẩn bị ảnh",
+    )  # fmt: skip
+    key_every = max(1, round(cfg.track_fps / cfg.label_fps)) if sequential else 1
+    step_s = 1 / cfg.track_fps if sequential else 10.0  # ảnh rời cách nhau 10 s: QA temporal không lấy ảnh bên cạnh
+    out_dir = store.video_dir(video.video_id) / "frames"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        for n, f in enumerate(sorted(files, key=lambda p: p.name)):
+            img = cv2.imdecode(np.fromfile(str(f), np.uint8), cv2.IMREAD_COLOR)
+            if img is None:
+                continue
+            if not video.width:
+                video.height, video.width = img.shape[:2]
+            elif img.shape[:2] != (video.height, video.width):  # khác cỡ: co giữ tỉ lệ, viền đen
+                scale = min(video.width / img.shape[1], video.height / img.shape[0])
+                small = cv2.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))
+                canvas = np.zeros((video.height, video.width, 3), np.uint8)
+                y0, x0 = (video.height - small.shape[0]) // 2, (video.width - small.shape[1]) // 2
+                canvas[y0 : y0 + small.shape[0], x0 : x0 + small.shape[1]] = small
+                img = canvas
+            k = len(video.timeline)
+            fname = f"{k:05d}.jpg"
+            write_jpeg(out_dir / fname, img)
+            video.timeline.append(TimelineEntry(
+                sd_token=f"{video.video_id}-{k:05d}", timestamp=int(round(k * step_s * 1e6)),
+                sample_token=f"{video.video_id}-k{k // key_every:03d}" if k % key_every == 0 else None,
+                path=f"{WORKSPACE_PREFIX}videos/{video.video_id}/frames/{fname}",
+            ))  # fmt: skip
+    except Exception:
+        shutil.rmtree(store.video_dir(video.video_id), ignore_errors=True)
+        raise
+    if not video.timeline:
+        shutil.rmtree(store.video_dir(video.video_id), ignore_errors=True)
+        raise VideoError("NO_IMAGES", "Không đọc được ảnh nào")
+    video.duration_s = round(video.timeline[-1].timestamp / 1e6, 2)
     video.message = "Đang auto-label"
     store.save_video(video)
     return video
@@ -170,6 +229,9 @@ def _process_video(store: WorkspaceStore, ensemble: DetectorEnsemble, config: Au
     video = store.load_video(video_id)
     if video is None:
         return
+    from src.services.productivity import new_run_id
+
+    run_id = new_run_id("video")
     try:
         keys = [i for i, e in enumerate(video.timeline) if e.sample_token]
         # Camera không có calibration: intrinsic danh nghĩa (tiêu cự = chiều rộng ảnh); không có LiDAR nên
@@ -189,6 +251,7 @@ def _process_video(store: WorkspaceStore, ensemble: DetectorEnsemble, config: Au
                     if 0 <= pos + o < len(video.timeline)
                     and abs(video.timeline[pos + o].timestamp - t0) <= config.video.max_sweep_gap_s * 1e6
                 }
+                t_start = time.perf_counter()
                 record = label_keyframe(
                     ensemble,
                     config,
@@ -202,6 +265,7 @@ def _process_video(store: WorkspaceStore, ensemble: DetectorEnsemble, config: Au
                     image_file=store.resolve,
                     intrinsic=intrinsic,
                 )
+                record.autolabel_s, record.autolabel_run = round(time.perf_counter() - t_start, 3), run_id
                 store.save_frame(record)
             video.progress = round((k + 1) / len(keys), 3)
             _save_progress(store, video)
@@ -232,7 +296,7 @@ def video_summary(video_id: str, frames: list[FrameRecord], record: VideoRecord 
     return VideoSummary(
         video_id=video_id,
         name=record.name if record else video_id,
-        source="upload" if record else "nuscenes",
+        source=record.source if record else "nuscenes",
         status=record.status if record else "ready",
         progress=record.progress if record else 1.0,
         message=record.message if record else None,

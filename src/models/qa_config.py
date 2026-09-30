@@ -21,6 +21,22 @@ class YoloWorldCfg(BaseModel):
     imgsz: int = 1280
 
 
+class YoloeCfg(BaseModel):
+    # YOLOE-26: open-vocab trên nền YOLO26, text encoder MobileCLIP2 (tự tải từ GitHub của Ultralytics)
+    weights: str = "yoloe-26l-seg.pt"
+    imgsz: int = 1280
+    # Chạy thêm ảnh lật ngang rồi gộp (augment=True của Ultralytics không có tác dụng với YOLOE): ~2x thời gian
+    tta_flip: bool = False
+    # Lưu mask segmentation sơ bộ của model -seg (đa giác đã đơn giản hoá), FR-04
+    masks: bool = True
+
+
+class Yolo26Cfg(BaseModel):
+    # YOLO26 thường: tập lớp đóng COCO 80, chỉ giữ lớp trùng tên prompt (car, truck, bus, person, bicycle, motorcycle)
+    weights: str = "yolo26l.pt"
+    imgsz: int = 1280
+
+
 class GroundingDinoCfg(BaseModel):
     model_id: str = "IDEA-Research/grounding-dino-tiny"
     box_threshold: float = 0.2
@@ -40,13 +56,21 @@ class DemoDetectorCfg(BaseModel):
 
 
 class DetectionCfg(BaseModel):
-    detectors: list[str] = ["yolo_world"]
+    detectors: list[str] = ["yoloe"]
     score_threshold: float = 0.1
+    # Lọc sau khi gộp box, trước QA Agent (không đổi khoá cache: đổi ngưỡng không phải detect lại)
+    min_score: float = 0.1
+    min_score_per_class: dict[str, float] = Field(default_factory=dict)
     fusion_iou: float = 0.55
     yolo_world: YoloWorldCfg = YoloWorldCfg()
+    yoloe: YoloeCfg = YoloeCfg()
+    yolo26: Yolo26Cfg = Yolo26Cfg()
     grounding_dino: GroundingDinoCfg = GroundingDinoCfg()
     florence2: Florence2Cfg = Florence2Cfg()
     demo: DemoDetectorCfg = DemoDetectorCfg()
+
+    def keep(self, label: str, score: float) -> bool:
+        return score >= self.min_score_per_class.get(label, self.min_score)
 
 
 class ConfidenceCfg(BaseModel):
@@ -118,6 +142,8 @@ class PropagationCfg(BaseModel):
     hop_decay: float = 0.99
     flag_below: float = 0.6
     stop_below: float = 0.15
+    # Track không khớp detection ở chính keyframe đích (đang "trôi" theo vận tốc) có được ghi ra không
+    emit_coasting: bool = False
     max_keyframes: int = 20
     class_differs_score: float = 0.5
 
@@ -134,6 +160,43 @@ class VideoCfg(BaseModel):
     max_sweep_gap_s: float = 0.25
 
 
+class Verify3DCfg(BaseModel):
+    # Box 3D dưới ngưỡng điểm này không đưa vào duyệt (như ngưỡng 0.3 nhóm 3D dùng)
+    min_score: float = 0.3
+    # Ngưỡng điểm của box 2D dùng để kiểm chứng
+    det_conf: float = 0.2
+    # Prompt "đối thủ": vật dễ nhầm với các lớp (lan can cố định, cột, biển báo...). Box của chúng bị bỏ
+    distractors: list[str] = Field(
+        default_factory=lambda: [
+            "fence", "guardrail", "pole", "traffic sign", "fire hydrant", "trash can", "bollard",
+            "mailbox", "stroller", "wheelchair", "kick scooter",
+        ]
+    )  # fmt: skip
+    # Số lần quét LiDAR liền trước gộp thêm (nếu có trên đĩa) khi đếm điểm trong box / tính mức che
+    lidar_sweeps: int = 4
+    # Số điểm tối đa gửi lên UI mỗi keyframe
+    max_points_ui: int = 60000
+
+
+class PrivacyCfg(BaseModel):
+    """Làm mờ mặt người và biển số trước khi ảnh tới trình duyệt / file xuất (FR-03), src/services/privacy.py."""
+
+    enabled: bool = True
+    # Biển số: detector chuyên dụng (open-image-models, YOLOv9 ONNX, tự tải ~8 MB), chạy cả ảnh và 4 ô cắt để bắt
+    # biển số nhỏ ở xa
+    plate_model: str = "yolo-v9-t-640-license-plate-end2end"
+    plate_conf: float = 0.25
+    plate_tiles: bool = True
+    # Mặt người: YOLOE (prompt "human face") + vùng đầu của mỗi người đủ lớn (đầu = 18% trên của box người):
+    # ưu tiên không sót mặt hơn là làm mờ thừa
+    face_prompts: list[str] = ["human face"]
+    face_conf: float = 0.25
+    person_conf: float = 0.3
+    min_person_px: int = 40  # người thấp hơn thế: mặt quá nhỏ để nhận ra, không cần làm mờ
+    pad: float = 0.2  # nới vùng làm mờ ra mỗi phía theo tỉ lệ kích thước
+    imgsz: int = 1280
+
+
 class AutoLabelConfig(BaseModel):
     camera: str = "CAM_FRONT"
     sweep_offsets: list[int] = [-2, -1, 1, 2]
@@ -143,6 +206,8 @@ class AutoLabelConfig(BaseModel):
     qa: QACfg = QACfg()
     propagation: PropagationCfg = PropagationCfg()
     video: VideoCfg = VideoCfg()
+    verify3d: Verify3DCfg = Verify3DCfg()
+    privacy: PrivacyCfg = PrivacyCfg()
 
     def prompt_to_class(self) -> dict[str, str]:
         """Map mỗi prompt văn bản về lớp nội bộ."""

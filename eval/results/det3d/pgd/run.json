@@ -1,0 +1,14 @@
+{
+ "model": "pgd",
+ "label": "PGD (camera)",
+ "sensor": "Camera",
+ "paper": {
+  "mAP": 35.8,
+  "NDS": 42.5
+ },
+ "results": "C:\\Users\\Admin\\OneDrive\\Desktop\\AI20K\\Final\\P-130\\tools3d\\work\\preds\\pgd\\pred_instances_3d\\results_nusc.json",
+ "seconds": 2919.0,
+ "n_samples": 1076,
+ "s_per_sample": 2.713,
+ "peak_gpu_gb": 0.56
+}

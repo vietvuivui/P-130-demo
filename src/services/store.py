@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from src.models.schemas import FrameRecord, VideoRecord
+from src.models.schemas3d import Frame3DRecord
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_\-]+$")
 WORKSPACE_PREFIX = "@workspace/"
@@ -123,6 +124,36 @@ class WorkspaceStore:
         """Đường dẫn ảnh của frame video tải lên được lưu dạng '@workspace/...' (tương đối so với workspace)."""
         return self.root / path.removeprefix(WORKSPACE_PREFIX)
 
+    # ---- phần 3D: frames3d/<mô hình>/<frame_id>.json, point cloud rút gọn cho UI ở lidar3d/<frame_id>.bin ----
+
+    def frame3d_path(self, model: str, frame_id: str) -> Path:
+        return self.root / "frames3d" / self.check_id(model) / f"{self.check_id(frame_id)}.json"
+
+    def models3d(self) -> list[str]:
+        d = self.root / "frames3d"
+        return sorted(p.name for p in d.iterdir() if p.is_dir() and any(p.glob("*.json"))) if d.is_dir() else []
+
+    def frame3d_ids(self, model: str) -> list[str]:
+        d = self.root / "frames3d" / self.check_id(model)
+        return sorted(p.stem for p in d.glob("*.json")) if d.is_dir() else []
+
+    def load_frame3d(self, model: str, frame_id: str) -> Frame3DRecord | None:
+        try:
+            path = self.frame3d_path(model, frame_id)
+        except ValueError:
+            return None
+        return Frame3DRecord.model_validate_json(path.read_text(encoding="utf-8")) if path.exists() else None
+
+    def save_frame3d(self, record: Frame3DRecord) -> None:
+        with self._lock:
+            self._write_json(self.frame3d_path(record.model, record.frame_id), record.model_dump_json())
+
+    def list_frames3d(self, model: str) -> list[Frame3DRecord]:
+        return [f for f in (self.load_frame3d(model, fid) for fid in self.frame3d_ids(model)) if f is not None]
+
+    def points_path(self, frame_id: str) -> Path:
+        return self.root / "lidar3d" / f"{self.check_id(frame_id)}.bin"
+
     # ---- correction log ----
 
     def append_corrections(self, entries: list[dict]) -> None:
@@ -133,6 +164,41 @@ class WorkspaceStore:
             with open(self.corrections_file, "a", encoding="utf-8") as f:
                 for e in entries:
                     f.write(json.dumps(e, ensure_ascii=False) + "\n")
+
+    # ---- sự kiện cấp frame (approve / reject / reopen / undo / redo): lịch sử duyệt và năng suất (FR-16, FR-27) ----
+
+    @property
+    def events_file(self) -> Path:
+        return self.root / "events.jsonl"
+
+    def append_event(self, event: dict) -> None:
+        from datetime import UTC, datetime
+
+        event = {"ts": datetime.now(UTC).isoformat(timespec="seconds"), **event}
+        with self._lock:
+            self.root.mkdir(parents=True, exist_ok=True)
+            with open(self.events_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(event, ensure_ascii=False) + "\n")
+
+    def events(self) -> list[dict]:
+        if not self.events_file.exists():
+            return []
+        with open(self.events_file, encoding="utf-8") as f:
+            return [json.loads(line) for line in f if line.strip()]
+
+    # ---- lịch sử undo / redo của từng frame (FR-09) ----
+
+    def history_path(self, kind: str, frame_id: str) -> Path:
+        return self.root / "history" / self.check_id(kind) / f"{self.check_id(frame_id)}.json"
+
+    def load_history(self, kind: str, frame_id: str) -> dict:
+        path = self.history_path(kind, frame_id)
+        if not path.exists():
+            return {"undo": [], "redo": []}
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def save_history(self, kind: str, frame_id: str, history: dict) -> None:
+        self._write_json(self.history_path(kind, frame_id), history)
 
     def corrections(self, frame_id: str | None = None) -> list[dict]:
         if not self.corrections_file.exists():

@@ -126,6 +126,24 @@ def reopen_frame(frame: FrameRecord) -> None:
     frame.approved_at = frame.approved_by = None
 
 
+def check_reason(reason: str) -> str:
+    reason = " ".join((reason or "").split())
+    if len(reason) < 3:
+        raise ReviewError("Reject cần ghi lý do (ít nhất 3 ký tự)")
+    return reason
+
+
+def reject_frame(frame, reviewer: str, reason: str) -> None:
+    """Reviewer trả lại frame kèm lý do (FR-15). Dùng chung cho frame 2D và 3D (cùng tên trường).
+
+    Frame về trạng thái "rejected": không được xuất; sửa lại thì thành "editing" nhưng vẫn giữ lý do cho tới lần reject
+    sau, để người gán nhãn thấy cần sửa gì. Duyệt lại bình thường bằng approve.
+    """
+    frame.reject_reason = check_reason(reason)
+    frame.status, frame.rejected_by, frame.rejected_at = "rejected", reviewer, now_iso()
+    frame.approved_at = frame.approved_by = None
+
+
 def summarize(frame: FrameRecord) -> FrameSummary:
     counts = Counter(o.qa.level for o in frame.objects if o.qa)
     return FrameSummary(
@@ -161,7 +179,7 @@ def compute_metrics(frames: list[FrameRecord]) -> dict:
     m4_correction_rate chỉ tính object detector sinh (source "model"); nhãn lan truyền có M4 riêng
     trong "propagation". Cờ (flag_*) tính trên cả hai vì cả hai đều đi qua triage theo risk.
     """
-    status = Counter(f.status for f in frames)
+    status = Counter(f.status for f in frames)  # auto / editing / approved / rejected
     levels, issue_counts = Counter(), Counter()
     model_reviewed, model_fixed = 0, 0
     flagged, flagged_fixed = 0, 0
@@ -216,7 +234,7 @@ def compute_metrics(frames: list[FrameRecord]) -> dict:
 
     times = [f.review_time_s for f in frames if f.status == "approved" and f.review_time_s]
     return {
-        "frames": {"total": len(frames), **{k: status.get(k, 0) for k in ("auto", "editing", "approved")}},
+        "frames": {"total": len(frames), **{k: status.get(k, 0) for k in ("auto", "editing", "approved", "rejected")}},
         "objects_by_level": {lv: levels.get(lv, 0) for lv in ("low", "medium", "high")},
         "issue_counts": dict(issue_counts.most_common()),
         "m4_correction_rate": _ratio(model_fixed, model_reviewed),

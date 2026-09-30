@@ -22,6 +22,8 @@ class Detection(BaseModel):
     models: dict[str, float] = Field(default_factory=dict)
     # Lớp khác mà model gán cho cùng vị trí -> nguồn của CLASS_CONFLICT
     alternatives: dict[str, float] = Field(default_factory=dict)
+    # Mask segmentation sơ bộ (model -seg): đa giác [x1, y1, x2, y2, ...] theo pixel, FR-04
+    mask: list[float] | None = None
 
 
 class QAIssue(BaseModel):
@@ -78,6 +80,8 @@ class LabelObject(BaseModel):
     propagation: PropagationInfo | None = None
     models: dict[str, float] = Field(default_factory=dict)
     alternatives: dict[str, float] = Field(default_factory=dict)
+    # Mask sơ bộ từ detector (đa giác phẳng [x1, y1, ...]); bỏ khi người sửa box (không còn khớp), FR-04
+    mask: list[float] | None = None
     # Box của cùng object ở các sweep lân cận, key là offset ("-2", "-1", "1", "2")
     track: dict[str, list[float] | None] = Field(default_factory=dict)
     qa: QAResult | None = None
@@ -108,7 +112,7 @@ class FrameRecord(BaseModel):
     sweeps: list[SweepInfo] = Field(default_factory=list)
     detectors: list[str] = Field(default_factory=list)
     has_lidar: bool = True
-    status: Literal["auto", "editing", "approved"] = "auto"
+    status: Literal["auto", "editing", "approved", "rejected"] = "auto"
     frame_risk: float = 0.0
     objects: list[LabelObject] = Field(default_factory=list)
     created_at: str | None = None
@@ -116,6 +120,13 @@ class FrameRecord(BaseModel):
     approved_at: str | None = None
     approved_by: str | None = None
     review_time_s: float | None = None
+    # Reviewer trả lại frame (FR-15): lý do bắt buộc; giữ lại sau khi sửa để người gán nhãn biết cần sửa gì
+    reject_reason: str | None = None
+    rejected_by: str | None = None
+    rejected_at: str | None = None
+    # Thời gian auto-label (detect + QA) của frame và phiên chạy, để đo throughput inference (FR-27)
+    autolabel_s: float | None = None
+    autolabel_run: str | None = None
     # Lan truyền: frame gốc và lúc lan truyền. prelabel giữ bản pre-label trước lần lan truyền
     # đầu tiên, để lan truyền lại (từ keyframe khác) luôn bắt đầu từ cùng một điểm.
     propagated_from: str | None = None
@@ -149,6 +160,11 @@ class ReviewActionRequest(BaseModel):
 class ReviewerRequest(BaseModel):
     reviewer: str | None = None
     review_time_s: float | None = Field(default=None, ge=0)
+
+
+class RejectRequest(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=500)
+    reviewer: str | None = None
 
 
 class PropagateRequest(BaseModel):
@@ -194,7 +210,7 @@ class VideoRecord(BaseModel):
 
     video_id: str
     name: str
-    source: Literal["upload"] = "upload"
+    source: Literal["upload", "images"] = "upload"  # images: bộ ảnh rời (không lan truyền giữa ảnh)
     status: Literal["processing", "ready", "error"] = "processing"
     progress: float = 0.0
     message: str | None = None
@@ -216,7 +232,7 @@ class VideoFrame(FrameSummary):
 class VideoSummary(BaseModel):
     video_id: str
     name: str
-    source: Literal["nuscenes", "upload"]
+    source: Literal["nuscenes", "upload", "images"]
     status: Literal["processing", "ready", "error"] = "ready"
     progress: float = 1.0
     message: str | None = None

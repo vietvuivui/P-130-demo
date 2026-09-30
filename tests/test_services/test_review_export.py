@@ -77,7 +77,7 @@ def test_metrics(config):
     act(f, config, action="ADD_BOX", bbox=[10, 10, 50, 60], label="car")
     review.approve_frame(f, "tester", 30.0)
     m = review.compute_metrics([f, make_frame("scene-0001_001")])
-    assert m["frames"] == {"total": 2, "auto": 1, "editing": 0, "approved": 1}
+    assert m["frames"] == {"total": 2, "auto": 1, "editing": 0, "approved": 1, "rejected": 0}
     assert m["model_objects_reviewed"] == 3 and m["model_objects_fixed"] == 1
     assert m["flag_precision"] == 1.0 and m["flag_recall"] == 1.0
     assert m["fix_rate_by_level"]["low"]["rate"] == 0.0
