@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import threading
 from pathlib import Path
 
@@ -11,6 +12,17 @@ from src.models.qa_config import AutoLabelConfig
 from src.models.schemas import Detection
 from src.services.detectors.base import Detector
 from src.services.detectors.fusion import fuse_detections
+
+
+class _DropHalfDeprecation(logging.Filter):
+    """Ultralytics 8.4 in cảnh báo "'half' is deprecated" ở MỖI lần predict (hàng nghìn dòng khi chạy cả scene).
+    half=True vẫn chạy đúng trên GPU; chỉ bỏ dòng cảnh báo lặp lại."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "'half' is deprecated" not in record.getMessage()
+
+
+logging.getLogger("ultralytics").addFilter(_DropHalfDeprecation())
 
 # Thư viện mỗi detector cần (ngoài requirements.txt): báo lỗi dễ hiểu thay cho ModuleNotFoundError
 DETECTOR_PACKAGES = {
