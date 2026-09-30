@@ -30,124 +30,48 @@ Quy tắc:
 
 ---
 
-## 2026-09-30 (5) · Kiên · nhánh `kien`
-
-**Làm gì:** **Lan truyền box 3D đã duyệt**.
-
-- Approve một keyframe 3D thì box sang các keyframe sau:
-  - bù chuyển động xe, dịch theo vận tốc mô hình dự đoán;
-  - lớp và kích thước theo người;
-  - box người đã xoá được tự xoá.
-- UI 3D: ô "↦ Lan truyền" cạnh nút Approve, phím `T`.
-- Held-out 4 scene (ensemble): khoảng 95% box lan truyền đúng vật. Dịch theo vận tốc cho thêm 15% nhãn đúng so với
-  chỉ bù chuyển động xe.
-
-**File chính:**
-
-- Mới: `src/services/propagation3d.py`, `propagation3d_eval.py`, `tools3d/eval_propagation3d.py`,
-  `eval/results/propagation3d.md`.
-- Sửa: `routes3d.py`, `web/app3d.js`.
-
-**Ảnh hưởng tới người khác:**
-
-- Schema:
-  - `Object3D.source` thêm `"propagated"`;
-  - `Object3D.propagation`;
-  - `Frame3DRecord.propagated_from`, `propagated_at`, `prelabel`.
-- Config: `propagation3d`.
-- API: `POST /3d/frames/{m}/{f}/propagate`.
-
-**Cách kiểm tra:**
-
-- `pytest` (141 pass).
-- `scripts\tasks.ps1 evalprop3d`: đo trên đủ 27 scene val có dự đoán.
-
----
-
-## 2026-09-30 (4) · Kiên · nhánh `kien`
-
-**Làm gì:** Đo một frame tốn thời gian ở bước nào.
-
-- Mỗi frame 2D / 3D ghi `autolabel_timing`:
-  - 2D: detect, chiếu LiDAR, flow, QA;
-  - 3D: detect 6 camera, point cloud, kiểm chứng.
-- Server ghi thêm thời gian nạp model và làm mờ ảnh lần đầu.
-- Bảng "Thời gian từng bước" ở tab Metrics, gồm cả thời gian mỗi bước của dự án.
-- `python -m src.cli profile` / `tasks.ps1 profile`: đo từ đầu, không dùng cache.
-- Trên CPU 2 nhân:
-  - detect 17.7 s/frame (99.9% thời gian gán nhãn);
-  - làm mờ ảnh lần đầu 4.1 s/ảnh, tức ~19 s mỗi lần mở một frame mới trên web.
-
-**Ảnh hưởng tới người khác:**
-
-- Schema: `FrameRecord.autolabel_timing`, `Frame3DRecord.autolabel_timing`.
-- API: `GET /timing`.
-
-**Cách kiểm tra:** `pytest` (136 pass), `python -m src.cli profile --limit 5`.
-
----
-
-## 2026-09-30 (3) · Kiên · nhánh `kien`
+## 2026-09-30 (2) · Kiên · nhánh `kien`
 
 **Làm gì:**
 
-- Tracker lan truyền ghép hai lượt kiểu **ByteTrack** (`propagation.association: byte`, mặc định; chỉnh được ở tab
-  ⚙ Cài đặt).
-  - Dev: box lan truyền sai 224 → 203, nhãn đúng giữ nguyên.
-  - Held-out 4 scene: sai 329 → 300.
-- Đo thêm 20 scene held-out trên GPU cho optical flow: lan truyền +14% nhãn đúng.
-- Thử "tin box sweep score thấp" cho QA: lỗi lọt qua tăng, nên không bật (`qa.temporal.sweep_min_score`, mặc định
-  tắt).
-- `tasks.ps1 serve -Workspace` để demo. Ẩn cảnh báo `'half' is deprecated`.
+- **Tab ⚙ Cài đặt** trên UI (mở cả từ thẻ dự án): chỉnh optical flow, cách ghép của tracker, tính lại score theo sweep,
+  ngưỡng giữ box, số keyframe lan truyền; lưu theo workspace / dự án. Nút **Áp dụng lại** và **Chạy đánh giá** (trước /
+  sau) chạy nền — không phải sửa config hay mở terminal.
+- **Tracker lan truyền 2D ghép hai lượt kiểu ByteTrack** (mặc định). Dev: box sai 224 → 203; held-out 4 scene: 329 → 300.
+- **Optical flow đo lại trên 20 scene held-out (795 keyframe, GPU):** nhãn lan truyền đúng 2910 → 3329 (+14%), đổi ID
+  265 → 97. Thử "tin box sweep score thấp" cho QA: lỗi lọt qua tăng, không bật.
+- **Lan truyền box 3D đã duyệt:** approve một keyframe 3D thì box sang các keyframe sau (bù chuyển động xe + vận tốc,
+  lớp / kích thước theo người, box người xoá tự xoá). UI 3D: ô "↦ Lan truyền", phím `T`. Held-out 4 scene: ~95% box
+  đúng vật, đổi ID 98 → 36.
+- **Đo thời gian từng bước** (2D, 3D, nạp model, làm mờ ảnh): bảng ở tab Metrics, lệnh `profile`. CPU: detect
+  17.7 s/frame; GPU laptop: 2D ~1 s, 3D ~4 s/frame.
+- `tasks.ps1 serve -Workspace` để demo; ẩn cảnh báo `'half' is deprecated`.
+- PRD: thêm trạng thái từng FR, kết quả đo, giải thích công cụ; slide tóm tắt MVP.
 
 **File chính:**
 
-- Sửa: `src/services/propagation.py`, `temporal_eval.py`, `ui_settings.py`, `configs/autolabel.yaml`.
-- Kết quả: `eval/results/temporal/report.md` mục 0, 5, 6.
+- Mới: `src/services/ui_settings.py`, `jobs.py`, `relabel.py`, `temporal_eval.py`, `timing.py`, `profiling.py`,
+  `propagation3d.py`, `propagation3d_eval.py`, `tools3d/eval_propagation3d.py`, `eval/results/propagation3d.md`.
+- Sửa: `propagation.py`, `pipeline.py`, `routes.py`, `routes3d.py`, `projects.py`, `label3d.py`, `privacy.py`,
+  `cli.py`, `web/app.js`, `web/app3d.js`, `configs/autolabel.yaml`, `scripts/tasks.ps1`, `PRD-AutoLabel3D.md`.
 
 **Ảnh hưởng tới người khác:**
 
-- Config: `propagation.association`, `byte_high_score`, `byte_low_iou`, `qa.temporal.sweep_min_score`.
-- Bảng đánh giá lan truyền có thêm dòng `always+byte`.
-
-**Cách kiểm tra:** `pytest` (134 pass).
-
-**Còn dở / việc tiếp:**
-
-- Lan truyền box 3D đã duyệt (idea 1 cho 3D).
-- Đo thời gian từng bước để tìm chỗ tốn 2–3 phút/frame.
-
----
-
-## 2026-09-30 (2) · Kiên · nhánh `kien`
-
-**Làm gì:** Tab **⚙ Cài đặt** trên UI (mở cả từ thẻ dự án), để không phải sửa config hay chạy terminal:
-
-- **Chỉnh:** optical flow khi lan truyền, so khớp sweep bằng flow, tính lại score theo sweep, ngưỡng giữ box, số
-  keyframe lan truyền. Lưu theo workspace / dự án.
-- **Áp dụng lại:** cho frame chưa ai mở, dùng cache detection, chạy nền có tiến độ.
-- **Chạy đánh giá:** so sánh trước / sau trên frame có GT, bảng kết quả ngay trên trang. Chạy trên 119 keyframe dev
-  cho đúng số như `eval/results/temporal/report.md`.
-
-**File chính:**
-
-- Mới: `src/services/ui_settings.py`, `jobs.py`, `relabel.py`, `temporal_eval.py` (logic chuyển từ
-  `tools2d/eval_temporal.py`, file này giờ chỉ là lệnh gọi).
-- Sửa: `routes.py`, `projects.py`, `web/app.js`, `index.html`, `projects.js`, `styles.css`.
-
-**Ảnh hưởng tới người khác:**
-
-- `routes.get_config(request)` giờ áp thêm `<workspace>/settings.json`.
-- Có thêm `get_base_config`.
-- Bước gán nhãn của dự án cũng dùng cài đặt này.
-- API mới: `/settings`, `/relabel`, `/eval-temporal`.
+- Schema: `FrameRecord.autolabel_timing`, `Frame3DRecord.autolabel_timing` / `propagated_from` / `propagated_at` /
+  `prelabel`; `Object3D.source` thêm `"propagated"`, `Object3D.propagation`.
+- Config: `propagation.association`, `byte_high_score`, `byte_low_iou`; `qa.temporal.sweep_min_score`;
+  `propagation3d`.
+- `routes.get_config(request)` áp thêm `<workspace>/settings.json`; có thêm `get_base_config`. Bước gán nhãn của dự án
+  cũng dùng cài đặt này.
+- API mới: `/settings`, `/relabel`, `/eval-temporal`, `/timing`, `POST /3d/frames/{m}/{f}/propagate`.
 
 **Cách kiểm tra:**
 
-- `pytest` (133 pass).
-- UI: tab ⚙ Cài đặt → đổi "Tính lại score" → Lưu → Áp dụng lại → Chạy đánh giá.
+- `pytest` (141 pass), `ruff check src tests`.
+- UI: tab ⚙ Cài đặt → đổi một mục → Lưu → Áp dụng lại → Chạy đánh giá; chế độ 3D: approve có ô "↦ Lan truyền".
+- `scripts\tasks.ps1 profile`, `scripts\tasks.ps1 evalprop3d` (đủ 27 scene val).
 
-**Còn dở / việc tiếp:** Không.
+**Còn dở / việc tiếp:** Chạy `evalprop3d` trên 27 scene; nhóm quyết định có bật `rescore: mean` không.
 
 ---
 

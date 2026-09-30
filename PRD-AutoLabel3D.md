@@ -1,6 +1,6 @@
 # PRD — AutoLabel 3D: Tự động gán nhãn Ảnh & LiDAR (human-in-the-loop)
 
-2026-09-25 · Kiên · Nhóm 4 người · Thời lượng 6 tuần
+2026-09-25 · Kiên · Nhóm 4 người · Thời lượng 6 tuần · cập nhật trạng thái triển khai 2026-09-30
 
 ## Thông tin tài liệu
 
@@ -11,9 +11,9 @@
 | Lĩnh vực | Perception cho xe tự hành — công cụ gán nhãn dữ liệu |
 | Nhóm thực hiện | 4 thành viên (ML 2D, ML 3D, Backend, Frontend) |
 | Thời lượng | 6 tuần, làm toàn bộ phạm vi trong kỳ |
-| Hạ tầng | RTX 3090 (24 GB) chạy cả ngày làm model service thường trực; A100 trên Google Colab thuê thêm cho job nặng; backend và frontend chạy qua Docker |
-| Phạm vi dữ liệu | Subset nuScenes mini / KITTI; dataset và danh sách lớp phương tiện mở rộng dần trong kỳ |
-| Trạng thái | Bản hoàn chỉnh — ngưỡng các chỉ số chốt sau khi có baseline, cuối tuần 2 |
+| Hạ tầng | Kế hoạch: RTX 3090 (24 GB) chạy cả ngày làm model service thường trực; A100 trên Google Colab thuê thêm cho job nặng; backend và frontend chạy qua Docker. Thực tế (2026-09-30): một laptop RTX 4050 chạy web + suy luận 2D/3D, RTX 3090 dùng để fine-tune; có chế độ CPU; chưa dùng A100 |
+| Phạm vi dữ liệu | Subset nuScenes mini / KITTI; dataset và danh sách lớp phương tiện mở rộng dần trong kỳ. Thực tế: nuScenes mini để demo, 27 scene val của nuScenes trainval để đánh giá (tách dev / held-out); trang Dự án nhận thêm KITTI, LiDAR + camera, video |
+| Trạng thái | Bản hoàn chỉnh — ngưỡng các chỉ số chốt sau khi có baseline, cuối tuần 2. **2026-09-30:** MVP chạy đầu cuối (nạp dữ liệu → auto-label 2D/3D → QA chấm rủi ro → duyệt → lan truyền → xuất); còn thiếu đăng nhập / phân vai, gộp frame, VLM, mẫu ngẫu nhiên, đo năng suất P/Q/E. Xem [Trạng thái triển khai](#trạng-thái-triển-khai-cập-nhật-2026-09-30) |
 
 ## Mục lục
 
@@ -43,6 +43,8 @@
 24. [Rủi ro và giả định](#rủi-ro-và-giả-định)
 25. [Hướng mở rộng sau kỳ này](#hướng-mở-rộng-sau-kỳ-này)
 26. [Checklist nghiệm thu](#checklist-nghiệm-thu)
+27. [Trạng thái triển khai (cập nhật 2026-09-30)](#trạng-thái-triển-khai-cập-nhật-2026-09-30)
+28. [Công cụ và lệnh](#công-cụ-và-lệnh)
 
 ## Tóm tắt
 
@@ -51,6 +53,8 @@ AutoLabel 3D là công cụ web sinh nhãn sơ bộ cho ảnh và point cloud b�
 Sản phẩm làm việc ở hai mức hạt. Với một frame: tự sinh 2D box, segmentation mask và 3D box; sửa được ở cả hai không gian với chiếu 2D↔3D; duyệt bởi người khác người gán; xuất theo chuẩn nuScenes/KITTI. Với cả một sequence video: gộp các frame gần trùng để không làm một việc nhiều lần, annotator chỉ gán frame đầu rồi hệ thống lan truyền nhãn sang các frame sau, và khi annotator xong việc thì các nhãn máy chưa ai kiểm mà có confidence thấp — hoặc bị VLM nghi sai lớp — được đánh cờ cho một reviewer khác xem.
 
 Giá trị đo được của sản phẩm là thời gian gán nhãn giảm so với làm thủ công, với điều kiện chất lượng nhãn cuối không giảm. Vì vậy PRD coi thời gian mỗi frame, tỷ lệ nhãn tự động phải sửa và tỷ lệ nhãn kém lọt qua là tiêu chí nghiệm thu chính, không phải số lượng tính năng. Năng suất của từng annotator cũng được đo và kết luận đạt hay chưa đạt ngưỡng — luôn đi kèm chất lượng, để làm nhanh bằng cách làm ẩu không bao giờ được tính là đạt.
+
+**Cập nhật 2026-09-30.** MVP đã chạy đầu cuối trên web. Phần đã làm khác kế hoạch ở ba điểm chính: duyệt theo ngoại lệ ở mức box (QA Agent chấm rủi ro từng box, box rủi ro thấp duyệt theo lô) thay cho bộ kiểm tra sau submit; lan truyền 2D bằng tracker + optical flow thay cho SAM2 video; chạy trên một GPU laptop thay cho 3090 + A100. Trạng thái từng yêu cầu ở cột cuối bảng [Yêu cầu chức năng](#yêu-cầu-chức-năng); số đo và phần còn thiếu ở mục [Trạng thái triển khai](#trạng-thái-triển-khai-cập-nhật-2026-09-30).
 
 Hệ thống chỉ xử lý dữ liệu đã ghi, không điều khiển phương tiện và không có thành phần thời gian thực trên xe. Mọi frame đều qua tay ít nhất một người trước khi được approved; frame bị cờ hoặc trúng mẫu kiểm tra thì qua thêm một người thứ hai. Không nhãn nào được xuất khi frame chưa approved.
 
@@ -72,22 +76,22 @@ Hướng giải quyết là đảo ngược vai trò của người: thay vì v�
 
 Mục tiêu sản phẩm: giảm thời gian gán nhãn một frame camera + LiDAR và một sequence video mà không làm giảm chất lượng nhãn cuối cùng, và làm cho cả chất lượng lẫn năng suất trở nên đo được.
 
-| # | Chỉ số | Cách đo | Cách đọc |
-| --- | --- | --- | --- |
-| M1 | Thời gian gán nhãn mỗi frame | Đồng hồ thao tác trong app, từ lúc mở frame tới lúc submit, chỉ tính thời gian đang thao tác | Giảm so với baseline thủ công của chính nhóm |
-| M2 | mAP của nhãn tự động 3D | So với ground truth của dataset, IoU 3D ≥ 0.5 và 0.7 | Báo cáo theo từng lớp |
-| M3 | mAP của nhãn tự động 2D | So với ground truth, IoU 2D ≥ 0.5 và 0.7 | Báo cáo theo từng lớp |
-| M4 | Tỷ lệ nhãn phải sửa | Số object bị người chỉnh hoặc xóa / tổng object máy sinh, tách theo nguồn model / propagated / inherited | Theo dõi xu hướng giảm dần |
-| M5 | Chất lượng sau khi duyệt | IoU trung bình của nhãn đã approve so với ground truth | Không thấp hơn nhánh làm thủ công |
-| M6 | Độ trễ auto-label một frame | Từ lúc bấm nút tới lúc nhãn hiển thị, trên RTX 3090 | Mục tiêu ≤ 5 giây |
-| M7 | Ẩn danh | Tỷ lệ khuôn mặt / biển số được làm mờ trong ảnh hiển thị | Đo trên tập kiểm thử thủ công |
-| M8 | Tỷ lệ frame không cần người thứ hai | Số frame đi thẳng sang approved / tổng frame submit | Càng cao càng tiết kiệm, chỉ có nghĩa khi đọc cùng M9 |
-| M9 | Tỷ lệ nhãn kém lẽ ra đã lọt | Chỉ trên frame trúng mẫu ngẫu nhiên: số frame người duyệt phải sửa / số frame được kiểm tra | Phải thấp; đây là cái giá của M8 |
-| M10 | Số object người phải chạm mỗi frame | Tổng object được tạo, sửa hoặc xóa tay trong sequence / số frame của sequence | So có lan truyền với chỉ có tracking |
-| M11 | Tỷ lệ gộp và chất lượng nhãn kế thừa | Số frame thành viên / tổng frame; IoU của nhãn kế thừa so với ground truth | IoU nhãn kế thừa không được thấp rõ so với frame đại diện |
-| M12 | Precision của cờ | Số object bị cờ mà reviewer phải sửa hoặc xóa / tổng object bị cờ; tách cờ confidence và cờ VLM | Quyết định ngưỡng cờ và việc bật VLM mặc định |
-| M13 | GPU-giờ tiết kiệm | Số frame không phải auto-label × thời gian auto-label trung bình, quy ra giờ 3090 và giờ A100 | Đọc cùng M11 |
-| M14 | Năng suất annotator | Chỉ số năng suất P của từng người mỗi kỳ và tỷ lệ người-kỳ đạt ngưỡng | Xem mục Đo năng suất annotator |
+| # | Chỉ số | Cách đo | Cách đọc | Hiện có (2026-09-30) |
+| --- | --- | --- | --- | --- |
+| M1 | Thời gian gán nhãn mỗi frame | Đồng hồ thao tác trong app, từ lúc mở frame tới lúc submit, chỉ tính thời gian đang thao tác | Giảm so với baseline thủ công của chính nhóm | Có thời gian duyệt mỗi frame từ log thao tác (tab Metrics, CSV). Chưa có baseline thủ công và A/B |
+| M2 | mAP của nhãn tự động 3D | So với ground truth của dataset, IoU 3D ≥ 0.5 và 0.7 | Báo cáo theo từng lớp | Dev 3 scene: ensemble 4 mô hình LiDAR mAP 0.644 / NDS 0.643. 27 scene val: CenterPoint voxel mAP 0.573 / NDS 0.647. AP từng lớp: `eval/results/det3d/` |
+| M3 | mAP của nhãn tự động 2D | So với ground truth, IoU 2D ≥ 0.5 và 0.7 | Báo cáo theo từng lớp | YOLOE-26L zero-shot mAP50: dev 0.395 (119 keyframe), held-out 0.452 (40 keyframe) |
+| M4 | Tỷ lệ nhãn phải sửa | Số object bị người chỉnh hoặc xóa / tổng object máy sinh, tách theo nguồn model / propagated / inherited | Theo dõi xu hướng giảm dần | Tính từ log thao tác thật (tab Metrics). Chưa có phiên duyệt thật đủ lớn để báo số |
+| M5 | Chất lượng sau khi duyệt | IoU trung bình của nhãn đã approve so với ground truth | Không thấp hơn nhánh làm thủ công | Chưa đo (cần A/B) |
+| M6 | Độ trễ auto-label một frame | Từ lúc bấm nút tới lúc nhãn hiển thị, trên RTX 3090 | Mục tiêu ≤ 5 giây | Laptop RTX 4050: 2D ~1 s/frame; 3D ~3.1 s dự đoán + ~1.1 s kiểm chứng. CPU: detect 2D 17.7 s/frame |
+| M7 | Ẩn danh | Tỷ lệ khuôn mặt / biển số được làm mờ trong ảnh hiển thị | Đo trên tập kiểm thử thủ công | Đã làm mờ phía server; chưa đo tỷ lệ trên tập kiểm thử |
+| M8 | Tỷ lệ frame không cần người thứ hai | Số frame đi thẳng sang approved / tổng frame submit | Càng cao càng tiết kiệm, chỉ có nghĩa khi đọc cùng M9 | Chưa đo ở mức frame. Ở mức box: QA 3D đưa 51% box vào nhóm duyệt theo lô, 93% trong đó đúng |
+| M9 | Tỷ lệ nhãn kém lẽ ra đã lọt | Chỉ trên frame trúng mẫu ngẫu nhiên: số frame người duyệt phải sửa / số frame được kiểm tra | Phải thấp; đây là cái giá của M8 | Chưa có mẫu ngẫu nhiên. Lỗi lọt qua duyệt theo lô đo bằng người duyệt mô phỏng theo GT (`eval/results/temporal/report.md`) |
+| M10 | Số object người phải chạm mỗi frame | Tổng object được tạo, sửa hoặc xóa tay trong sequence / số frame của sequence | So có lan truyền với chỉ có tracking | Đo bằng người duyệt mô phỏng, có / không lan truyền (`eval/review_simulation.ipynb`) |
+| M11 | Tỷ lệ gộp và chất lượng nhãn kế thừa | Số frame thành viên / tổng frame; IoU của nhãn kế thừa so với ground truth | IoU nhãn kế thừa không được thấp rõ so với frame đại diện | Chưa (chưa gộp frame) |
+| M12 | Precision của cờ | Số object bị cờ mà reviewer phải sửa hoặc xóa / tổng object bị cờ; tách cờ confidence và cờ VLM | Quyết định ngưỡng cờ và việc bật VLM mặc định | Tab Metrics có precision từng loại cờ từ thao tác thật. QA 3D bắt 86% box sai. Chưa có VLM |
+| M13 | GPU-giờ tiết kiệm | Số frame không phải auto-label × thời gian auto-label trung bình, quy ra giờ 3090 và giờ A100 | Đọc cùng M11 | Chưa (chưa gộp frame) |
+| M14 | Năng suất annotator | Chỉ số năng suất P của từng người mỗi kỳ và tỷ lệ người-kỳ đạt ngưỡng | Xem mục Đo năng suất annotator | Có frame/giờ theo người và theo phiên; chưa có P, Q2D, Q3D, E |
 
 Ngưỡng đạt cho các chỉ số chưa chốt. Cách đặt hợp lý nhất là đợi đủ hai số gốc — baseline thời gian gán nhãn thủ công (tuần 1) và mAP của mô hình pretrained trên dataset đã chọn (tuần 2) — rồi chốt ngưỡng cuối tuần 2 và ghi ngược vào bảng này. Đặt ngưỡng trước khi có hai số đó chỉ là đoán.
 
@@ -340,56 +344,56 @@ Vì n\_fix đếm từ log chỉnh sửa, người bỏ qua lỗi sẽ có thờ
 
 ## Yêu cầu chức năng
 
-Tất cả yêu cầu dưới đây nằm trong phạm vi 6 tuần.
+Tất cả yêu cầu dưới đây nằm trong phạm vi 6 tuần. Cột "Trạng thái" cập nhật ngày 2026-09-30: 18 Xong, 14 Một phần, 14 Chưa.
 
-| ID | Yêu cầu | Tiêu chí chấp nhận |
-| --- | --- | --- |
-| FR-01 | Nạp một frame gồm ảnh, point cloud (.pcd/.bin) và calibration | Upload sai định dạng báo lỗi rõ; frame hợp lệ hiển thị được cả hai khung trong 3 giây |
-| FR-02 | Chọn frame hoặc sequence từ subset nuScenes mini / KITTI đã nạp sẵn | Danh sách có trạng thái và người đang xử lý |
-| FR-03 | Ẩn danh khuôn mặt và biển số trên ảnh trước khi hiển thị | Ảnh trả về client đã bị làm mờ; đạt M7 |
-| FR-04 | Phát hiện frame gần trùng theo ego pose + ảnh + point cloud, gộp thành cụm liên tiếp | Cụm tối đa 20 frame; ego đứng yên nhưng có xe khác chạy qua thì không bị gộp |
-| FR-05 | Frame thành viên kế thừa nhãn của frame đại diện; tách cụm bằng tay | Frame thành viên không chạy auto-label; export có đủ nhãn cho từng frame |
-| FR-06 | Auto-label 2D: box + segmentation mask trên ảnh | Trả về danh sách object có lớp, box, mask, confidence |
-| FR-07 | Auto-label 3D: box trên point cloud | Trả về box dạng (x, y, z, w, l, h, yaw), lớp, confidence |
-| FR-08 | Ngưỡng confidence điều chỉnh được để lọc nhãn tự động | Thanh trượt 0–1, số object hiển thị đổi ngay |
-| FR-09 | Auto-label batch cả sequence, có hàng đợi, tiến độ và checkpoint | Worker A100 bị ngắt thì job chạy tiếp từ frame dở, trên A100 mới hoặc trên 3090 |
-| FR-10 | Tracking: giữ object\_id ổn định qua các frame | Cùng một xe giữ nguyên id qua ít nhất 10 frame liên tiếp; người tách và gộp được id |
-| FR-11 | Lan truyền nhãn từ keyframe: 2D bằng SAM2 video, 3D giữ kích thước và bù chuyển động ego | Gán xong frame đầu của sequence 20 frame thì mọi object còn trong tầm nhìn có nhãn nguồn propagated ở các frame sau |
-| FR-12 | Sửa object ở frame giữa thì frame đó thành keyframe và lan truyền chạy lại về sau | Không ghi đè object người đã sửa ở bất kỳ frame nào |
-| FR-13 | Confidence lan truyền c\_prop cho từng nhãn; dừng lan truyền dưới ngưỡng dừng | Mỗi nhãn propagated có prop\_conf; object bị che hẳn thì dừng chứ không trôi theo vật khác |
-| FR-14 | Nội suy box giữa hai keyframe | Các frame giữa được điền và đánh dấu nguồn máy |
-| FR-15 | Tối ưu throughput inference: half precision, batch nhiều frame, cache kết quả theo frame | Báo cáo frame/giờ trên 3090 và A100, trước và sau tối ưu |
-| FR-16 | Chiếu 3D box xuống ảnh và gợi ý ghép cặp với 2D box | Cặp có IoU chiếu ≥ 0.5 được ghép tự động; người sửa được cặp ghép |
-| FR-17 | Chọn object ở một khung thì khung kia highlight object tương ứng | Hai chiều, độ trễ dưới 200 ms |
-| FR-18 | Editor 2D: thêm, xóa, kéo biên box, đổi lớp | Thao tác bằng chuột; có undo/redo |
-| FR-19 | Editor 2D cho mask: tô thêm, xóa bớt bằng brush | Brush đổi kích thước được |
-| FR-20 | Viewer 3D: xem point cloud, xoay, zoom, chọn box | Hiển thị mượt ở mức khoảng 100k điểm |
-| FR-21 | Chỉnh vị trí, kích thước và yaw của 3D box | Có cả gizmo kéo và ô nhập số; có chế độ nhìn từ trên xuống (BEV) |
-| FR-22 | Phím tắt cho các thao tác hay dùng | Ít nhất: chuyển object, xóa, đổi lớp, lưu, submit, sang frame kế |
-| FR-23 | Lưu nháp tự động | Mất kết nối hoặc tải lại trang không mất quá 30 giây công việc |
-| FR-24 | Dải sequence: thumbnail theo thời gian, keyframe, cụm frame, đường c\_prop của object đang chọn | Nhảy tới frame bất kỳ bằng một cú bấm; thấy ngay đoạn nào c\_prop tụt |
-| FR-25 | Đăng nhập và phân vai annotator / reviewer / ML Engineer | Người dùng chỉ thấy hành động thuộc vai của mình |
-| FR-26 | Submit, approve, reject kèm lý do | Trạng thái frame chuyển đúng; reject bắt buộc nhập lý do |
-| FR-27 | Ghi lịch sử: ai sửa gì, lúc nào, nhãn nào do máy sinh và nhãn nào do người sửa | Mỗi annotation có trường nguồn, edited và dấu vết chỉnh sửa |
-| FR-28 | Bộ kiểm tra sau submit sinh danh sách dấu hiệu bất thường | Frame không có dấu hiệu nào và không trúng mẫu thì đi thẳng sang approved |
-| FR-29 | Đánh cờ object chưa ai chạm có confidence dưới τ\_flag | Object có edited = true không bao giờ bị cờ vì confidence |
-| FR-30 | VLM kiểm lớp trên vùng cắt quanh 2D box | VLM không tự sửa nhãn; chỉ chạy trên object chưa ai chạm hoặc vừa đổi lớp; tắt được bằng cấu hình |
-| FR-31 | VLM kiểm object bị sót trên toàn ảnh | Vùng nghi ngờ hiển thị cho reviewer như một cờ |
-| FR-32 | Mẫu kiểm tra ngẫu nhiên, mù với reviewer | Tỉ lệ mặc định 15%; reviewer không phân biệt được với frame bị cờ; chỉ mẫu này dùng tính M9 |
-| FR-33 | Điểm tin cậy theo người, cập nhật sau mỗi lần duyệt | Dưới 0.4 thì kiểm tra hết, dưới 0.7 thì nhân đôi tỉ lệ mẫu |
-| FR-34 | Review theo object: nhảy tới object tô sáng, giữ / sửa / xóa | Sửa xong thì lan truyền lại; lý do hiện sau khi bấm xong |
-| FR-35 | Duyệt theo lô cho các frame kéo vào cùng đợt | Lưới thumbnail + BEV, approve nhiều frame một lần |
-| FR-36 | Gán reviewer luân phiên, chặn tự duyệt | Reviewer luôn khác người sửa; không ai làm reviewer toàn thời gian |
-| FR-37 | So sánh nhãn của hai annotator trên cùng frame | Báo cáo IoU giữa hai người (inter-annotator agreement) |
-| FR-38 | Active learning: xếp hạng frame theo độ khó và ưu tiên trong hàng đợi | Hàng đợi sắp theo điểm độ khó; xem được lý do một frame bị xếp khó |
-| FR-39 | Đồng hồ thao tác cho từng frame | Dừng khi mất focus quá 60 giây hoặc không thao tác quá 120 giây; lưu theo phiên |
-| FR-40 | Frame vàng có ground truth chèn mù vào hàng đợi | Tỉ lệ 5–10%; không phân biệt được với frame thường; nhãn trên frame vàng không vào export |
-| FR-41 | Chỉ số năng suất P, chất lượng Q và E, và kết luận đạt / chưa đạt ngưỡng mỗi kỳ | Đúng năm loại kết luận ở mục Đo năng suất; lưu kèm bộ ngưỡng đã dùng; dưới 20 frame thì chưa đủ dữ liệu |
-| FR-42 | Thống kê theo người và theo phiên, kèm throughput inference | Frame/giờ mỗi người, frame chuẩn/giờ, frame/giờ inference mỗi GPU |
-| FR-43 | Export nhãn đã approve theo định dạng nuScenes hoặc KITTI | File xuất đọc được bằng devkit tương ứng mà không lỗi |
-| FR-44 | Export chặn frame chưa duyệt | Frame chưa approved và frame vàng không xuất hiện trong file xuất |
-| FR-45 | Quản lý phiên bản nhãn bằng DVC | Mỗi lần export tạo một phiên bản truy lại được |
-| FR-46 | Trang báo cáo M1–M14 | Cập nhật sau mỗi frame approve; M4 tách theo nguồn; xuất CSV |
+| ID | Yêu cầu | Tiêu chí chấp nhận | Trạng thái (2026-09-30) |
+| --- | --- | --- | --- |
+| FR-01 | Nạp một frame gồm ảnh, point cloud (.pcd/.bin) và calibration | Upload sai định dạng báo lỗi rõ; frame hợp lệ hiển thị được cả hai khung trong 3 giây | Xong — trang Dự án nhận zip nuScenes, KITTI (.bin + calib), LiDAR + camera (.pcd/.bin), video; sai định dạng báo lỗi |
+| FR-02 | Chọn frame hoặc sequence từ subset nuScenes mini / KITTI đã nạp sẵn | Danh sách có trạng thái và người đang xử lý | Một phần — hàng đợi frame và danh sách video / scene có trạng thái; chưa có "người đang xử lý" (không đăng nhập) |
+| FR-03 | Ẩn danh khuôn mặt và biển số trên ảnh trước khi hiển thị | Ảnh trả về client đã bị làm mờ; đạt M7 | Xong — biển số bằng detector chuyên dụng, mặt bằng YOLOE, làm ở server, có cache. Ảnh BEV ghép chưa làm mờ |
+| FR-04 | Phát hiện frame gần trùng theo ego pose + ảnh + point cloud, gộp thành cụm liên tiếp | Cụm tối đa 20 frame; ego đứng yên nhưng có xe khác chạy qua thì không bị gộp | Chưa |
+| FR-05 | Frame thành viên kế thừa nhãn của frame đại diện; tách cụm bằng tay | Frame thành viên không chạy auto-label; export có đủ nhãn cho từng frame | Chưa |
+| FR-06 | Auto-label 2D: box + segmentation mask trên ảnh | Trả về danh sách object có lớp, box, mask, confidence | Xong — YOLOE-26 seg: box + mask đa giác + score |
+| FR-07 | Auto-label 3D: box trên point cloud | Trả về box dạng (x, y, z, w, l, h, yaw), lớp, confidence | Xong — MMDetection3D (CenterPoint, PointPillars, SSN, FCOS3D, PGD); mặc định gộp 4 mô hình LiDAR + tinh chỉnh theo track |
+| FR-08 | Ngưỡng confidence điều chỉnh được để lọc nhãn tự động | Thanh trượt 0–1, số object hiển thị đổi ngay | Xong — thanh "Score ≥" ở UI 2D và 3D |
+| FR-09 | Auto-label batch cả sequence, có hàng đợi, tiến độ và checkpoint | Worker A100 bị ngắt thì job chạy tiếp từ frame dở, trên A100 mới hoặc trên 3090 | Xong — dự án chạy nền từng bước, có tiến độ; cache detection theo frame; dự án dở tự chạy tiếp khi server khởi động lại. Một GPU local, không có worker A100 |
+| FR-10 | Tracking: giữ object\_id ổn định qua các frame | Cùng một xe giữ nguyên id qua ít nhất 10 frame liên tiếp; người tách và gộp được id | Một phần — `track_id` giữ qua lan truyền 2D / 3D và khi xuất nuScenes; chưa tách / gộp id bằng tay |
+| FR-11 | Lan truyền nhãn từ keyframe: 2D bằng SAM2 video, 3D giữ kích thước và bù chuyển động ego | Gán xong frame đầu của sequence 20 frame thì mọi object còn trong tầm nhìn có nhãn nguồn propagated ở các frame sau | Xong, khác cách làm — 2D: tracker trên ảnh 12 Hz dùng detection + optical flow + ghép kiểu ByteTrack (không SAM2); 3D: giữ kích thước người đặt, bù chuyển động xe + vận tốc, khớp detection theo khoảng cách tâm |
+| FR-12 | Sửa object ở frame giữa thì frame đó thành keyframe và lan truyền chạy lại về sau | Không ghi đè object người đã sửa ở bất kỳ frame nào | Xong — approve frame nào thì lan truyền lại từ frame đó; dừng trước frame người đã mở nên không ghi đè |
+| FR-13 | Confidence lan truyền c\_prop cho từng nhãn; dừng lan truyền dưới ngưỡng dừng | Mỗi nhãn propagated có prop\_conf; object bị che hẳn thì dừng chứ không trôi theo vật khác | Xong — c_prop cho từng nhãn lan truyền (cờ `PROP_LOW_CONF`, `PROP_COASTING`); track mất detection quá số ảnh cho phép thì dừng |
+| FR-14 | Nội suy box giữa hai keyframe | Các frame giữa được điền và đánh dấu nguồn máy | Chưa — thay bằng lan truyền tiến |
+| FR-15 | Tối ưu throughput inference: half precision, batch nhiều frame, cache kết quả theo frame | Báo cáo frame/giờ trên 3090 và A100, trước và sau tối ưu | Một phần — half precision, cache detection theo frame, đo thời gian từng bước và frame/giờ auto-label; chưa có bảng trước / sau tối ưu trên 3090 / A100 |
+| FR-16 | Chiếu 3D box xuống ảnh và gợi ý ghép cặp với 2D box | Cặp có IoU chiếu ≥ 0.5 được ghép tự động; người sửa được cặp ghép | Một phần — box 3D chiếu xuống 6 camera và được kiểm chứng tự động bằng detector 2D; chưa ghép cặp bằng tay |
+| FR-17 | Chọn object ở một khung thì khung kia highlight object tương ứng | Hai chiều, độ trễ dưới 200 ms | Một phần — chọn box 3D thì box chiếu sáng trên ảnh camera (tự chọn camera tốt nhất); chiều ảnh → 3D chưa có |
+| FR-18 | Editor 2D: thêm, xóa, kéo biên box, đổi lớp | Thao tác bằng chuột; có undo/redo | Xong — thêm, xoá, kéo, đổi lớp, undo / redo 50 bước; sửa được cả ở sweep t−2…t+2 |
+| FR-19 | Editor 2D cho mask: tô thêm, xóa bớt bằng brush | Brush đổi kích thước được | Chưa |
+| FR-20 | Viewer 3D: xem point cloud, xoay, zoom, chọn box | Hiển thị mượt ở mức khoảng 100k điểm | Xong — three.js, màu theo độ cao, nền ảnh BEV ghép 6 camera |
+| FR-21 | Chỉnh vị trí, kích thước và yaw của 3D box | Có cả gizmo kéo và ô nhập số; có chế độ nhìn từ trên xuống (BEV) | Xong — kéo / đổi cỡ / xoay trên BEV, phím, ô nhập số, co khít theo điểm LiDAR |
+| FR-22 | Phím tắt cho các thao tác hay dùng | Ít nhất: chuyển object, xóa, đổi lớp, lưu, submit, sang frame kế | Xong — K, D, C, E, B, A, Enter, R, T, N/P, Ctrl+Z / Ctrl+Y |
+| FR-23 | Lưu nháp tự động | Mất kết nối hoặc tải lại trang không mất quá 30 giây công việc | Xong — mỗi thao tác ghi ngay lên server |
+| FR-24 | Dải sequence: thumbnail theo thời gian, keyframe, cụm frame, đường c\_prop của object đang chọn | Nhảy tới frame bất kỳ bằng một cú bấm; thấy ngay đoạn nào c\_prop tụt | Một phần — dải t−2…t+2 dưới ảnh và timeline video (trạng thái, nhãn lan truyền, kéo thả để mở frame); chưa có cụm frame và đường c_prop |
+| FR-25 | Đăng nhập và phân vai annotator / reviewer / ML Engineer | Người dùng chỉ thấy hành động thuộc vai của mình | Chưa — không đăng nhập; tên người duyệt ghi vào log |
+| FR-26 | Submit, approve, reject kèm lý do | Trạng thái frame chuyển đúng; reject bắt buộc nhập lý do | Một phần — approve và trả lại (lý do bắt buộc); không có bước submit riêng |
+| FR-27 | Ghi lịch sử: ai sửa gì, lúc nào, nhãn nào do máy sinh và nhãn nào do người sửa | Mỗi annotation có trường nguồn, edited và dấu vết chỉnh sửa | Xong — `corrections.jsonl` + `events.jsonl`; nguồn model / track / human / propagated; giữ box gốc |
+| FR-28 | Bộ kiểm tra sau submit sinh danh sách dấu hiệu bất thường | Frame không có dấu hiệu nào và không trúng mẫu thì đi thẳng sang approved | Một phần — QA Agent chấm rủi ro từng box ngay sau auto-label (confidence, LiDAR, temporal, hình học); box rủi ro thấp duyệt theo lô. Chưa có dấu hiệu 1–4 về việc của người |
+| FR-29 | Đánh cờ object chưa ai chạm có confidence dưới τ\_flag | Object có edited = true không bao giờ bị cờ vì confidence | Một phần — nhãn máy có cờ `LOW_CONFIDENCE`, nhãn lan truyền có `PROP_LOW_CONF`; ngưỡng chỉnh được trong config |
+| FR-30 | VLM kiểm lớp trên vùng cắt quanh 2D box | VLM không tự sửa nhãn; chỉ chạy trên object chưa ai chạm hoặc vừa đổi lớp; tắt được bằng cấu hình | Chưa |
+| FR-31 | VLM kiểm object bị sót trên toàn ảnh | Vùng nghi ngờ hiển thị cho reviewer như một cờ | Chưa |
+| FR-32 | Mẫu kiểm tra ngẫu nhiên, mù với reviewer | Tỉ lệ mặc định 15%; reviewer không phân biệt được với frame bị cờ; chỉ mẫu này dùng tính M9 | Chưa |
+| FR-33 | Điểm tin cậy theo người, cập nhật sau mỗi lần duyệt | Dưới 0.4 thì kiểm tra hết, dưới 0.7 thì nhân đôi tỉ lệ mẫu | Chưa |
+| FR-34 | Review theo object: nhảy tới object tô sáng, giữ / sửa / xóa | Sửa xong thì lan truyền lại; lý do hiện sau khi bấm xong | Một phần — thẻ object sắp theo rủi ro, giữ / xoá / đổi lớp / sửa; lan truyền lại khi approve; chưa mù với reviewer |
+| FR-35 | Duyệt theo lô cho các frame kéo vào cùng đợt | Lưới thumbnail + BEV, approve nhiều frame một lần | Một phần — "Approve low-risk" duyệt theo lô các box rủi ro thấp trong một frame; chưa có lưới nhiều frame |
+| FR-36 | Gán reviewer luân phiên, chặn tự duyệt | Reviewer luôn khác người sửa; không ai làm reviewer toàn thời gian | Chưa |
+| FR-37 | So sánh nhãn của hai annotator trên cùng frame | Báo cáo IoU giữa hai người (inter-annotator agreement) | Chưa |
+| FR-38 | Active learning: xếp hạng frame theo độ khó và ưu tiên trong hàng đợi | Hàng đợi sắp theo điểm độ khó; xem được lý do một frame bị xếp khó | Xong — hàng đợi sắp theo điểm rủi ro, issue code giải thích lý do (công thức khác D(f)) |
+| FR-39 | Đồng hồ thao tác cho từng frame | Dừng khi mất focus quá 60 giây hoặc không thao tác quá 120 giây; lưu theo phiên | Một phần — thời gian duyệt mỗi frame tính từ log thao tác, phiên tách khi nghỉ quá 30 phút; chưa dừng theo focus / không thao tác |
+| FR-40 | Frame vàng có ground truth chèn mù vào hàng đợi | Tỉ lệ 5–10%; không phân biệt được với frame thường; nhãn trên frame vàng không vào export | Chưa |
+| FR-41 | Chỉ số năng suất P, chất lượng Q và E, và kết luận đạt / chưa đạt ngưỡng mỗi kỳ | Đúng năm loại kết luận ở mục Đo năng suất; lưu kèm bộ ngưỡng đã dùng; dưới 20 frame thì chưa đủ dữ liệu | Chưa |
+| FR-42 | Thống kê theo người và theo phiên, kèm throughput inference | Frame/giờ mỗi người, frame chuẩn/giờ, frame/giờ inference mỗi GPU | Một phần — frame/giờ theo người và theo phiên, frame/giờ auto-label, thời gian từng bước; chưa có frame chuẩn/giờ |
+| FR-43 | Export nhãn đã approve theo định dạng nuScenes hoặc KITTI | File xuất đọc được bằng devkit tương ứng mà không lỗi | Xong — COCO (2D), nuScenes detection + bảng annotation (3D), KITTI; đọc lại bằng nuscenes-devkit |
+| FR-44 | Export chặn frame chưa duyệt | Frame chưa approved và frame vàng không xuất hiện trong file xuất | Xong (chưa có frame vàng) |
+| FR-45 | Quản lý phiên bản nhãn bằng DVC | Mỗi lần export tạo một phiên bản truy lại được | Chưa — mỗi lần xuất là một thư mục riêng có manifest |
+| FR-46 | Trang báo cáo M1–M14 | Cập nhật sau mỗi frame approve; M4 tách theo nguồn; xuất CSV | Một phần — tab Metrics: M1, M4, precision từng loại cờ, mAP/NDS 3D từng mô hình, đánh giá 2D trước / sau, CSV; chưa đủ M1–M14 |
 
 ## Tiêu chí chấp nhận chi tiết
 
@@ -969,34 +973,34 @@ Những hướng đi tiếp nếu đề tài được làm tiếp, không thuộ
 
 ## Checklist nghiệm thu
 
-Dùng để tự chấm trước buổi bảo vệ. Một mục chỉ được tích khi có thể đem ra cho người khác xem, không phải khi gần xong.
+Dùng để tự chấm trước buổi bảo vệ. Một mục chỉ được tích khi có thể đem ra cho người khác xem, không phải khi gần xong. Tích theo trạng thái ngày 2026-09-30; ghi chú in nghiêng là phần đã có hoặc còn thiếu.
 
 **Gán nhãn frame đơn**
 
-- [ ] Nạp được một frame ảnh + LiDAR + calibration và hiển thị cả hai khung
-- [ ] Auto-label sinh được 2D box, segmentation mask và 3D box trong tối đa 5 giây trên 3090
-- [ ] Sửa được nhãn ở cả hai không gian, có undo và lưu nháp
-- [ ] Chọn object ở một khung thì khung kia sáng theo
-- [ ] Ảnh hiển thị đã ẩn danh mặt và biển số từ phía server
+- [x] Nạp được một frame ảnh + LiDAR + calibration và hiển thị cả hai khung
+- [x] Auto-label sinh được 2D box, segmentation mask và 3D box trong tối đa 5 giây trên 3090 — *đo trên laptop RTX 4050: 2D ~1 s, 3D ~4 s*
+- [x] Sửa được nhãn ở cả hai không gian, có undo và lưu nháp
+- [ ] Chọn object ở một khung thì khung kia sáng theo — *mới một chiều: box 3D → ảnh camera*
+- [x] Ảnh hiển thị đã ẩn danh mặt và biển số từ phía server — *trừ ảnh BEV ghép*
 
 **Xử lý video**
 
-- [ ] Chạy batch được cả một sequence trên A100, có tiến độ theo frame, chạy tiếp được sau khi ngắt phiên
-- [ ] object\_id giữ ổn định qua ít nhất 10 frame liên tiếp
-- [ ] Gán frame đầu là có nhãn lan truyền cho các frame sau; sửa giữa chừng không ghi đè công của người
-- [ ] Frame gần trùng được gộp; không gộp khi có vật thể khác di chuyển; export đủ nhãn cho mọi frame
-- [ ] Nội suy giữa hai keyframe, nhãn nội suy được đánh dấu nguồn máy
-- [ ] Có số frame/giờ inference trước và sau tối ưu throughput
+- [x] Chạy batch được cả một sequence trên A100, có tiến độ theo frame, chạy tiếp được sau khi ngắt phiên — *chạy trên GPU local thay cho A100*
+- [x] object\_id giữ ổn định qua ít nhất 10 frame liên tiếp — *`track_id` qua lan truyền 2D / 3D*
+- [x] Gán frame đầu là có nhãn lan truyền cho các frame sau; sửa giữa chừng không ghi đè công của người
+- [ ] Frame gần trùng được gộp; không gộp khi có vật thể khác di chuyển; export đủ nhãn cho mọi frame — *chưa làm*
+- [ ] Nội suy giữa hai keyframe, nhãn nội suy được đánh dấu nguồn máy — *thay bằng lan truyền tiến*
+- [ ] Có số frame/giờ inference trước và sau tối ưu throughput — *có thời gian từng bước, chưa có bảng trước / sau*
 
 **Duyệt và kiểm soát chất lượng**
 
-- [ ] Đủ hai vai trò với luồng approve và reject kèm lý do
+- [ ] Đủ hai vai trò với luồng approve và reject kèm lý do — *approve / trả lại kèm lý do đã có; chưa đăng nhập, chưa tách vai*
 - [ ] Backend chặn tự duyệt, reviewer được gán luân phiên
-- [ ] Chỉ nhãn máy chưa ai chạm mới bị cờ vì confidence; reviewer nhảy thẳng tới object tô sáng
-- [ ] VLM tạo cờ bất đồng lớp mà không tự sửa nhãn; có kết luận bật/tắt dựa trên M12
+- [ ] Chỉ nhãn máy chưa ai chạm mới bị cờ vì confidence; reviewer nhảy thẳng tới object tô sáng — *có hàng đợi object theo rủi ro*
+- [ ] VLM tạo cờ bất đồng lớp mà không tự sửa nhãn; có kết luận bật/tắt dựa trên M12 — *chưa làm*
 - [ ] Mẫu kiểm tra ngẫu nhiên chạy mù, có số M8 và M9
-- [ ] Có đường đánh đổi M8–M9 qua ít nhất ba mức ngưỡng
-- [ ] Hàng đợi sắp theo điểm độ khó và xem được lý do
+- [ ] Có đường đánh đổi M8–M9 qua ít nhất ba mức ngưỡng — *có đường "box phải xem tay – lỗi lọt qua" theo cấu hình, đo bằng mô phỏng*
+- [x] Hàng đợi sắp theo điểm độ khó và xem được lý do
 
 **Năng suất annotator**
 
@@ -1007,12 +1011,158 @@ Dùng để tự chấm trước buổi bảo vệ. Một mục chỉ được t
 
 **Xuất, báo cáo và chứng cứ**
 
-- [ ] Export ra nuScenes hoặc KITTI, đọc lại được bằng devkit, không chứa frame chưa duyệt
-- [ ] Trang báo cáo hiện đủ M1–M14 và xuất CSV
+- [x] Export ra nuScenes hoặc KITTI, đọc lại được bằng devkit, không chứa frame chưa duyệt
+- [ ] Trang báo cáo hiện đủ M1–M14 và xuất CSV — *có CSV và một phần chỉ số*
 - [ ] Có số baseline thủ công đo ở tuần 1
 - [ ] Ngưỡng các chỉ số và ngưỡng năng suất đã chốt và ghi ngược vào PRD
 - [ ] Có kết quả thí nghiệm A/B và thí nghiệm trên sequence
 - [ ] Mỗi lần đo ghi kèm phiên bản dataset, tập lớp và checkpoint mô hình
-- [ ] Unit test cho bộ chuyển đổi tọa độ và bộ xuất định dạng
-- [ ] Toàn hệ thống dựng được bằng một lệnh `docker compose up`
-- [ ] Kịch bản demo chạy trọn một lượt không lỗi trước ngày bảo vệ
+- [x] Unit test cho bộ chuyển đổi tọa độ và bộ xuất định dạng — *141 test, `scripts\tasks.ps1 test`*
+- [ ] Toàn hệ thống dựng được bằng một lệnh `docker compose up` — *có cho web; mô hình 3D chạy trong venv riêng `.venv-mm3d`*
+- [ ] Kịch bản demo chạy trọn một lượt không lỗi trước ngày bảo vệ — *kịch bản: `docs/demo-script.md`*
+
+## Trạng thái triển khai (cập nhật 2026-09-30)
+
+Mục này ghi lại những gì đã chạy được trên nhánh `kien`, khác kế hoạch ở trên chỗ nào, và số đo hiện có. Trạng thái từng FR nằm ở cột cuối bảng [Yêu cầu chức năng](#yêu-cầu-chức-năng): 18 Xong, 14 Một phần, 14 Chưa.
+
+### Luồng đã chạy đầu cuối
+
+1. **Nạp dữ liệu** ở trang Dự án: video, ảnh, zip nuScenes, KITTI, LiDAR + camera. Mọi dữ liệu có LiDAR được đổi sang bảng nuScenes để dùng chung một đường xử lý.
+2. **Auto-label 2D** bằng YOLOE-26 (open-vocab, box + mask) trên keyframe và 4 sweep camera lân cận (t−2…t+2).
+3. **Auto-label 3D** bằng MMDetection3D; mặc định gộp 4 mô hình LiDAR rồi tinh chỉnh theo track.
+4. **QA Agent chấm rủi ro từng box.** 2D dùng confidence, điểm LiDAR, độ ổn định qua sweep và hình học. 3D chiếu box xuống 6 camera để kiểm chứng.
+5. **Duyệt theo ngoại lệ.** Box rủi ro thấp duyệt theo lô; người chỉ xem box rủi ro cao. Sửa được box ở cả 2D, 3D và các sweep.
+6. **Lan truyền.** Approve một keyframe thì nhãn người đã duyệt sang các keyframe sau, ở cả 2D và 3D.
+7. **Xuất** COCO / nuScenes / KITTI (chỉ frame đã approve), kèm báo cáo và CSV.
+
+### Khác kế hoạch
+
+| Kế hoạch trong PRD | Thực tế | Lý do |
+| --- | --- | --- |
+| RTX 3090 thường trực + A100 Colab, hai hàng đợi Celery + Redis | Một GPU laptop (RTX 4050), luồng nền trong FastAPI; có chế độ CPU. 3090 chỉ dùng để fine-tune | Chỉ có một máy chạy web; bớt hạ tầng |
+| Next.js + three.js | HTML/JS thuần do FastAPI phục vụ, three.js vendored | Không cần build, một lệnh là chạy, chạy offline |
+| PostgreSQL | File JSON + JSONL theo workspace / dự án | Một nhóm, một máy chủ; dễ diff và xuất |
+| YOLO + SAM2 | YOLOE-26 (open-vocab, có mask); YOLO-World, Grounding DINO, Florence-2 làm phương án | Nhận được barrier / cone mà không cần train |
+| Lan truyền 2D bằng SAM2 video | Tracker trên ảnh 12 Hz dùng detection đã cache + optical flow + ghép kiểu ByteTrack | Không tốn thêm GPU; flow cho thêm 14% nhãn đúng |
+| Bộ kiểm tra sau submit, mẫu ngẫu nhiên, VLM | QA Agent chấm rủi ro từng box ngay sau auto-label; box rủi ro thấp duyệt theo lô | Chấm ở mức box để giảm số box người phải xem; VLM và mẫu ngẫu nhiên chưa làm |
+| Điểm độ khó D(f) | Điểm rủi ro từng box: `w1(1 − score) + w2·lidar + w3·temporal + w4·geometric`; frame sắp theo box rủi ro nhất | Cùng điểm dùng cho cả hàng đợi và duyệt theo lô |
+| Nội suy giữa hai keyframe (FR-14) | Lan truyền tiến từ frame đã duyệt | Chỉ cần duyệt một frame, không cần hai |
+| Non-goal: không fine-tune | Có công cụ fine-tune YOLOE trên nuImages (`tools2d/`), chưa đưa vào mặc định | Mô hình pretrained yếu ở barrier, pedestrian, xe đạp |
+
+### Thêm ngoài kế hoạch
+
+- **Lan truyền 3D** bù chuyển động xe và dịch theo vận tốc mô hình dự đoán.
+- **Ảnh BEV** ghép từ 6 camera, trải dưới point cloud khi sửa box 3D.
+- **Sửa nhãn ở sweep** t−2…t+2; keyframe được chấm lại ngay.
+- **Tab ⚙ Cài đặt:** chỉnh thuật toán theo từng dự án, áp dụng lại, chạy đánh giá trước / sau ngay trên web.
+- **Đo thời gian từng bước** cho mỗi frame (tab Metrics).
+- **Demo không cần GPU:** `python -m src.demo`.
+
+### Kết quả đo
+
+Giao thức chống overfit: chọn cách làm trên **dev** (3 scene demo: scene-0035/0097/0101), chỉ báo cáo trên **held-out** (các scene val còn lại). Tham số lấy theo mặc định của bài báo gốc, không dò trên GT.
+
+| Hạng mục | Kết quả | Nguồn |
+| --- | --- | --- |
+| 3D, 27 scene val (1076 keyframe) | CenterPoint voxel mAP 0.573 / NDS 0.647; 0.62 s/keyframe (RTX 4050) | `eval/compare_3d.ipynb` |
+| 3D, dev, gộp 4 mô hình + track | mAP 0.537 → 0.644, NDS 0.560 → 0.643 | `tools3d/README.md` |
+| QA 3D (CenterPoint voxel) | Đưa 51% box vào nhóm duyệt theo lô, trong đó 93% đúng; bắt 86% box sai | `README.md` |
+| 2D YOLOE-26L zero-shot | mAP50 dev 0.395, held-out 0.452 | `eval/results/det2d_variants.json` |
+| Lan truyền 2D + optical flow, 20 scene held-out (795 keyframe) | Nhãn đúng 2910 → 3329 (+14%); đổi ID 265 → 97 | `eval/results/temporal/report.md` |
+| Ghép kiểu ByteTrack | Box lan truyền sai: dev 224 → 203, held-out 4 scene 329 → 300 | như trên |
+| Lan truyền 3D, 4 scene held-out | ~95% box đúng vật; đổi ID 98 → 36 | `eval/results/propagation3d.md` |
+| Thời gian | GPU: 2D ~1 s, 3D ~4 s/frame. CPU: detect 2D 17.7 s/frame | tab Metrics, lệnh `profile` |
+
+Thử nhưng không bật mặc định (có sẵn trên tab Cài đặt):
+
+- Tính lại score theo sweep: bớt ~60% box phải xem tay nhưng sót thêm ~9% vật.
+- Optical flow cho QA temporal: nhiều lỗi lọt qua duyệt theo lô hơn.
+
+### Còn thiếu
+
+- **Vai trò:** đăng nhập / phân vai (FR-25), chặn tự duyệt và gán reviewer luân phiên (FR-36), khoá frame (EC-06).
+- **Video:** gộp frame gần trùng (FR-04, FR-05), nội suy (FR-14).
+- **Kiểm soát chất lượng:** VLM (FR-30, FR-31), mẫu ngẫu nhiên mù và điểm tin cậy (FR-32, FR-33), so sánh hai annotator (FR-37).
+- **Năng suất:** đồng hồ dừng theo focus, frame vàng, kết luận P / Q / E (FR-39 → FR-41).
+- **Khác:** brush sửa mask (FR-19), DVC (FR-45), chiều ảnh → 3D (FR-17).
+- **Số liệu:** baseline thủ công, thí nghiệm A/B (M1, M5), tỷ lệ làm mờ (M7). Ngưỡng các chỉ số chưa chốt.
+- Đo lan truyền 3D trên đủ 27 scene: `scripts\tasks.ps1 evalprop3d`.
+
+## Công cụ và lệnh
+
+Người gán nhãn chỉ cần web. Các công cụ dưới đây dành cho người chạy mô hình, đánh giá và chuẩn bị dữ liệu. Mọi lệnh chạy từ thư mục gốc repo.
+
+### Trên web (không cần terminal)
+
+| Màn hình | Dùng để |
+| --- | --- |
+| Trang **Dự án** (`/`) | Tải dữ liệu lên, theo dõi tiến độ, mở duyệt 2D / 3D, xuất nuScenes / COCO / KITTI |
+| UI duyệt: 🖼 Ảnh, 🎞 Video, 🧊 3D | Hàng đợi theo rủi ro; sửa, approve, trả lại, lan truyền |
+| Tab **Metrics** | M1, M4, chất lượng cờ QA, mAP/NDS 3D, năng suất, thời gian từng bước, tải CSV |
+| Tab **⚙ Cài đặt** | Chỉnh optical flow, cách ghép tracker, tính lại score, ngưỡng giữ box. **Áp dụng lại** cho frame chưa mở; **Chạy đánh giá** trước / sau |
+
+### `scripts\tasks.ps1` — lối tắt trên Windows
+
+Cách gọi: `powershell -ExecutionPolicy Bypass -File scripts\tasks.ps1 <việc>`.
+
+Tuỳ chọn chung: `-Dataroot`, `-Scene`, `-Scenes`, `-Weights`, `-Limit`, `-Port`, `-Workspace`.
+
+| Việc | Làm gì |
+| --- | --- |
+| `check` / `install` | Kiểm tra / cài thư viện (torch + CUDA, ultralytics, detector biển số, môi trường 3D) |
+| `serve` | Chạy web ở `http://localhost:8000`; `-Workspace` để mở workspace demo mà không sửa `.env` |
+| `test` | ruff + pytest, giống CI |
+| `demozip` | Đóng gói một scene nuScenes đủ 6 camera + LiDAR thành zip để tải lên trang Dự án |
+| `eval3d` | Suy luận 4 mô hình LiDAR (có lật trục) và chấm mAP/NDS, tách dev / held-out |
+| `label3d` | Tạo frame 3D cho UI bằng ensemble (chạy sau `eval3d`) |
+| `eval2d` | Chấm detector 2D trên dev / held-out; `-Weights` để so trọng số đã fine-tune |
+| `evaltemporal` | So sánh trước / sau optical flow cho lan truyền và QA temporal |
+| `evalprop3d` | Đo lan truyền box 3D, dùng dự đoán của `eval3d`, không cần GPU |
+| `profile` | Đo mỗi bước tốn bao nhiêu giây, không dùng cache (`-Limit 10`) |
+| `rescore` | Bật / tắt tính lại score theo sweep trong config (web làm được việc này ở tab Cài đặt) |
+| `push` | Đẩy nhánh lên GitHub (hook gửi log AI chạy trước khi đẩy) |
+| `all` | `check` → `test` → `eval3d` → `label3d` → `eval2d` |
+
+### `python -m src.cli` — lệnh xử lý dữ liệu
+
+| Lệnh | Làm gì |
+| --- | --- |
+| `run` | Auto-label 2D + QA Agent cho các keyframe nuScenes vào workspace |
+| `evaluate` | mAP của nhãn tự động + recall / precision cờ QA so với GT |
+| `detect-sweeps` | Detect mọi ảnh camera 12 Hz của scene, cho tracker lan truyền |
+| `propagate` | Lan truyền nhãn từ một frame đã approve |
+| `eval-propagation` | Thí nghiệm "keyframe hoàn hảo": lan truyền GT rồi so với GT |
+| `label3d` | Kiểm chứng dự đoán 3D bằng camera, tạo frame 3D để duyệt |
+| `evaluate3d` | So kết luận kiểm chứng 3D với nhãn gốc |
+| `profile` | Đo thời gian từng bước cho N keyframe |
+
+`python -m src.demo` sinh một video đường phố tổng hợp và mở UI trên workspace riêng, không cần GPU hay nuScenes.
+
+### `tools2d/` — mô hình 2D
+
+| File | Làm gì |
+| --- | --- |
+| `train_pc.ps1` | Fine-tune một lệnh trên máy GPU Windows: `setup`, `data`, `convert`, `smoke`, `baseline`, `lp`, `full`, `resume`, `package` |
+| `nuimages_to_yolo.py` | Đổi nuImages sang dataset YOLO; tự bỏ ảnh cùng xe, cùng ngày với scene val của nuScenes để không rò rỉ |
+| `finetune_yoloe.py` | Huấn luyện YOLOE: `baseline` (zero-shot), `lp` (chỉ lớp phân loại), `full` (toàn mạng) |
+| `eval2d.py` | Chấm detector 2D trên dev / held-out, so trọng số gốc với trọng số mới |
+| `eval_temporal.py` | So sánh trước / sau optical flow (lan truyền, QA temporal, tính lại score) |
+| `nuscenes_val.py`, `nuscenes_val_logs.json` | Danh sách scene val và log (xe, ngày) để chống rò rỉ |
+
+### `tools3d/` — mô hình 3D (môi trường riêng `.venv-mm3d`)
+
+| File | Làm gì |
+| --- | --- |
+| `setup.ps1` | Tạo `.venv-mm3d`: PyTorch 2.1 + CUDA 11.8, mmcv, mmdet3d |
+| `run3d.py` | `check`, `infos`, `run` (suy luận từng mô hình), `eval` (mAP/NDS, ensemble), `predict` (dữ liệu chưa gán nhãn của dự án) |
+| `refine3d.py` | Gộp nhiều mô hình và tinh chỉnh theo track (kích thước, vận tốc, hướng, bù keyframe hụt) |
+| `eval_propagation3d.py` | So ba cách lan truyền 3D: chỉ bù chuyển động xe, + vận tốc, + ngưỡng đã chỉnh |
+
+### `scripts/` — tiện ích khác
+
+| File | Làm gì |
+| --- | --- |
+| `pack_nuscenes_subset.py` | Đóng gói vài scene nuScenes (+ workspace) thành zip nhỏ để gửi nhau hoặc demo |
+| `bench_detectors.py` | Đo tốc độ các detector trên cùng một bộ ảnh |
+| `simulate_review.py` | Người duyệt mô phỏng theo GT, đo công duyệt có / không lan truyền |
+| `log_hook.py`, `log_manual.py`, `log_antigravity.py`, `submit_log.py`, `setup_hooks.*` | Ghi và nộp log dùng AI của BTC (`.ai-log/`). Không sửa, không bỏ qua hook |
