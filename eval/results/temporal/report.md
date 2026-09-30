@@ -18,6 +18,34 @@ Aggregation*: tính kỹ ở keyframe, dùng optical flow để mang kết quả
 - GT 2D = hộp bao box 3D chiếu xuống ảnh (rộng hơn hộp detector), khớp khi IoU ≥ 0.5 cùng lớp.
 - Cấu hình mặc định được chọn **trên dev**, trước khi chạy held-out.
 
+## 0. Held-out lớn: 20 scene val, 795 keyframe (laptop GPU, `scripts\tasks.ps1 evaltemporal`)
+
+Chạy lại trên GPU của Kiên với toàn bộ 20 scene val có đủ dữ liệu (khác 3 scene dev). Số liệu: `gpu_heldout20.json`
+(dev chạy lại trên GPU: `gpu_dev.json`, khớp số trên CPU trong sai số fp16).
+
+**Lan truyền** (154 lần, 1060 object):
+
+| `propagation.flow` | Nhãn đúng / box ra | Đổi ID | Mất dấu | Box sai | IoU TB | Giây (tổng) |
+|---|---|---|---|---|---|---|
+| off (trước) | 2910 / 4531 (64.2%) | 265 | 1150 | 1356 | 0.508 | 51 |
+| missing | 3068 / 4484 (68.4%) | 181 | 1055 | 1235 | 0.541 | 51 |
+| **always** (mặc định) | **3329 / 4693 (70.9%)** | **97** | **902** | 1267 | **0.567** | 214 |
+
+**2D:**
+
+| Cấu hình | mAP50 | F1 | Xem tay | Lọt qua | Vẽ thêm | Box sai | Lỗi còn lại (lọt + sót) |
+|---|---|---|---|---|---|---|---|
+| base (mặc định) | 0.295 | 0.504 | 1707 | 1632 | 2565 | 2980 | 4197 |
+| flow | 0.295 | 0.504 | 1059 | 2082 | 2565 | 2980 | 4647 |
+| flow + mean | 0.291 | 0.523 | 492 | 1906 | 2660 | 2300 | 4566 |
+| flow + linked | 0.304 | 0.495 | 1415 | 2319 | 2444 | 3544 | 4763 |
+| **mean (không flow)** | 0.283 | **0.527** | 648 | **1399** | 2791 | **1860** | **4190** |
+
+- Idea 1 được xác nhận trên dữ liệu gấp 5 lần: +14% nhãn lan truyền đúng, đổi ID −63%, mất dấu −22%, box sai −7%.
+- Idea 2: flow cho QA temporal làm lỗi lọt qua tăng rõ — không khuyên bật. `mean` không flow giữ tổng lỗi như cũ,
+  bớt 62% box phải xem và 38% box sai phải xoá, đổi lại thêm 9% vật sót phải vẽ. Mặc định vẫn tắt (đã chọn trên dev);
+  nhóm có thể bật ở tab ⚙ Cài đặt nếu muốn đổi việc xoá / xem lấy việc vẽ thêm.
+
 ## 1. Box sweep khớp keyframe (flow có dời đúng không)
 
 Box detector ở sweep so với box gần nhất ở keyframe:

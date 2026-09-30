@@ -136,17 +136,17 @@ qa:
     # Track có ở sweep trước + sau với score >= ngưỡng này mới được đề xuất RECOVERED_BY_TRACK
     recover_min_score: 0.35
     # Optical flow (OpenCV DIS, ~0.06 s/cặp ảnh trên CPU) dời box của sweep về thời điểm keyframe trước khi so khớp:
-    # box sweep khớp keyframe đúng hơn hẳn (IoU TB ở t±2: 0.58 -> 0.83), cờ FLICKER ít và đúng hơn (190 -> 86 cờ,
-    # precision 0.71 -> 0.77) nhưng bắt ít lỗi hơn (lỗi lọt qua duyệt theo lô 252 -> 306 trên 119 keyframe dev).
-    # Tắt mặc định vì ưu tiên chất lượng nhãn cuối cùng; xem eval/results/temporal/report.md
+    # box sweep khớp keyframe đúng hơn hẳn (IoU TB ở t±2: 0.58 -> 0.83), cờ FLICKER đúng hơn nhưng bắt ít lỗi hơn:
+    # held-out 20 scene (795 keyframe) lỗi lọt qua duyệt theo lô 1632 -> 2082. Không khuyên bật.
+    # Xem eval/results/temporal/report.md. Chỉnh được ở tab ⚙ Cài đặt trên web.
     flow: false
     flow_scale: 0.5
-    # Tính lại score keyframe theo các sweep (idea "gộp theo thời gian", src/services/temporal_fusion.py):
+    # Tính lại score keyframe theo các sweep (src/services/temporal_fusion.py):
     #   off    : score detector
     #   mean   : (score keyframe + score box ghép được ở từng sweep) / (1 + số sweep) — box loé lên một lần bị hạ
     #   linked : trung bình các lần thấy (kiểu Seq-NMS) — tăng recall, thêm box sai
-    # Đo trên dev: mAP gần như không đổi (±0.01); mean + flow giảm 65% box phải xem tay (304 -> 106) và bớt 126 box
-    # sai, đổi lại lỗi còn lại sau duyệt tăng ~7% (704 -> 753). Là lựa chọn của nhóm: tắt mặc định.
+    # mAP gần như không đổi. Held-out 20 scene, mean (flow tắt): box phải xem tay 1707 -> 648, box sai 2980 -> 1860,
+    # lỗi còn lại sau duyệt như cũ (4197 -> 4190) nhưng vật sót 2565 -> 2791. Tắt mặc định (chọn trên dev), nhóm quyết.
     rescore: "off"
   geometry:
     max_area_ratio: 0.35
@@ -203,8 +203,8 @@ propagation:
   # Dự đoán box ở ảnh kế tiếp bằng optical flow thay vì vận tốc không đổi (ý tưởng Deep Feature Flow ở mức box):
   #   off     : vận tốc không đổi (như trước)
   #   missing : chỉ ở ảnh chưa có detection (ảnh giữa hai keyframe mà `run` không detect)
-  #   always  : mọi ảnh — dev (24 lần lan truyền, 232 object, tối đa 10 keyframe): nhãn đúng 69.6% -> 76.2%,
-  #             đổi ID 49 -> 23, IoU TB 0.55 -> 0.60; tốn ~0.05–0.1 s mỗi ảnh 12Hz trên CPU
+  #   always  : mọi ảnh — held-out 20 scene (154 lần lan truyền, 1060 object, tối đa 10 keyframe): nhãn đúng
+  #             2910 -> 3329 (+14%), đổi ID 265 -> 97, mất dấu -22%; tốn ~1 s mỗi lần lan truyền 10 keyframe (CPU)
   flow: always
   flow_scale: 0.5
   # Số keyframe tối đa đi tới trong một lần lan truyền

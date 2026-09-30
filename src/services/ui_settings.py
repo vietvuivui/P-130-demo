@@ -24,8 +24,8 @@ FIELDS: dict[str, dict] = {
             "missing": "Optical flow chỉ ở ảnh chưa detect",
             "off": "Đoán theo vận tốc không đổi (cách cũ)",
         },
-        "help": "Held-out 4 scene: flow ở mọi ảnh cho thêm 11% nhãn lan truyền đúng, đổi ID 26 → 11. "
-        "Tốn ~0.05–0.1 s mỗi ảnh 12Hz trên CPU. Áp dụng ngay cho lần lan truyền sau.",
+        "help": "Held-out 20 scene (795 keyframe): flow ở mọi ảnh cho thêm 14% nhãn lan truyền đúng (2910 → 3329), "
+        "đổi ID 265 → 97, mất dấu −22%. Tốn ~1 s cho mỗi lần lan truyền 10 keyframe trên CPU.",
         "applies": "now",
     },
     "propagation.max_keyframes": {
@@ -39,8 +39,8 @@ FIELDS: dict[str, dict] = {
     "qa.temporal.flow": {
         "kind": "bool",
         "label": "So khớp sweep t−2…t+2 bằng optical flow",
-        "help": "Box sweep được dời về thời điểm keyframe trước khi so: cờ FLICKER ít và đúng hơn "
-        "(precision 0.84 → 0.94) nhưng bắt ít lỗi hơn (lỗi lọt qua duyệt theo lô 277 → 327 trên held-out).",
+        "help": "Không khuyên dùng. Box sweep được dời về thời điểm keyframe trước khi so: cờ FLICKER đúng hơn "
+        "(precision 0.79 → 0.90) nhưng bắt ít lỗi hơn hẳn — lỗi lọt qua duyệt theo lô 1632 → 2082 (held-out 20 scene).",
         "applies": "relabel",
     },
     "qa.temporal.rescore": {
@@ -48,10 +48,12 @@ FIELDS: dict[str, dict] = {
         "label": "Tính lại score keyframe theo các sweep",
         "choices": {
             "off": "Tắt — dùng score detector (mặc định)",
-            "mean": "Trung bình 5 ảnh — bớt ~60% box phải xem tay, lỗi còn lại +5%",
-            "linked": "Trung bình các lần thấy — thêm recall, thêm box sai",
+            "mean": "Trung bình 5 ảnh — bớt ~60% box phải xem tay, sót thêm ~9% vật",
+            "linked": "Trung bình các lần thấy — ít sót hơn, nhiều box sai hơn",
         },
-        "help": "mAP gần như không đổi ở cả ba; đây là đổi công duyệt lấy chất lượng. Nên bật cùng so khớp bằng flow.",
+        "help": "mAP gần như không đổi ở cả ba. Held-out 20 scene, 'Trung bình 5 ảnh' khi TẮT so khớp bằng flow: "
+        "box phải xem tay 1707 → 648, box sai 2980 → 1860, tổng lỗi còn lại sau duyệt như cũ (4197 → 4190), "
+        "nhưng vật bị sót phải vẽ thêm 2565 → 2791. Bật cùng flow thì lỗi còn lại tăng ~9%.",
         "applies": "relabel",
     },
     "detection.min_score": {
