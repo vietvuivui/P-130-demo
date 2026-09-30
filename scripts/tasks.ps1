@@ -5,6 +5,7 @@
 #   check       kiểm tra Python đang dùng có đủ thư viện (torch + CUDA, ultralytics, scipy, detector biển số...) và môi trường 3D
 #   install     cài / cập nhật thư viện vào đúng Python đó (requirements-ml.txt gồm cả requirements.txt)
 #   serve       chạy web (trang Dự án) bằng đúng Python đó: http://localhost:8000
+#               -Workspace <thư mục> [-Dataroot <nuScenes>]: mở một workspace khác (vd. để demo), không sửa .env
 #   test        ruff + pytest (giống CI)
 #   demozip     đóng gói 1 scene nuScenes có đủ 6 camera + 10 sweep LiDAR thành zip để tải lên trang Dự án (demo 3D)
 #   eval3d      chấm 3D trên các scene val có trên máy: 4 mô hình LiDAR (+ lật trục) rồi eval (tách dev / held-out)
@@ -31,6 +32,7 @@ param(
     [switch]$NoTta,
     [int]$Port = 8000,
     [string[]]$Scenes = @(),
+    [string]$Workspace = "",
     [ValidateSet("off", "mean", "linked")]
     [string]$Mode = "off"
 )
@@ -84,6 +86,11 @@ function Install {
 }
 
 function Serve {
+    if ($Workspace) {
+        $env:WORKSPACE_DIR = $Workspace
+        if ($PSBoundParameters.ContainsKey("Dataroot")) { $env:NUSCENES_DATAROOT = $Dataroot; $env:NUSCENES_VERSION = "v1.0-trainval" }
+        Write-Host "Workspace: $Workspace$(if ($env:NUSCENES_DATAROOT) { " · nuScenes: $env:NUSCENES_DATAROOT" })" -ForegroundColor Green
+    }
     Step "Web: http://localhost:$Port (Ctrl+C để dừng)"
     Run "python" @("-m", "uvicorn", "src.main:app", "--port", "$Port")
 }
