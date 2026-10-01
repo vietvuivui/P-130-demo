@@ -2196,3 +2196,6 @@ body.in-project .brand-sub { display: none; }
 
 /* Panel đang ẩn phải thắng display:flex !important của layout workstation */
 .tab-panel.hidden { display: none !important; }
+
+/* Thanh công cụ trên ảnh: xuống dòng thay vì tràn ra ngoài (nút + Box bị cắt) */
+.toolbar-actions { flex-wrap: wrap; }
