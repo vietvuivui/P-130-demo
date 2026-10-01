@@ -39,7 +39,7 @@ const S = {
   viewMode: 'image', // image | video
   videos: [],
   video: null, // VideoDetail đang mở
-  playTimer: null,
+  playback: null, // đang phát video: {items, i, imgs, ...}
   videoPoll: null,
   uploads: new Set(), // video vừa tải lên, đang chờ auto-label xong để báo
   zoom: 1, // 1 = vừa khung; phóng to tới 8x
@@ -263,7 +263,7 @@ function elapsed() {
 }
 
 async function openFrame(id, { preview = false } = {}) {
-  if (!preview) stopPlay();
+  if (!preview) stopPlay({ reopen: false });
   stopTimer();
   const frame = await api(`/frames/${encodeURIComponent(id)}`);
   S.frame = frame;
@@ -499,6 +499,7 @@ function draw() {
 function drawCanvas() {
   const f = S.frame;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (S.playback?.drawn) { drawPlayback(); return; }
   if (!f) return;
   const img = S.viewOffset === 0 ? S.img : S.sweepImgs[S.viewOffset];
   if (img) ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
@@ -1218,7 +1219,7 @@ function refreshLists() {
 }
 
 async function setMode(mode) {
-  stopPlay();
+  stopPlay({ reopen: false });
   S.viewMode = mode;
   storageSet('viewMode', mode);
   document.querySelectorAll('.mode').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
@@ -1290,7 +1291,7 @@ function renderVideoList() {
 }
 
 async function openVideo(id) {
-  stopPlay();
+  stopPlay({ reopen: false });
   // Mở lại đúng video đang xem thì giữ frame hiện tại; mở video khác (hoặc lần đầu vào chế độ Video) thì nhảy tới
   // frame đầu tiên chưa duyệt — chỗ bắt đầu gán nhãn / lan truyền
   const same = S.video?.video_id === id;
@@ -1369,29 +1370,122 @@ function stepVideo(delta) {
   if (j !== i) openFrame(frames[j].frame_id);
 }
 
-function stopPlay() {
-  const wasPlaying = !!S.playTimer;
-  if (S.playTimer) clearInterval(S.playTimer);
-  S.playTimer = null;
+// ---------- phát video ----------
+// Phát mọi ảnh đã cắt (keyframe 2 fps + sweep t-2 … t+2 ở 10 fps) theo đúng thời gian thực, box lấy sẵn từ
+// GET /videos/{id}/playback trong một lần gọi. Lúc phát chỉ vẽ lại khung ảnh (không mở frame, không vẽ lại panel);
+// ảnh phía trước được tải trước, ảnh chưa kịp tải thì đồng hồ đứng chờ. Dừng ở đâu thì mở keyframe gần đó để duyệt.
+const PLAY_AHEAD = 15; // số ảnh tải trước
+const PLAY_KEEP = 4; // số ảnh đã qua còn giữ (ảnh 2560×1440 giải nén ~15 MB, không giữ cả video)
+
+function setPlayButtons(playing, label) {
   const b = $('btn-play');
-  if (b) b.textContent = '▶ Phát';
-  // Frame mở lúc phát là bản xem nhanh (không bấm giờ); dừng ở frame nào thì bắt đầu tính giờ duyệt frame đó (M1)
-  if (wasPlaying && S.frame && S.frame.status !== 'approved' && !S.timerStart) S.timerStart = Date.now();
+  if (b) b.textContent = playing ? `⏸ ${label || 'Dừng'}` : '▶ Phát';
+  const nb = $('btn-nav-play');
+  if (nb) nb.innerHTML = `<i class="${playing ? 'ri-pause-fill' : 'ri-play-fill'}"></i>`;
 }
 
-function togglePlay() {
-  if (S.playTimer) { stopPlay(); return; }
-  const frames = S.video?.frames || [];
-  if (frames.length < 2) return;
-  $('btn-play').textContent = '⏸ Dừng';
-  let busy = false;
-  S.playTimer = setInterval(async () => {
-    if (busy) return;
-    const i = frames.findIndex((f) => f.frame_id === S.frame?.frame_id);
-    if (i >= frames.length - 1) { stopPlay(); return; }
-    busy = true;
-    try { await openFrame(frames[i + 1].frame_id, { preview: true }); } finally { busy = false; }
-  }, 700);
+function stopPlay({ reopen = true } = {}) {
+  const pb = S.playback;
+  if (!pb) return;
+  S.playback = null;
+  cancelAnimationFrame(pb.raf);
+  setPlayButtons(false);
+  const cur = pb.items[pb.i];
+  // Mở keyframe của ảnh đang dừng (bắt đầu tính giờ duyệt frame đó, M1)
+  if (reopen && cur && S.viewMode === 'video') openFrame(cur.frame_id).catch((err) => toast(err.message, true));
+  else drawCanvas();
+}
+
+function playImage(pb, j) {
+  const it = pb.items[j];
+  if (!it) return null;
+  let im = pb.imgs.get(j);
+  if (!im) {
+    im = new Image();
+    im.decoding = 'async';
+    im.src = `${API}/frames/${encodeURIComponent(it.frame_id)}/image${it.offset ? `?offset=${it.offset}` : ''}`;
+    im.decode?.().catch(() => {});
+    pb.imgs.set(j, im);
+  }
+  return im;
+}
+
+function playTick(now) {
+  const pb = S.playback;
+  if (!pb) return;
+  pb.raf = requestAnimationFrame(playTick);
+  const items = pb.items;
+  if (pb.last != null) {
+    // Ảnh kế chưa tải xong thì đồng hồ đứng chờ (không nhảy cóc qua ảnh thiếu)
+    const nxt = items[pb.i + 1];
+    const im = nxt && playImage(pb, pb.i + 1);
+    if (!nxt || (im.complete && im.naturalWidth)) pb.clock += Math.min(0.25, (now - pb.last) / 1000);
+  }
+  pb.last = now;
+  let j = pb.i;
+  while (j + 1 < items.length && items[j + 1].t <= pb.clock) {
+    const im = playImage(pb, j + 1);
+    if (!(im.complete && im.naturalWidth)) break;
+    j++;
+  }
+  for (let k = j + 1; k <= Math.min(items.length - 1, j + PLAY_AHEAD); k++) playImage(pb, k);
+  for (const k of pb.imgs.keys()) if (k < j - PLAY_KEEP) pb.imgs.delete(k);
+  if (j !== pb.i || !pb.drawn) {
+    pb.i = j;
+    pb.drawn = true;
+    drawCanvas();
+    const it = items[j];
+    setPlayButtons(true, `${it.t.toFixed(1)}s`);
+    if (it.frame_id !== pb.frameId) { pb.frameId = it.frame_id; markTimeline(it.frame_id); }
+  }
+  if (j >= items.length - 1 && pb.clock >= items[j].t + 0.15) stopPlay();
+}
+
+// Đánh dấu keyframe đang phát trên timeline mà không mở frame
+function markTimeline(id) {
+  let cur = null;
+  document.querySelectorAll('.tl-card').forEach((c) => { const on = c.dataset.id === id; c.classList.toggle('current', on); if (on) cur = c; });
+  cur?.scrollIntoView({ block: 'nearest', inline: 'center' });
+}
+
+function drawPlayback() {
+  const pb = S.playback;
+  const it = pb.items[pb.i];
+  const im = pb.imgs.get(pb.i);
+  if (im?.complete && im.naturalWidth) ctx.drawImage(im, 0, 0, canvas.width, canvas.height);
+  for (const b of it.boxes) {
+    if (b.pending && b.level === 'low' && !S.showLow) continue;
+    const color = b.source === 'human' ? HUMAN_COLOR : RISK_COLOR[b.level] || RISK_COLOR.low;
+    const tag = b.source === 'human' || (b.pending && b.level === 'high') ? `#${b.id} ${b.label}` : null;
+    drawBox(b.bbox, color, { lw: b.pending ? 2 : 1.4, dash: b.source === 'track' ? [8, 5] : null, label: tag });
+  }
+}
+
+async function togglePlay() {
+  if (S.playback) { stopPlay(); return; }
+  const v = S.video;
+  if (!v || (v.frames || []).length < 2) return;
+  const pb = { items: [], i: 0, imgs: new Map(), raf: 0, clock: 0, last: null, drawn: false, frameId: null };
+  S.playback = pb;
+  setPlayButtons(true, '…');
+  try {
+    const res = await api(`/videos/${encodeURIComponent(v.video_id)}/playback`);
+    if (S.playback !== pb) return;
+    pb.items = res.items;
+  } catch (err) {
+    if (S.playback === pb) { S.playback = null; setPlayButtons(false); }
+    toast('Không phát được: ' + err.message, true);
+    return;
+  }
+  if (pb.items.length < 2) { S.playback = null; setPlayButtons(false); return; }
+  // Phát tiếp từ keyframe đang mở; đang ở cuối thì phát lại từ đầu
+  let start = pb.items.findIndex((it) => it.frame_id === S.frame?.frame_id && it.offset === 0);
+  if (start < 0 || start >= pb.items.length - 2) start = 0;
+  pb.i = start;
+  pb.clock = pb.items[start].t;
+  stopTimer();
+  for (let k = start; k <= Math.min(pb.items.length - 1, start + PLAY_AHEAD); k++) playImage(pb, k);
+  pb.raf = requestAnimationFrame(playTick);
 }
 
 async function uploadVideo(file) {
@@ -1428,6 +1522,7 @@ $('upload-input').addEventListener('change', (e) => {
 $('btn-prev').addEventListener('click', () => stepVideo(-1));
 $('btn-next').addEventListener('click', () => stepVideo(1));
 $('btn-play').addEventListener('click', togglePlay);
+$('btn-nav-play')?.addEventListener('click', () => { if (S.viewMode === 'video') togglePlay(); });
 $('timeline').addEventListener('click', (e) => {
   const card = e.target.closest('.tl-card');
   if (card) openFrame(card.dataset.id).catch((err) => toast(err.message, true));
@@ -2039,7 +2134,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (!S.frame) return;
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-  if (S.playTimer && key !== ' ') stopPlay();
+  if (S.playback && key !== ' ') { stopPlay(); e.preventDefault(); return; } // phím bất kỳ: chỉ dừng phát
   if ((e.ctrlKey || e.metaKey) && (key === 'z' || key === 'y')) {
     e.preventDefault();
     undoRedo(key === 'y' || e.shiftKey ? 'redo' : 'undo');

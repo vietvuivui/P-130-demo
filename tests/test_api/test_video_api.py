@@ -41,6 +41,13 @@ async def test_upload_then_review_and_propagate(video_client, demo_mp4):
     assert [f["t"] for f in detail["frames"]] == [0.0, 0.5, 1.0, 1.5]
     assert (await video_client.get("/api/v1/videos")).json()[0]["video_id"] == vid
 
+    pb = (await video_client.get(f"/api/v1/videos/{vid}/playback")).json()["items"]
+    ts = [it["t"] for it in pb]
+    assert ts == sorted(ts) and len(pb) > len(detail["frames"])  # có cả ảnh giữa hai keyframe
+    assert [it["frame_id"] for it in pb if it["offset"] == 0] == [f["frame_id"] for f in detail["frames"]]
+    assert all(isinstance(b["bbox"], list) and len(b["bbox"]) == 4 for it in pb for b in it["boxes"])
+    assert (await video_client.get("/api/v1/videos/nope/playback")).status_code == 404
+
     f0 = detail["frames"][0]["frame_id"]
     img = await video_client.get(f"/api/v1/frames/{f0}/image")
     assert img.status_code == 200 and img.headers["content-type"] == "image/jpeg"

@@ -2,6 +2,7 @@ import logging
 import os
 import shutil
 import tempfile
+import threading
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -776,6 +777,56 @@ def get_video(video_id: str, store: WorkspaceStore = Depends(get_store)):
     if detail is None:
         raise _error(404, "VIDEO_NOT_FOUND", f"Không có video {video_id}")
     return detail
+
+
+@router.get("/videos/{video_id}/playback")
+def get_video_playback(
+    video_id: str,
+    store: WorkspaceStore = Depends(get_store),
+    dataroot: Path = Depends(get_dataroot),
+    config: AutoLabelConfig = Depends(get_config),
+):
+    """Mọi ảnh của video theo thời gian (keyframe + sweep) kèm box, để UI phát liên tục không phải mở từng frame."""
+    items = video_service.playback(store, video_id)
+    if items is None:
+        raise _error(404, "VIDEO_NOT_FOUND", f"Không có video {video_id}")
+    _warm_anonymized(store, items, dataroot, config)
+    return {"video_id": video_id, "items": items}
+
+
+_WARMING: set[str] = set()
+
+
+def _warm_anonymized(store: WorkspaceStore, items: list[dict], dataroot: Path, config: AutoLabelConfig) -> None:
+    """Làm mờ mặt / biển số trước cho mọi ảnh sắp phát (chạy nền theo thứ tự thời gian), để lúc phát lần đầu
+    GET /image không phải làm mờ từng ảnh ngay trong request."""
+    if not config.privacy.enabled:
+        return
+    key = f"{store.root}|{items[0]['frame_id'] if items else ''}"
+    if key in _WARMING:
+        return
+    _WARMING.add(key)
+
+    def run():
+        from src.services.privacy import anonymized_path
+
+        try:
+            cache: dict[str, FrameRecord | None] = {}
+            for it in items:
+                fid = it["frame_id"]
+                if fid not in cache:
+                    cache[fid] = store.load_frame(fid)
+                frame = cache[fid]
+                if frame is None:
+                    continue
+                try:
+                    anonymized_path(store.root, image_path(dataroot, frame, it["offset"], workspace=store.root), config.privacy)
+                except (KeyError, OSError):
+                    continue
+        finally:
+            _WARMING.discard(key)
+
+    threading.Thread(target=run, daemon=True, name="warm-anon").start()
 
 
 @router.post("/videos/upload", response_model=VideoSummary)
