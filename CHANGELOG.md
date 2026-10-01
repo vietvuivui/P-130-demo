@@ -30,6 +30,31 @@ Quy tắc:
 
 ---
 
+## 2026-10-01 · Kiên · nhánh `kien`
+
+**Làm gì:** Detector 2D mặc định đổi sang YOLOE-26L fine-tune trên nuImages (linear probe, 1280 px, 10 epoch trên RTX
+3090). Chấm trên nuScenes CAM_FRONT (`tools2d/eval2d.py`, ngưỡng 0.30, IoU 0.5):
+
+| | dev (119 ảnh) | held-out (957 ảnh) | P held-out | R held-out |
+|---|---|---|---|---|
+| zero-shot `yoloe-26l-seg.pt` | 0.392 | 0.312 | 0.499 | 0.523 |
+| linear probe nuImages | **0.429** | **0.366** | 0.484 | **0.581** |
+
+AP50 held-out tăng mạnh ở lớp yếu: barrier 0.13→0.33, bicycle 0.12→0.23, traffic_cone 0.39→0.50, motorcycle
+0.21→0.28, pedestrian 0.23→0.29; giảm nhẹ truck 0.52→0.47, bus 0.81→0.78; construction_vehicle / trailer vẫn ~0.
+
+**File chính:** `configs/autolabel.yaml` (`detection.yoloe.weights`), `weights/yoloe-26l-nuimages-lp-1280.pt` (commit
+trước, kèm `.sha256` và `results-lp-1280.csv`), `tools2d/train_pc.ps1` (sửa hàm `Data` trùng từ khoá PowerShell).
+
+**Ảnh hưởng tới người khác:** Config đổi detector mặc định. Trọng số mới là **tập lớp đóng 10 lớp nuScenes**: prompt chữ /
+lớp thêm mới không có tác dụng; cần open-vocab thì đặt lại `yoloe-26l-seg.pt`. Cần `git pull` để có file `.pt`
+(50.6 MB, nằm ngoài `.gitignore` nhờ `git add -f`). Cache detection cũ không bị dùng lại (khoá theo tên trọng số).
+
+**Cách kiểm tra:** `powershell -ExecutionPolicy Bypass -File scripts\tasks.ps1 eval2d -Weights weights\yoloe-26l-nuimages-lp-1280.pt`
+
+**Còn dở / việc tiếp:** Bản fine-tune toàn mạng (`full-1280`) đang train trên PC 3090; xong thì chấm lại cùng lệnh, giữ
+bản nào held-out cao hơn.
+
 ## 2026-09-30 (2) · Kiên · nhánh `kien`
 
 **Làm gì:**
