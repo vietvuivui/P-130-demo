@@ -1,0 +1,145 @@
+{
+  "match_iou": 0.5,
+  "scenes": 2,
+  "tracks_started": 10,
+  "per_hop": [
+    {
+      "hop": 1,
+      "tracks_output": 10,
+      "correct": 10,
+      "id_switch": 0,
+      "wrong": 0,
+      "lost": 0,
+      "correct_rate": 1.0,
+      "mean_iou": 0.739,
+      "coverage": 1.0
+    },
+    {
+      "hop": 2,
+      "tracks_output": 9,
+      "correct": 9,
+      "id_switch": 0,
+      "wrong": 0,
+      "lost": 1,
+      "correct_rate": 1.0,
+      "mean_iou": 0.7524,
+      "coverage": 0.9
+    },
+    {
+      "hop": 3,
+      "tracks_output": 9,
+      "correct": 9,
+      "id_switch": 0,
+      "wrong": 0,
+      "lost": 1,
+      "correct_rate": 1.0,
+      "mean_iou": 0.7166,
+      "coverage": 0.9
+    },
+    {
+      "hop": 4,
+      "tracks_output": 8,
+      "correct": 7,
+      "id_switch": 0,
+      "wrong": 1,
+      "lost": 1,
+      "correct_rate": 0.875,
+      "mean_iou": 0.6434,
+      "coverage": 0.8889
+    },
+    {
+      "hop": 5,
+      "tracks_output": 6,
+      "correct": 6,
+      "id_switch": 0,
+      "wrong": 0,
+      "lost": 1,
+      "correct_rate": 1.0,
+      "mean_iou": 0.7025,
+      "coverage": 0.8571
+    },
+    {
+      "hop": 6,
+      "tracks_output": 4,
+      "correct": 3,
+      "id_switch": 0,
+      "wrong": 1,
+      "lost": 2,
+      "correct_rate": 0.75,
+      "mean_iou": 0.6422,
+      "coverage": 0.6667
+    },
+    {
+      "hop": 7,
+      "tracks_output": 3,
+      "correct": 3,
+      "id_switch": 0,
+      "wrong": 0,
+      "lost": 1,
+      "correct_rate": 1.0,
+      "mean_iou": 0.7662,
+      "coverage": 0.75
+    },
+    {
+      "hop": 8,
+      "tracks_output": 2,
+      "correct": 2,
+      "id_switch": 0,
+      "wrong": 0,
+      "lost": 1,
+      "correct_rate": 1.0,
+      "mean_iou": 0.7185,
+      "coverage": 0.6667
+    },
+    {
+      "hop": 9,
+      "tracks_output": 1,
+      "correct": 1,
+      "id_switch": 0,
+      "wrong": 0,
+      "lost": 1,
+      "correct_rate": 1.0,
+      "mean_iou": 0.6923,
+      "coverage": 0.5
+    },
+    {
+      "hop": 10,
+      "tracks_output": 0,
+      "correct": 0,
+      "id_switch": 0,
+      "wrong": 0,
+      "lost": 0,
+      "correct_rate": null,
+      "mean_iou": null,
+      "coverage": null
+    }
+  ],
+  "calibration": {
+    "n_correct": 50,
+    "n_wrong": 2,
+    "mean_c_prop_correct": 0.9003,
+    "mean_c_prop_wrong": 0.3795,
+    "low_conf_flag_recall": 1.0,
+    "low_conf_flag_precision": 0.5,
+    "flag_below": 0.6
+  },
+  "config": {
+    "match_iou": 0.3,
+    "suppress_iou": 0.5,
+    "smoothing": 0.7,
+    "velocity_smoothing": 0.5,
+    "max_coast_images": 6,
+    "min_visible": 0.3,
+    "min_box_px": 6.0,
+    "weights": {
+      "agreement": 0.5,
+      "continuity": 0.3,
+      "lidar": 0.2
+    },
+    "hop_decay": 0.99,
+    "flag_below": 0.6,
+    "stop_below": 0.15,
+    "max_keyframes": 20,
+    "class_differs_score": 0.5
+  }
+}

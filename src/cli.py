@@ -2,7 +2,7 @@
 
 python -m src.cli run --limit 20                       # auto-label + QA Agent cho 20 keyframe đầu
 python -m src.cli run --scenes scene-0061 scene-0103   # theo scene
-python -m src.cli run --detectors yolo_world grounding_dino --overwrite
+python -m src.cli run --detectors yoloe yolo26 --overwrite
 python -m src.cli evaluate                             # mAP + flag recall/precision -> eval/results/
 
 Lan truyền nhãn trên video:
@@ -13,6 +13,11 @@ python -m src.cli eval-propagation                     # thí nghiệm keyframe 
 QC:
 python -m src.cli qc-report                            # checklist sẵn sàng phát hành; exit 1 nếu chưa READY
 python -m src.cli quick-check vendor_labels.json       # kiểm nhanh file nhãn ngoài; exit 1 nếu có lỗi (error)
+Phần 3D (dự đoán từ tools3d/run3d.py trên máy có GPU):
+python -m src.cli label3d --model pointpillars          # kiểm chứng box 3D bằng camera, tạo frame 3D để duyệt
+python -m src.cli evaluate3d --model pointpillars       # kết luận kiểm chứng so với nhãn gốc -> eval/results/det3d/
+
+python -m src.cli profile --limit 10                   # một frame tốn thời gian ở bước nào (không dùng cache)
 """
 
 from __future__ import annotations
@@ -44,17 +49,21 @@ def cmd_run(args) -> None:
 
 
 def cmd_evaluate(args) -> None:
-    from src.services.evaluation import evaluate_map, evaluate_qa, render_report
+    from src.services.evaluation import evaluate_map, evaluate_pr, evaluate_qa, render_report
     from src.services.store import WorkspaceStore
 
     settings = get_settings()
     config = load_autolabel_config(settings.autolabel_config)
     store = WorkspaceStore(settings.workspace_dir)
-    # Chỉ frame nuScenes có GT (video mp4 tải lên không có GT nên không tính)
+    # Chỉ frame có GT: video mp4 tải lên và dữ liệu nuScenes chưa gán nhãn (không có sample_annotation) không tính
     gt = {f.frame_id: g for f in store.list_frames() if (g := store.load_aux("gt", f.frame_id)) is not None}
     frames = [f for f in store.list_frames() if f.frame_id in gt]
-    if not frames:
-        raise SystemExit("Workspace chưa có frame nuScenes nào có GT, chạy `python -m src.cli run` trước")
+    if not any(gt.values()):
+        raise SystemExit(
+            "Không có frame nào có GT để đánh giá (dữ liệu chưa gán nhãn, hoặc chưa `python -m src.cli run`). "
+            "Với dữ liệu mới, đo bằng tab Metrics trong UI (thời gian duyệt, tỉ lệ nhãn phải sửa) sau khi duyệt, "
+            "hoặc export các frame đã duyệt rồi dùng làm GT."
+        )
 
     result = {
         "n_frames": len(frames),
@@ -63,6 +72,7 @@ def cmd_evaluate(args) -> None:
         "detectors": sorted({d for f in frames for d in f.detectors}),
         "map50": evaluate_map(frames, gt, 0.5),
         "map70": evaluate_map(frames, gt, 0.7),
+        "pr": evaluate_pr(frames, gt, 0.5),
         "qa": evaluate_qa(frames, gt, 0.5),
     }
     out = Path(args.out)
@@ -110,6 +120,8 @@ def cmd_propagate(args) -> None:
 
     settings = get_settings()
     config = load_autolabel_config(settings.autolabel_config)
+    if args.detectors:  # đọc cache detection của đúng detector đã chạy cho workspace này
+        config.detection.detectors = args.detectors
     _, _, source = _sequence_source(settings, config)
     resp = propagate_from(WorkspaceStore(settings.workspace_dir), source, config, args.frame_id, args.max_frames)
     print(json.dumps(resp.model_dump(), indent=2, ensure_ascii=False))
@@ -121,6 +133,8 @@ def cmd_eval_propagation(args) -> None:
 
     settings = get_settings()
     config = load_autolabel_config(settings.autolabel_config)
+    if args.detectors:  # đọc cache detection của đúng detector đã chạy cho workspace này
+        config.detection.detectors = args.detectors
     _, _, source = _sequence_source(settings, config)
     store = WorkspaceStore(settings.workspace_dir)
     if not store.frame_ids():
@@ -178,6 +192,60 @@ def cmd_quick_check(args) -> None:
                 who = f"#{f.object_id}" if f.object_id else "-"
                 print(f"  {f.severity:7s} {fr.frame_id or fr.file_name} {who} {f.code}: {f.message}")
     raise SystemExit(1 if res.n_errors or res.parse_errors else 0)
+def _preds_file(model: str, path: str | None) -> Path:
+    p = Path(path) if path else Path("eval/results/det3d") / model / "ui_preds.json"
+    if not p.is_file():
+        raise SystemExit(f"Không thấy {p}: chạy tools3d/run3d.py trên máy có GPU rồi chép eval/results/det3d/ về")
+    return p
+
+
+def cmd_label3d(args) -> None:
+    from src.services.label3d import run_label3d
+    from src.services.nuscenes_data import NuScenesMini
+    from src.services.store import WorkspaceStore
+
+    settings = get_settings()
+    config = load_autolabel_config(settings.autolabel_config)
+    preds = json.loads(_preds_file(args.model, args.preds).read_text())["results"]
+    min_score = _min_score3d(args.model, args.min_score, config.verify3d.min_score)
+    data = NuScenesMini(settings.nuscenes_dataroot, settings.nuscenes_version)
+    n = run_label3d(
+        WorkspaceStore(settings.workspace_dir), data, config, args.model, preds, args.scenes, args.overwrite, min_score
+    )
+    print(f"Xong {n} frame 3D ({args.model}, ngưỡng {min_score}) -> {settings.workspace_dir}/frames3d/{args.model}")
+
+
+def _min_score3d(model: str, arg: str, default: float) -> float:
+    """--min-score số cụ thể, hoặc "auto": ngưỡng F1 cao nhất trong eval/results/det3d/<model>/metrics.json."""
+    from src.services.label3d import auto_min_score
+
+    return float(arg) if arg != "auto" else auto_min_score(model, default)
+
+
+def cmd_evaluate3d(args) -> None:
+    from src.services.eval3d import evaluate_verification
+    from src.services.store import WorkspaceStore
+
+    store = WorkspaceStore(get_settings().workspace_dir)
+    for model in args.model or store.models3d():
+        res = evaluate_verification(store, model)
+        out = Path(args.out) / model
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "verify_eval.json").write_text(json.dumps(res, indent=1, ensure_ascii=False), encoding="utf-8")
+        print(
+            f"{model}: {res['n_boxes']} box, tự duyệt {res['auto_share']:.0%} (đúng {res['auto_precision']:.1%}), "
+            f"bắt {res['error_recall']:.0%} box sai"
+        )
+
+
+def cmd_profile(args) -> None:
+    from src.services.nuscenes_data import NuScenesMini
+    from src.services.profiling import print_profile, profile
+
+    settings = get_settings()
+    config = load_autolabel_config(settings.autolabel_config)
+    data = NuScenesMini(settings.nuscenes_dataroot, settings.nuscenes_version)
+    print_profile(profile(data, config, args.scenes, args.limit, privacy=not args.no_privacy))
 
 
 def main() -> None:
@@ -204,11 +272,34 @@ def main() -> None:
     pr = sub.add_parser("propagate", help="Lan truyền nhãn từ một frame đã approve")
     pr.add_argument("frame_id", help="Ví dụ scene-0061_000")
     pr.add_argument("--max-frames", type=int, help="Số keyframe tối đa đi tới (mặc định theo config)")
+    pr.add_argument("--detectors", nargs="*", help="Detector đã chạy cho workspace (mặc định theo config)")
     pr.set_defaults(func=cmd_propagate)
+
+    l3 = sub.add_parser("label3d", help="Kiểm chứng dự đoán của mô hình 3D bằng camera, tạo frame 3D để duyệt")
+    l3.add_argument("--model", required=True, help="Tên mô hình, ví dụ pointpillars (thư mục eval/results/det3d/)")
+    l3.add_argument("--preds", help="File dự đoán chuẩn nuScenes (mặc định eval/results/det3d/<model>/ui_preds.json)")
+    l3.add_argument("--scenes", nargs="*", help="Tên scene (mặc định: mọi scene có dự đoán)")
+    l3.add_argument("--overwrite", action="store_true")
+    l3.add_argument(
+        "--min-score", default="auto", help="Ngưỡng điểm giữ box; auto = ngưỡng F1 cao nhất của mô hình trên tập val"
+    )
+    l3.set_defaults(func=cmd_label3d)
+
+    e3 = sub.add_parser("evaluate3d", help="Kết luận kiểm chứng 3D so với nhãn gốc")
+    e3.add_argument("--model", nargs="*", help="Mặc định: mọi mô hình có frame 3D")
+    e3.add_argument("--out", default="eval/results/det3d")
+    e3.set_defaults(func=cmd_evaluate3d)
+
+    pf = sub.add_parser("profile", help="Đo thời gian từng bước cho N keyframe, không dùng cache")
+    pf.add_argument("--scenes", nargs="*", help="Tên scene (mặc định: scene đầu tiên có dữ liệu)")
+    pf.add_argument("--limit", type=int, default=10, help="Số keyframe")
+    pf.add_argument("--no-privacy", action="store_true", help="Bỏ đo làm mờ mặt / biển số")
+    pf.set_defaults(func=cmd_profile)
 
     ep = sub.add_parser("eval-propagation", help="Thí nghiệm keyframe hoàn hảo: lan truyền GT, so với GT")
     ep.add_argument("--scenes", nargs="*", help="Tên scene (mặc định: mọi scene có trong workspace)")
     ep.add_argument("--max-frames", type=int, help="Số keyframe tối đa đi tới")
+    ep.add_argument("--detectors", nargs="*", help="Detector đã chạy cho workspace (mặc định theo config)")
     ep.add_argument("--out", default="eval/results")
     ep.set_defaults(func=cmd_eval_propagation)
 

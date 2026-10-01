@@ -1,0 +1,481 @@
+{
+ "mo_ta": "Thử ý tưởng VESPA (arXiv:2507.20397) trên ensemble 4 mô hình LiDAR + track. dev = 3 scene demo (119 keyframe), held-out = 24 scene val còn lại (957 keyframe). mAP/NDS chuẩn nuScenes so với GT; found/fp = box >= 0.3 khớp / không khớp GT cùng lớp trong 2 m.",
+ "de_xuat_2d_lidar_dev_moi_lop": [
+  {
+   "tag": "ensemble",
+   "mAP": 0.644,
+   "NDS": 0.6429,
+   "ap": {
+    "car": 0.914,
+    "truck": 0.611,
+    "bus": 0.43,
+    "trailer": 0.0,
+    "construction_vehicle": 0.607,
+    "pedestrian": 0.916,
+    "motorcycle": 0.828,
+    "bicycle": 0.744,
+    "traffic_cone": 0.871,
+    "barrier": 0.519
+   },
+   "gt": 4546,
+   "found": 2984,
+   "fp": 1135
+  },
+  {
+   "tag": "+fill exist>=0.1 scale=0.3",
+   "mAP": 0.6431,
+   "NDS": 0.6425,
+   "ap": {
+    "car": 0.913,
+    "truck": 0.605,
+    "bus": 0.426,
+    "trailer": 0.0,
+    "construction_vehicle": 0.607,
+    "pedestrian": 0.916,
+    "motorcycle": 0.828,
+    "bicycle": 0.746,
+    "traffic_cone": 0.871,
+    "barrier": 0.519
+   },
+   "gt": 4546,
+   "found": 2984,
+   "fp": 1135,
+   "added": 286,
+   "added_ok": 15
+  },
+  {
+   "tag": "+fill exist>=0.1 scale=0.6",
+   "mAP": 0.6092,
+   "NDS": 0.625,
+   "ap": {
+    "car": 0.906,
+    "truck": 0.437,
+    "bus": 0.411,
+    "trailer": 0.0,
+    "construction_vehicle": 0.607,
+    "pedestrian": 0.906,
+    "motorcycle": 0.828,
+    "bicycle": 0.612,
+    "traffic_cone": 0.87,
+    "barrier": 0.513
+   },
+   "gt": 4546,
+   "found": 2987,
+   "fp": 1301,
+   "added": 286,
+   "added_ok": 15
+  },
+  {
+   "tag": "+fill exist>=0.1 scale=1.0",
+   "mAP": 0.5685,
+   "NDS": 0.6033,
+   "ap": {
+    "car": 0.848,
+    "truck": 0.385,
+    "bus": 0.302,
+    "trailer": 0.0,
+    "construction_vehicle": 0.607,
+    "pedestrian": 0.84,
+    "motorcycle": 0.828,
+    "bicycle": 0.584,
+    "traffic_cone": 0.86,
+    "barrier": 0.43
+   },
+   "gt": 4546,
+   "found": 2989,
+   "fp": 1416,
+   "added": 286,
+   "added_ok": 15
+  },
+  {
+   "tag": "+fill exist>=0.3 scale=0.3",
+   "mAP": 0.6383,
+   "NDS": 0.6407,
+   "ap": {
+    "car": 0.913,
+    "truck": 0.604,
+    "bus": 0.426,
+    "trailer": 0.0,
+    "construction_vehicle": 0.605,
+    "pedestrian": 0.916,
+    "motorcycle": 0.828,
+    "bicycle": 0.703,
+    "traffic_cone": 0.871,
+    "barrier": 0.519
+   },
+   "gt": 4546,
+   "found": 2984,
+   "fp": 1135,
+   "added": 450,
+   "added_ok": 105
+  },
+  {
+   "tag": "+fill exist>=0.3 scale=0.6",
+   "mAP": 0.5947,
+   "NDS": 0.6167,
+   "ap": {
+    "car": 0.906,
+    "truck": 0.418,
+    "bus": 0.41,
+    "trailer": 0.0,
+    "construction_vehicle": 0.598,
+    "pedestrian": 0.914,
+    "motorcycle": 0.828,
+    "bicycle": 0.498,
+    "traffic_cone": 0.863,
+    "barrier": 0.513
+   },
+   "gt": 4546,
+   "found": 3053,
+   "fp": 1361,
+   "added": 450,
+   "added_ok": 105
+  },
+  {
+   "tag": "+fill exist>=0.3 scale=1.0",
+   "mAP": 0.544,
+   "NDS": 0.583,
+   "ap": {
+    "car": 0.843,
+    "truck": 0.355,
+    "bus": 0.302,
+    "trailer": 0.0,
+    "construction_vehicle": 0.562,
+    "pedestrian": 0.828,
+    "motorcycle": 0.828,
+    "bicycle": 0.467,
+    "traffic_cone": 0.833,
+    "barrier": 0.423
+   },
+   "gt": 4546,
+   "found": 3069,
+   "fp": 1500,
+   "added": 450,
+   "added_ok": 105
+  }
+ ],
+ "de_xuat_2d_lidar_dev_lop_nho": [
+  {
+   "tag": "ensemble",
+   "mAP": 0.644,
+   "NDS": 0.6429,
+   "ap": {
+    "car": 0.914,
+    "truck": 0.611,
+    "bus": 0.43,
+    "trailer": 0.0,
+    "construction_vehicle": 0.607,
+    "pedestrian": 0.916,
+    "motorcycle": 0.828,
+    "bicycle": 0.744,
+    "traffic_cone": 0.871,
+    "barrier": 0.519
+   },
+   "gt": 4546,
+   "found": 2984,
+   "fp": 1135
+  },
+  {
+   "tag": "+đề xuất lớp nhỏ exist>=0.1 scale=0.3",
+   "mAP": 0.6443,
+   "NDS": 0.643,
+   "ap": {
+    "car": 0.914,
+    "truck": 0.611,
+    "bus": 0.43,
+    "trailer": 0.0,
+    "construction_vehicle": 0.607,
+    "pedestrian": 0.916,
+    "motorcycle": 0.828,
+    "bicycle": 0.747,
+    "traffic_cone": 0.871,
+    "barrier": 0.519
+   },
+   "gt": 4546,
+   "found": 2984,
+   "fp": 1135,
+   "added": 15,
+   "added_ok": 2
+  },
+  {
+   "tag": "+đề xuất lớp nhỏ exist>=0.3 scale=0.3",
+   "mAP": 0.6403,
+   "NDS": 0.6416,
+   "ap": {
+    "car": 0.914,
+    "truck": 0.611,
+    "bus": 0.43,
+    "trailer": 0.0,
+    "construction_vehicle": 0.607,
+    "pedestrian": 0.916,
+    "motorcycle": 0.828,
+    "bicycle": 0.709,
+    "traffic_cone": 0.871,
+    "barrier": 0.519
+   },
+   "gt": 4546,
+   "found": 2984,
+   "fp": 1135,
+   "added": 83,
+   "added_ok": 57
+  },
+  {
+   "tag": "+đề xuất lớp nhỏ exist>=0.1 scale=0.6",
+   "mAP": 0.6348,
+   "NDS": 0.6378,
+   "ap": {
+    "car": 0.914,
+    "truck": 0.611,
+    "bus": 0.43,
+    "trailer": 0.0,
+    "construction_vehicle": 0.607,
+    "pedestrian": 0.912,
+    "motorcycle": 0.828,
+    "bicycle": 0.657,
+    "traffic_cone": 0.871,
+    "barrier": 0.519
+   },
+   "gt": 4546,
+   "found": 2985,
+   "fp": 1149,
+   "added": 15,
+   "added_ok": 2
+  },
+  {
+   "tag": "+đề xuất lớp nhỏ exist>=0.3 scale=0.6",
+   "mAP": 0.6269,
+   "NDS": 0.6341,
+   "ap": {
+    "car": 0.914,
+    "truck": 0.611,
+    "bus": 0.43,
+    "trailer": 0.0,
+    "construction_vehicle": 0.607,
+    "pedestrian": 0.919,
+    "motorcycle": 0.828,
+    "bicycle": 0.575,
+    "traffic_cone": 0.868,
+    "barrier": 0.519
+   },
+   "gt": 4546,
+   "found": 3038,
+   "fp": 1164,
+   "added": 83,
+   "added_ok": 57
+  },
+  {
+   "tag": "+đề xuất lớp nhỏ exist>=0.1 scale=1.0",
+   "mAP": 0.6307,
+   "NDS": 0.6354,
+   "ap": {
+    "car": 0.914,
+    "truck": 0.611,
+    "bus": 0.43,
+    "trailer": 0.0,
+    "construction_vehicle": 0.607,
+    "pedestrian": 0.883,
+    "motorcycle": 0.828,
+    "bicycle": 0.645,
+    "traffic_cone": 0.871,
+    "barrier": 0.519
+   },
+   "gt": 4546,
+   "found": 2985,
+   "fp": 1149,
+   "added": 15,
+   "added_ok": 2
+  },
+  {
+   "tag": "+đề xuất lớp nhỏ exist>=0.3 scale=1.0",
+   "mAP": 0.6218,
+   "NDS": 0.6255,
+   "ap": {
+    "car": 0.914,
+    "truck": 0.611,
+    "bus": 0.43,
+    "trailer": 0.0,
+    "construction_vehicle": 0.607,
+    "pedestrian": 0.875,
+    "motorcycle": 0.828,
+    "bicycle": 0.572,
+    "traffic_cone": 0.862,
+    "barrier": 0.519
+   },
+   "gt": 4546,
+   "found": 3038,
+   "fp": 1164,
+   "added": 83,
+   "added_ok": 57
+  }
+ ],
+ "huong_theo_chuyen_dong_va_co_lop_heldout24": {
+  "ensemble": {
+   "dev": {
+    "mAP": 0.644,
+    "NDS": 0.6429,
+    "ap": {
+     "car": 0.914,
+     "truck": 0.611,
+     "bus": 0.43,
+     "trailer": 0.0,
+     "construction_vehicle": 0.607,
+     "pedestrian": 0.916,
+     "motorcycle": 0.828,
+     "bicycle": 0.744,
+     "traffic_cone": 0.871,
+     "barrier": 0.519
+    },
+    "ATE": 0.338,
+    "ASE": 0.325,
+    "AOE": 0.532,
+    "AVE": 0.399
+   },
+   "heldout": {
+    "mAP": 0.6681,
+    "NDS": 0.7128,
+    "ap": {
+     "car": 0.886,
+     "truck": 0.587,
+     "bus": 0.803,
+     "trailer": 0.619,
+     "construction_vehicle": 0.473,
+     "pedestrian": 0.9,
+     "motorcycle": 0.555,
+     "bicycle": 0.561,
+     "traffic_cone": 0.802,
+     "barrier": 0.495
+    },
+    "ATE": 0.229,
+    "ASE": 0.237,
+    "AOE": 0.22,
+    "AVE": 0.268
+   }
+  },
+  "ensemble+flip v>1": {
+   "dev": {
+    "mAP": 0.644,
+    "NDS": 0.6417,
+    "ap": {
+     "car": 0.914,
+     "truck": 0.611,
+     "bus": 0.43,
+     "trailer": 0.0,
+     "construction_vehicle": 0.607,
+     "pedestrian": 0.916,
+     "motorcycle": 0.828,
+     "bicycle": 0.744,
+     "traffic_cone": 0.871,
+     "barrier": 0.519
+    },
+    "ATE": 0.338,
+    "ASE": 0.325,
+    "AOE": 0.544,
+    "AVE": 0.399
+   },
+   "heldout": {
+    "mAP": 0.6681,
+    "NDS": 0.7126,
+    "ap": {
+     "car": 0.886,
+     "truck": 0.587,
+     "bus": 0.803,
+     "trailer": 0.619,
+     "construction_vehicle": 0.473,
+     "pedestrian": 0.9,
+     "motorcycle": 0.555,
+     "bicycle": 0.561,
+     "traffic_cone": 0.802,
+     "barrier": 0.495
+    },
+    "ATE": 0.229,
+    "ASE": 0.237,
+    "AOE": 0.222,
+    "AVE": 0.268
+   }
+  },
+  "ensemble+snap v>3": {
+   "dev": {
+    "mAP": 0.644,
+    "NDS": 0.6419,
+    "ap": {
+     "car": 0.914,
+     "truck": 0.611,
+     "bus": 0.43,
+     "trailer": 0.0,
+     "construction_vehicle": 0.607,
+     "pedestrian": 0.916,
+     "motorcycle": 0.828,
+     "bicycle": 0.744,
+     "traffic_cone": 0.871,
+     "barrier": 0.519
+    },
+    "ATE": 0.338,
+    "ASE": 0.325,
+    "AOE": 0.543,
+    "AVE": 0.399
+   },
+   "heldout": {
+    "mAP": 0.6681,
+    "NDS": 0.7126,
+    "ap": {
+     "car": 0.886,
+     "truck": 0.587,
+     "bus": 0.803,
+     "trailer": 0.619,
+     "construction_vehicle": 0.473,
+     "pedestrian": 0.9,
+     "motorcycle": 0.555,
+     "bicycle": 0.561,
+     "traffic_cone": 0.802,
+     "barrier": 0.495
+    },
+    "ATE": 0.229,
+    "ASE": 0.237,
+    "AOE": 0.222,
+    "AVE": 0.268
+   }
+  },
+  "ensemble+cỡ>=0.8": {
+   "dev": {
+    "mAP": 0.644,
+    "NDS": 0.6425,
+    "ap": {
+     "car": 0.914,
+     "truck": 0.611,
+     "bus": 0.43,
+     "trailer": 0.0,
+     "construction_vehicle": 0.607,
+     "pedestrian": 0.916,
+     "motorcycle": 0.828,
+     "bicycle": 0.744,
+     "traffic_cone": 0.871,
+     "barrier": 0.519
+    },
+    "ATE": 0.338,
+    "ASE": 0.329,
+    "AOE": 0.532,
+    "AVE": 0.399
+   },
+   "heldout": {
+    "mAP": 0.6681,
+    "NDS": 0.7118,
+    "ap": {
+     "car": 0.886,
+     "truck": 0.587,
+     "bus": 0.803,
+     "trailer": 0.619,
+     "construction_vehicle": 0.473,
+     "pedestrian": 0.9,
+     "motorcycle": 0.555,
+     "bicycle": 0.561,
+     "traffic_cone": 0.802,
+     "barrier": 0.495
+    },
+    "ATE": 0.229,
+    "ASE": 0.246,
+    "AOE": 0.22,
+    "AVE": 0.268
+   }
+  }
+ }
+}

@@ -56,6 +56,8 @@ def fuse_detections(
                 score=round(label_scores[label], 4),
                 models={m: round(s, 4) for m, s in best[label].items()},
                 alternatives={lb: round(s, 4) for lb, s in label_scores.items() if lb != label},
+                # mask của box điểm cao nhất cùng lớp (không trung bình được đa giác)
+                mask=next((d.mask for d in members if d.mask), None),
             )
         )
     fused.sort(key=lambda d: -d.score)

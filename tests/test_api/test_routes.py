@@ -91,4 +91,4 @@ async def test_review_flow_and_export(client):
 @pytest.mark.asyncio
 async def test_ui_is_served(client):
     r = await client.get("/ui/")
-    assert r.status_code == 200 and "AutoLabel 2D" in r.text
+    assert r.status_code == 200 and "AutoLabel 3D" in r.text

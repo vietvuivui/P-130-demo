@@ -29,10 +29,13 @@ def test_coco_classes_map_to_taxonomy(config):
 
 
 def test_default_detector_and_coverage(config, tmp_path):
-    assert config.detection.detectors == ["yoloe26"]
-    assert DetectorEnsemble(config, tmp_path).coverage == {"yoloe26": None}  # không nạp model
+    assert config.detection.detectors == ["yoloe"]
+    assert DetectorEnsemble(config, tmp_path).coverage == {"yoloe": None}  # không nạp model
     ens = DetectorEnsemble(config, tmp_path, ["yolo26", "yoloe26"])
     assert ens.coverage["yoloe26"] is None and "car" in ens.coverage["yolo26"]
+    # `detect-sweeps --detectors` đổi names sau khi tạo ensemble: coverage phải đi theo
+    ens.names = ["yolo26"]
+    assert set(ens.coverage) == {"yolo26"}
 
 
 def test_fusion_does_not_penalise_classes_a_model_cannot_see(config, tmp_path):

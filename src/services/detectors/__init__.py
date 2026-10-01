@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import threading
 from pathlib import Path
 
@@ -13,7 +14,59 @@ from src.services.detectors.base import Detector
 from src.services.detectors.fusion import fuse_detections
 
 
+class _DropHalfDeprecation(logging.Filter):
+    """Ultralytics 8.4 in cảnh báo "'half' is deprecated" ở MỖI lần predict (hàng nghìn dòng khi chạy cả scene).
+    half=True vẫn chạy đúng trên GPU; chỉ bỏ dòng cảnh báo lặp lại."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "'half' is deprecated" not in record.getMessage()
+
+
+logging.getLogger("ultralytics").addFilter(_DropHalfDeprecation())
+
+# Thư viện mỗi detector cần (ngoài requirements.txt): báo lỗi dễ hiểu thay cho ModuleNotFoundError
+DETECTOR_PACKAGES = {
+    "yolo_world": ["ultralytics", "torch"], "yoloe": ["ultralytics", "torch"], "yolo26": ["ultralytics", "torch"],
+    "yoloe26": ["ultralytics", "torch"],
+    "grounding_dino": ["transformers", "torch"], "florence2": ["transformers", "torch"], "demo": [],
+}  # fmt: skip
+
+
+# Gói của requirements.txt mà các bước xử lý cần (máy cài từ bản cũ có thể thiếu): module -> tên gói pip
+CORE_PACKAGES = {"scipy": "scipy", "cv2": "opencv-python-headless", "multipart": "python-multipart",
+                 "langgraph": "langgraph"}  # fmt: skip
+
+
+def missing_core() -> list[str]:
+    import importlib.util
+
+    return sorted(pip for mod, pip in CORE_PACKAGES.items() if importlib.util.find_spec(mod) is None)
+
+
+def missing_packages(names: list[str]) -> list[str]:
+    """Thư viện còn thiếu để chạy các detector `names` (kiểm tra nhanh, không import)."""
+    import importlib.util
+
+    need = {pkg for n in names for pkg in DETECTOR_PACKAGES.get(n, [])}
+    return sorted(pkg for pkg in need if importlib.util.find_spec(pkg) is None)
+
+
+class MissingPackagesError(RuntimeError):
+    def __init__(self, missing: list[str]):
+        import sys
+
+        super().__init__(
+            f"Python đang chạy server ({sys.executable}) thiếu thư viện {', '.join(missing)}. "
+            "Cài bằng: python -m pip install -r requirements-ml.txt (gồm cả requirements.txt; torch bản GPU xem "
+            "README), hoặc chạy server bằng Python đã cài sẵn: <python đó> -m uvicorn src.main:app"
+        )
+        self.missing = missing
+
+
 def build_detector(name: str, config: AutoLabelConfig) -> Detector:
+    missing = missing_packages([name])
+    if missing:
+        raise MissingPackagesError(missing)
     # Import lười để phần còn lại của app không cần torch
     if name == "yolo26":
         from src.services.detectors.yolo26 import Yolo26Detector
@@ -27,6 +80,14 @@ def build_detector(name: str, config: AutoLabelConfig) -> Detector:
         from src.services.detectors.yolo_world import YoloWorldDetector
 
         return YoloWorldDetector(config)
+    if name == "yoloe":
+        from src.services.detectors.yoloe import YoloeDetector
+
+        return YoloeDetector(config)
+    if name == "yolo26":
+        from src.services.detectors.yolo26 import Yolo26Detector
+
+        return Yolo26Detector(config)
     if name == "grounding_dino":
         from src.services.detectors.grounding_dino import GroundingDinoDetector
 
@@ -49,6 +110,8 @@ def detector_classes(name: str, config: AutoLabelConfig) -> set[str] | None:
 
         return set(coco_class_map(config).values())
     return None
+_SHARED: dict[tuple[str, str], Detector] = {}
+_SHARED_LOCK = threading.Lock()
 
 
 class DetectorEnsemble:
@@ -58,21 +121,43 @@ class DetectorEnsemble:
         self.config = config
         self.names = names or config.detection.detectors
         self.cache_dir = cache_dir
-        # Lớp mỗi model phủ: fusion chỉ tính phiếu của model nhận được lớp đó
-        self.coverage = {name: detector_classes(name, config) for name in self.names}
         self._detectors: dict[str, Detector] = {}
         self._lock = threading.Lock()
+        self.model_images = 0  # số ảnh đã chạy model (không có cache), để đo thời gian detect thật
+
+    @property
+    def coverage(self) -> dict[str, set[str] | None]:
+        # Lớp mỗi model phủ: fusion chỉ tính phiếu của model nhận được lớp đó. Tính theo self.names hiện tại vì
+        # `detect-sweeps --detectors` đổi names sau khi tạo ensemble
+        return {name: detector_classes(name, self.config) for name in self.names}
 
     def _get(self, name: str) -> Detector:
-        with self._lock:  # hai request cùng lúc không nạp model hai lần
+        # Model dùng chung giữa các ensemble có cùng cấu hình (mỗi dự án một workspace/cache, nhưng chỉ nạp model một
+        # lần vào GPU)
+        with _SHARED_LOCK:
             if name not in self._detectors:
-                self._detectors[name] = build_detector(name, self.config)
+                key = (name, self._cache_file(name, "_").parent.name)
+                if key not in _SHARED:
+                    import time
+
+                    from src.services import timing
+
+                    t0 = time.perf_counter()
+                    _SHARED[key] = build_detector(name, self.config)
+                    timing.record("load_model", time.perf_counter() - t0)
+                self._detectors[name] = _SHARED[key]
             return self._detectors[name]
 
     def _cache_file(self, name: str, sd_token: str) -> Path:
         # Khoá theo tên model + cấu hình liên quan, đổi prompt/weights/ngưỡng thì cache tự vô hiệu
         det_cfg = getattr(self.config.detection, name)
-        raw = json.dumps([det_cfg.model_dump(), self.config.prompt_to_class(), self.config.detection.score_threshold])
+        dump = det_cfg.model_dump()
+        if not dump.get("tta_flip"):  # tuỳ chọn mới, tắt thì giữ khoá cũ để cache đã có vẫn dùng được
+            dump.pop("tta_flip", None)
+        # mask không đổi box: giữ khoá cũ để khỏi detect lại cả workspace. Ảnh detect trước bản có mask thì không có
+        # mask; muốn có thì xoá thư mục cache/detections/yoloe-* rồi chạy lại
+        dump.pop("masks", None)
+        raw = json.dumps([dump, self.config.prompt_to_class(), self.config.detection.score_threshold])
         key = f"{name}-{hashlib.sha1(raw.encode()).hexdigest()[:10]}"
         return self.cache_dir / key / f"{sd_token}.json"
 
@@ -99,6 +184,7 @@ class DetectorEnsemble:
                     missing.append(i)
             if not missing:
                 continue
+            self.model_images += len(missing)  # ảnh thật sự chạy model (không có trong cache)
             results = self._get(name).detect([images[i][1] for i in missing])
             for i, dets in zip(missing, results, strict=True):
                 per_image[i][name] = dets

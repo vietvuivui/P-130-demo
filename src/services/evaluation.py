@@ -96,6 +96,41 @@ def evaluate_map(frames: list[FrameRecord], gt: dict[str, list[dict]], thr: floa
     }
 
 
+def evaluate_pr(frames: list[FrameRecord], gt: dict[str, list[dict]], thr: float = 0.5) -> dict:
+    """Precision / recall / F1 của pre-label ở đúng ngưỡng đang dùng (box khớp GT cùng lớp, IoU ≥ thr).
+
+    FP = box người phải xoá hoặc sửa, FN = GT người phải vẽ thêm. Box trùng GT bị bỏ qua (khuất > 60%) không tính.
+    """
+    per: dict[str, dict[str, int]] = defaultdict(lambda: {"tp": 0, "fp": 0, "n_gt": 0})
+    for f in frames:
+        gts = gt.get(f.frame_id, [])
+        for g in gts:
+            if not g["ignore"]:
+                per[g["label"]]["n_gt"] += 1
+        preds = sorted(
+            ({"bbox": o.bbox, "label": o.label, "score": o.score} for o in prelabel_objects(f) if o.source == "model"),
+            key=lambda p: -p["score"],
+        )
+        for label in {p["label"] for p in preds}:
+            cls_preds = [p for p in preds if p["label"] == label]
+            status, _ = _match(cls_preds, gts, thr)
+            per[label]["tp"] += status.count("tp")
+            per[label]["fp"] += status.count("fp")
+
+    def stats(c: dict) -> dict:
+        p = c["tp"] / (c["tp"] + c["fp"]) if c["tp"] + c["fp"] else None
+        r = c["tp"] / c["n_gt"] if c["n_gt"] else None
+        f1 = 2 * p * r / (p + r) if p and r else (0.0 if p is not None and r is not None else None)
+        return {**c, "fn": c["n_gt"] - c["tp"], "precision": _r(p), "recall": _r(r), "f1": _r(f1)}
+
+    total = {k: sum(c[k] for c in per.values()) for k in ("tp", "fp", "n_gt")}
+    return {"match_iou": thr, **stats(total), "per_class": {lb: stats(c) for lb, c in sorted(per.items())}}
+
+
+def _r(v):
+    return round(v, 4) if v is not None else None
+
+
 def evaluate_qa(frames: list[FrameRecord], gt: dict[str, list[dict]], thr: float = 0.5) -> dict:
     """Cờ của QA Agent có đúng chỗ không (flag recall/precision) và tracking bù được bao nhiêu FN."""
     by_level = {lv: {"n": 0, "needs_fix": 0} for lv in ("low", "medium", "high")}
@@ -177,6 +212,16 @@ def render_report(result: dict) -> str:
         "",
         "AP@0.7 thấp là bình thường: GT chiếu từ 3D rộng hơn box sát vật thể của detector.",
         "",
+    ]
+    pr = result.get("pr")
+    if pr:
+        lines += [
+            f"Ở ngưỡng đang dùng: precision **{_fmt(pr['precision'])}**, recall **{_fmt(pr['recall'])}**, "
+            f"F1 **{_fmt(pr['f1'])}** — {pr['tp'] + pr['fp']} box, {pr['fp']} box sai (người xoá/sửa), "
+            f"{pr['fn']} GT bị sót (người vẽ thêm).",
+            "",
+        ]
+    lines += [
         "## QA Agent — cờ có đúng chỗ không",
         "",
         f"Object cần sửa = không khớp GT cùng lớp ở IoU ≥ {qa['match_iou']}. "

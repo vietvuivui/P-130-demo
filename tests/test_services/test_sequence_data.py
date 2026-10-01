@@ -54,3 +54,12 @@ def test_load_cached_reads_only_cache(tmp_path, config):
     cache.write_text(json.dumps([Detection(bbox=[0, 0, 10, 10], label="car", score=0.8).model_dump()]))
     [d] = ens.load_cached("sd1")
     assert d.label == "car" and d.bbox == [0, 0, 10, 10]
+
+
+def test_unlabeled_tables_have_no_annotations(tmp_path):
+    # Dữ liệu định dạng nuScenes chưa gán nhãn: không có sample_annotation.json -> vẫn đọc được, GT rỗng
+    write_tables(tmp_path)
+    data = NuScenesMini(tmp_path)
+    assert data.sample_annotation == {}
+    assert data._annotations_of_sample == {}
+    assert [k[0] for k in data.keyframes()] == ["scene-A", "scene-A", "scene-B"]

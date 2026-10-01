@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -17,6 +18,7 @@ class ClassSpec(BaseModel):
 
 
 class Yolo26Cfg(BaseModel):
+    # YOLO26 thường: tập lớp đóng COCO 80, chỉ giữ lớp trùng tên prompt (car, truck, bus, person, bicycle, motorcycle)
     weights: str = "weights/yolo26l.pt"
     imgsz: int = 1280
 
@@ -31,6 +33,16 @@ class YoloE26Cfg(BaseModel):
 class YoloWorldCfg(BaseModel):
     weights: str = "yolov8l-worldv2.pt"
     imgsz: int = 1280
+
+
+class YoloeCfg(BaseModel):
+    # YOLOE-26: open-vocab trên nền YOLO26, text encoder MobileCLIP2 (tự tải từ GitHub của Ultralytics)
+    weights: str = "yoloe-26l-seg.pt"
+    imgsz: int = 1280
+    # Chạy thêm ảnh lật ngang rồi gộp (augment=True của Ultralytics không có tác dụng với YOLOE): ~2x thời gian
+    tta_flip: bool = False
+    # Lưu mask segmentation sơ bộ của model -seg (đa giác đã đơn giản hoá), FR-04
+    masks: bool = True
 
 
 class GroundingDinoCfg(BaseModel):
@@ -52,15 +64,23 @@ class DemoDetectorCfg(BaseModel):
 
 
 class DetectionCfg(BaseModel):
-    detectors: list[str] = ["yoloe26"]
+    detectors: list[str] = ["yoloe"]
     score_threshold: float = 0.1
+    # Lọc sau khi gộp box, trước QA Agent (không đổi khoá cache: đổi ngưỡng không phải detect lại)
+    min_score: float = 0.1
+    min_score_per_class: dict[str, float] = Field(default_factory=dict)
     fusion_iou: float = 0.55
     yolo26: Yolo26Cfg = Yolo26Cfg()
     yoloe26: YoloE26Cfg = YoloE26Cfg()
     yolo_world: YoloWorldCfg = YoloWorldCfg()
+    yoloe: YoloeCfg = YoloeCfg()
+    yolo26: Yolo26Cfg = Yolo26Cfg()
     grounding_dino: GroundingDinoCfg = GroundingDinoCfg()
     florence2: Florence2Cfg = Florence2Cfg()
     demo: DemoDetectorCfg = DemoDetectorCfg()
+
+    def keep(self, label: str, score: float) -> bool:
+        return score >= self.min_score_per_class.get(label, self.min_score)
 
 
 class ConfidenceCfg(BaseModel):
@@ -80,6 +100,14 @@ class TemporalCfg(BaseModel):
     match_iou: float = 0.3
     min_support: int = 2
     recover_min_score: float = 0.35
+    # Dời box của sweep về thời điểm keyframe bằng optical flow trước khi so khớp (src/services/flow.py)
+    flow: bool = False
+    flow_scale: float = 0.5
+    # Tính lại score keyframe theo các sweep (src/services/temporal_fusion.py): off | mean | linked
+    rescore: Literal["off", "mean", "linked"] = "off"
+    # Ngưỡng score cho box ở sweep khi làm bằng chứng cho keyframe (kiểu ByteTrack: ngưỡng cao để tạo box, ngưỡng
+    # thấp để xác nhận vật đã thấy ở keyframe). None = như detection.min_score
+    sweep_min_score: float | None = None
 
 
 class GeometryCfg(BaseModel):
@@ -132,8 +160,50 @@ class PropagationCfg(BaseModel):
     hop_decay: float = 0.99
     flag_below: float = 0.6
     stop_below: float = 0.15
+    # Track không khớp detection ở chính keyframe đích (đang "trôi" theo vận tốc) có được ghi ra không
+    emit_coasting: bool = False
+    # Optical flow cho tracker lan truyền: off (dự đoán theo vận tốc) | missing (chỉ ảnh chưa có detection) | always
+    flow: Literal["off", "missing", "always"] = "always"
+    flow_scale: float = 0.5
+    # Ghép track với detection: single = một lượt với mọi box ≥ score_threshold (như trước) | byte = hai lượt kiểu
+    # ByteTrack (Zhang et al. 2022): box score ≥ byte_high_score trước, box score thấp chỉ cho track còn thiếu (IoU chặt
+    # hơn byte_low_iou), để box score thấp nằm gần không "cướp" track của vật có box rõ
+    association: Literal["single", "byte"] = "byte"
+    byte_high_score: float = 0.3
+    byte_low_iou: float = 0.5
+    # OC-SORT (Cao et al., CVPR 2023) — chỉ dựa vào quan sát thật (detection đã khớp), không vào box dự đoán lúc bị che:
+    # - oc_recover (OCR): sau các lượt ghép, track đang mất ghép thêm với detection còn thừa theo box quan sát cuối
+    #   (và box quan sát cuối dời theo vận tốc quan sát); cho track sống tới oc_max_lost ảnh thay vì max_coast_images
+    # - oc_reupdate (ORU): ghép lại sau khi mất thì lấy vận tốc theo đường nối quan sát cuối -> quan sát mới, box = detection
+    # - oc_momentum (OCM): cộng oc_momentum x độ cùng hướng (cos) giữa hướng đi đã quan sát và hướng tới detection
+    oc_recover: bool = False
+    oc_reupdate: bool = False
+    oc_momentum: float = 0.0
+    oc_max_lost: int = 6
+    oc_recover_iou: float = 0.5
+    oc_delta: int = 3
     max_keyframes: int = 20
     class_differs_score: float = 0.5
+
+
+class Propagation3DCfg(BaseModel):
+    """Lan truyền box 3D đã duyệt sang keyframe sau (src/services/propagation3d.py)."""
+
+    # velocity: dịch box theo vận tốc mô hình dự đoán (hệ toàn cục, đã bù chuyển động xe) | none: chỉ bù chuyển động xe
+    motion: Literal["velocity", "none"] = "velocity"
+    # Nhân ngưỡng khoảng cách khớp theo lớp của tracker CenterPoint
+    dist_scale: float = 0.5
+    # Không khớp quá bấy nhiêu keyframe liên tiếp thì dừng track (4: chọn khi thử OC-SORT, eval/results/ocsort.md)
+    max_misses: int = 4
+    max_keyframes: int = 20
+    # OC-SORT như lan truyền 2D: OCR ghép lại track đang mất theo tâm quan sát cuối (dời theo vận tốc quan sát), sống tới
+    # oc_max_lost keyframe; ORU lấy vận tốc theo quan sát cuối -> quan sát mới khi mô hình không cho vận tốc; OCM ưu tiên
+    # detection cùng hướng đi đã quan sát
+    oc_recover: bool = False
+    oc_reupdate: bool = False
+    oc_momentum: float = 0.0
+    oc_max_lost: int = 4
+    oc_recover_scale: float = 1.0  # ngưỡng khoảng cách của OCR = ngưỡng khớp x hệ số này
 
 
 class VideoCfg(BaseModel):
@@ -172,6 +242,41 @@ class QCCfg(BaseModel):
     cross_class_allowed: list[tuple[str, str]] = [("pedestrian", "bicycle"), ("pedestrian", "motorcycle")]
     quick_check: QuickCheckCfg = QuickCheckCfg()
     audit: AuditCfg = AuditCfg()
+class Verify3DCfg(BaseModel):
+    # Box 3D dưới ngưỡng điểm này không đưa vào duyệt (như ngưỡng 0.3 nhóm 3D dùng)
+    min_score: float = 0.3
+    # Ngưỡng điểm của box 2D dùng để kiểm chứng
+    det_conf: float = 0.2
+    # Prompt "đối thủ": vật dễ nhầm với các lớp (lan can cố định, cột, biển báo...). Box của chúng bị bỏ
+    distractors: list[str] = Field(
+        default_factory=lambda: [
+            "fence", "guardrail", "pole", "traffic sign", "fire hydrant", "trash can", "bollard",
+            "mailbox", "stroller", "wheelchair", "kick scooter",
+        ]
+    )  # fmt: skip
+    # Số lần quét LiDAR liền trước gộp thêm (nếu có trên đĩa) khi đếm điểm trong box / tính mức che
+    lidar_sweeps: int = 4
+    # Số điểm tối đa gửi lên UI mỗi keyframe
+    max_points_ui: int = 60000
+
+
+class PrivacyCfg(BaseModel):
+    """Làm mờ mặt người và biển số trước khi ảnh tới trình duyệt / file xuất (FR-03), src/services/privacy.py."""
+
+    enabled: bool = True
+    # Biển số: detector chuyên dụng (open-image-models, YOLOv9 ONNX, tự tải ~8 MB), chạy cả ảnh và 4 ô cắt để bắt
+    # biển số nhỏ ở xa
+    plate_model: str = "yolo-v9-t-640-license-plate-end2end"
+    plate_conf: float = 0.25
+    plate_tiles: bool = True
+    # Mặt người: YOLOE (prompt "human face") + vùng đầu của mỗi người đủ lớn (đầu = 18% trên của box người):
+    # ưu tiên không sót mặt hơn là làm mờ thừa
+    face_prompts: list[str] = ["human face"]
+    face_conf: float = 0.25
+    person_conf: float = 0.3
+    min_person_px: int = 40  # người thấp hơn thế: mặt quá nhỏ để nhận ra, không cần làm mờ
+    pad: float = 0.2  # nới vùng làm mờ ra mỗi phía theo tỉ lệ kích thước
+    imgsz: int = 1280
 
 
 class AutoLabelConfig(BaseModel):
@@ -183,7 +288,10 @@ class AutoLabelConfig(BaseModel):
     qa: QACfg = QACfg()
     qc: QCCfg = QCCfg()
     propagation: PropagationCfg = PropagationCfg()
+    propagation3d: Propagation3DCfg = Propagation3DCfg()
     video: VideoCfg = VideoCfg()
+    verify3d: Verify3DCfg = Verify3DCfg()
+    privacy: PrivacyCfg = PrivacyCfg()
 
     def prompt_to_class(self) -> dict[str, str]:
         """Map mỗi prompt văn bản về lớp nội bộ."""

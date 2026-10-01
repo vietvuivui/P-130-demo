@@ -162,12 +162,30 @@ def test_propagates_human_decisions_and_follows_motion(scene, config):
         assert f.prelabel is not None and [o.label for o in f.prelabel] == ["car", "pedestrian"]
 
 
-def test_coasting_object_is_flagged_then_stops(tmp_path, config):
+def _occluded_car(i):
     # Xe bị che từ ảnh 4: ở keyframe 001 (ảnh 6) chỉ còn box dự đoán; tới ảnh 11 mất dấu quá 6 ảnh thì dừng
-    def dets(i):
-        return [Detection(bbox=car_box(i), label="car", score=0.9)] if i < 4 else []
+    return [Detection(bbox=car_box(i), label="car", score=0.9)] if i < 4 else []
 
-    source = FakeSource(dets)
+
+def test_coasting_box_not_written_by_default(tmp_path, config):
+    # Mặc định (emit_coasting: false) không ghi box thuần dự đoán; track vẫn chạy rồi dừng như thường
+    assert config.propagation.emit_coasting is False
+    source = FakeSource(_occluded_car)
+    store = WorkspaceStore(tmp_path / "ws")
+    for k in range(3):
+        store.save_frame(make_frame(k, source))
+    approve_keyframe(store, config, [])
+
+    resp = propagate_from(store, source, config, fid(0))
+    assert resp.frames_updated == [fid(1)]
+    assert resp.tracks_alive == 0
+    assert store.load_frame(fid(1)).objects == []
+
+
+def test_coasting_object_is_flagged_then_stops(tmp_path, config):
+    config = config.model_copy(deep=True)
+    config.propagation.emit_coasting = True
+    source = FakeSource(_occluded_car)
     store = WorkspaceStore(tmp_path / "ws")
     for k in range(3):
         store.save_frame(make_frame(k, source))

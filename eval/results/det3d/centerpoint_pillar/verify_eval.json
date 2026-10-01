@@ -1,0 +1,54 @@
+{
+ "model": "centerpoint_pillar",
+ "n_boxes": 3640,
+ "n_gt": 3559,
+ "table": {
+  "DUNG": {
+   "dung": 1610,
+   "sai lop": 118,
+   "bao nham": 22
+  },
+  "DUNG VAT, BOX LECH": {
+   "dung": 67,
+   "sai lop": 4,
+   "bao nham": 1
+  },
+  "CAMERA KHONG XAC NHAN": {
+   "dung": 402,
+   "sai lop": 140,
+   "bao nham": 323
+  },
+  "CHUA DU THONG TIN": {
+   "dung": 449,
+   "sai lop": 248,
+   "bao nham": 126
+  },
+  "SAI LOP": {
+   "dung": 42,
+   "sai lop": 26,
+   "bao nham": 1
+  },
+  "NGHI BAO NHAM": {
+   "dung": 27,
+   "sai lop": 11,
+   "bao nham": 23
+  }
+ },
+ "error_rate_all": 0.2865,
+ "auto_share": 0.4808,
+ "auto_precision": 0.92,
+ "error_recall": 0.8658,
+ "flag_precision": 0.4778,
+ "gt_missed": 962,
+ "gt_missed_by_class": {
+  "truck": 79,
+  "car": 225,
+  "pedestrian": 96,
+  "traffic_cone": 389,
+  "bicycle": 38,
+  "construction_vehicle": 31,
+  "motorcycle": 8,
+  "barrier": 76,
+  "bus": 20
+ }
+}

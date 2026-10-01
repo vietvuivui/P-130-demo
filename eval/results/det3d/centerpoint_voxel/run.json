@@ -1,0 +1,14 @@
+{
+ "model": "centerpoint_voxel",
+ "label": "CenterPoint (voxel 0.075, backbone SECOND)",
+ "sensor": "LiDAR",
+ "paper": {
+  "mAP": 56.5,
+  "NDS": 65.2
+ },
+ "results": "C:\\Users\\Admin\\OneDrive\\Desktop\\AI20K\\Final\\P-130\\tools3d\\work\\preds\\centerpoint_voxel\\pred_instances_3d\\results_nusc.json",
+ "seconds": 671.6,
+ "n_samples": 1076,
+ "s_per_sample": 0.624,
+ "peak_gpu_gb": 0.5
+}

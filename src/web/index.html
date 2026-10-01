@@ -3,29 +3,32 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AutoLabel 2D — Review</title>
+  <title>AutoLabel 3D — Review</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
-  <link rel="stylesheet" href="styles.css?v=qc1">
+  <link rel="stylesheet" href="styles.css?v=3d12qc1">
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="brand-mark">2D</span>
+      <span class="brand-mark">AL</span>
       <div>
-        <div class="brand-title">AutoLabel 2D</div>
-        <div class="brand-sub">nuScenes CAM_FRONT · QA Agent · Review by exception</div>
+        <div class="brand-title">AutoLabel 3D</div>
+        <div class="brand-sub">nuScenes camera + LiDAR · QA Agent · Review by exception</div>
       </div>
     </div>
+    <a id="project-link" class="project-link hidden" href="/ui/projects.html" title="Về danh sách dự án">← Dự án <b id="project-name"></b></a>
     <div class="mode-switch" role="tablist" aria-label="Chế độ gán nhãn">
       <button class="mode active" data-mode="image" role="tab" title="Gán nhãn từng frame ảnh độc lập">🖼 Ảnh</button>
       <button class="mode" data-mode="video" role="tab" title="Gán nhãn cả video: timeline + lan truyền nhãn">🎞 Video</button>
+      <button class="mode" data-mode="3d" role="tab" title="Duyệt box 3D trên point cloud LiDAR, có kiểm chứng bằng 6 camera">🧊 3D</button>
     </div>
     <nav class="tabs" role="tablist">
       <button class="tab active" data-tab="review" role="tab">Review</button>
       <button class="tab" data-tab="log" role="tab">Correction log</button>
       <button class="tab" data-tab="qc" role="tab">QC</button>
       <button class="tab" data-tab="metrics" role="tab">Metrics &amp; Export</button>
+      <button class="tab" data-tab="settings" role="tab" title="Chỉnh cách gán nhãn / lan truyền, áp dụng lại, đánh giá trước / sau">⚙ Cài đặt</button>
     </nav>
     <label class="reviewer">Người duyệt
       <input id="reviewer" type="text" maxlength="40">
@@ -47,6 +50,7 @@
         <button data-status="auto" class="chip">Chưa mở</button>
         <button data-status="editing" class="chip">Đang sửa</button>
         <button data-status="approved" class="chip">Đã duyệt</button>
+        <button data-status="rejected" class="chip">Bị trả lại</button>
       </div>
       <ul id="queue-list" class="queue-list"></ul>
     </aside>
@@ -73,6 +77,10 @@
           <label class="toggle"><input type="checkbox" id="show-lidar"> LiDAR <kbd>L</kbd></label>
           <label class="toggle" title="GT = nhãn gốc của nuScenes: box 3D người gán, chiếu xuống ảnh thành hình chữ nhật bao 8 đỉnh (nét đứt trắng). Box mờ không chữ = vật khó thấy (hiển thị 0–40%) hoặc không có điểm LiDAR/radar, bị bỏ qua khi đánh giá. Video tải lên không có GT."><input type="checkbox" id="show-gt"> GT <kbd>G</kbd></label>
           <label class="toggle"><input type="checkbox" id="show-low" checked> Box rủi ro thấp</label>
+          <label class="toggle" title="Mask segmentation sơ bộ của model (tô mờ trong box)"><input type="checkbox" id="show-mask" checked> Mask</label>
+          <label class="toggle score-filter" title="Ẩn box của model có score dưới ngưỡng (chỉ đổi cách xem; box ẩn vẫn phải duyệt trước khi approve)">Score ≥
+            <input type="range" id="min-score" min="0" max="1" step="0.05" value="0"><span id="min-score-val" class="mono">0.00</span><span id="min-score-count" class="muted"></span></label>
+          <label class="toggle" title="Nhìn từ trên xuống: ảnh camera chiếu xuống mặt đường (homography), box đặt lên mặt đường theo LiDAR hoặc chân vật"><input type="checkbox" id="show-bev2d"> BEV <kbd>V</kbd></label>
           <span class="zoom-controls" title="Phóng to/thu nhỏ: lăn chuột trên ảnh, phím + / − ; phím 0 về vừa khung. Khi phóng to, kéo vùng trống để di chuyển ảnh">
             <button id="btn-zoom-out" class="btn btn-ghost btn-sm" aria-label="Thu nhỏ">−</button>
             <button id="btn-zoom-reset" class="btn btn-ghost btn-sm zoom-level" aria-label="Vừa khung">100%</button>
@@ -81,6 +89,7 @@
           <button id="btn-add" class="btn btn-ghost" title="Vẽ box mới (B)">＋ Add box <kbd>B</kbd></button>
         </div>
       </div>
+      <div class="stage-row" id="stage-row">
       <div class="canvas-wrap" id="canvas-wrap">
         <div id="drop-hint" class="drop-hint hidden">Thả frame vào đây để chỉnh sửa</div>
         <div id="canvas-scroll" class="canvas-scroll"><canvas id="canvas"></canvas></div>
@@ -94,6 +103,17 @@
           <p>Chưa có frame nào trong workspace.</p>
           <code>python -m src.cli run --limit 20</code>
         </div>
+      </div>
+      <div class="bev2d-wrap hidden" id="bev2d-wrap">
+        <div class="bev2d-head">
+          <strong>BEV</strong>
+          <label class="toggle"><input type="checkbox" id="bev2d-img" checked> Ảnh</label>
+          <label class="toggle"><input type="checkbox" id="bev2d-pts" checked> LiDAR</label>
+        </div>
+        <canvas id="bev2d-canvas"></canvas>
+        <div class="bev2d-foot"><span id="bev2d-note" class="muted"></span>
+          <span class="muted">nét liền: vị trí theo LiDAR · nét đứt: theo chân vật</span></div>
+      </div>
       </div>
       <section id="timeline-panel" class="timeline-panel hidden">
         <div class="timeline-head">
@@ -123,12 +143,14 @@
     </section>
 
     <aside class="review-panel">
+      <div id="reject-banner" class="reject-banner hidden" role="status"></div>
       <div class="risk-summary" id="risk-summary"></div>
       <div class="review-scroll" id="review-scroll">
         <section class="group group-qc hidden" id="qc-section">
           <h3><span class="qc-mark">QC</span>Nhãn cuối <small>sửa hoặc xác nhận trước khi approve</small> <span class="count" id="count-qc">0</span></h3>
           <div id="list-qc"></div>
         </section>
+        <section id="sweep-panel" class="group group-sweep hidden" aria-live="polite"></section>
         <section class="group group-high">
           <h3><span class="dot high"></span>High risk <small>xem chi tiết</small> <span class="count" id="count-high">0</span></h3>
           <div id="list-high"></div>
@@ -152,12 +174,140 @@
       </div>
       <div class="review-foot">
         <div class="progress"><div id="progress-bar"></div></div>
+        <div id="reject-box" class="reject-box hidden">
+          <textarea id="reject-reason" rows="2" maxlength="500" placeholder="Lý do trả lại (bắt buộc), vd. sót xe bị che bên trái, box #3 sai lớp"></textarea>
+          <div class="reject-actions">
+            <button id="reject-cancel" class="btn btn-ghost btn-sm" type="button">Huỷ</button>
+            <button id="reject-send" class="btn btn-del btn-sm" type="button">Trả lại frame</button>
+          </div>
+        </div>
         <div class="foot-row">
           <span id="progress-text" class="muted"></span>
-          <button id="btn-approve-frame" class="btn btn-primary">Approve frame <kbd>Enter</kbd></button>
+          <span class="foot-actions">
+            <button id="btn-undo" class="btn btn-ghost btn-sm" title="Hoàn tác thao tác vừa rồi (Ctrl+Z)" disabled>↶</button>
+            <button id="btn-redo" class="btn btn-ghost btn-sm" title="Làm lại (Ctrl+Y)" disabled>↷</button>
+            <button id="btn-reject" class="btn btn-ghost btn-sm" title="Reviewer trả lại frame kèm lý do (R)">Trả lại</button>
+            <button id="btn-approve-frame" class="btn btn-primary">Approve frame <kbd>Enter</kbd></button>
+          </span>
         </div>
         <div class="shortcuts">
-          <kbd>↑</kbd><kbd>↓</kbd> chọn object · <kbd>K</kbd> keep · <kbd>D</kbd> delete · <kbd>C</kbd> đổi lớp · <kbd>E</kbd> sửa box · <kbd>T</kbd> lan truyền · <kbd>Space</kbd> phát video · <kbd>N</kbd>/<kbd>P</kbd> frame kế · lăn chuột, <kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>0</kbd> vừa khung
+          <kbd>↑</kbd><kbd>↓</kbd> chọn object · click ô t±1/t±2 bên dưới để sửa sweep (<kbd>Esc</kbd> quay về) · <kbd>K</kbd> keep · <kbd>D</kbd> delete · <kbd>C</kbd> đổi lớp · <kbd>E</kbd> sửa box · <kbd>V</kbd> BEV · <kbd>T</kbd> lan truyền · <kbd>Space</kbd> phát video · <kbd>N</kbd>/<kbd>P</kbd> frame kế · <kbd>Ctrl</kbd>+<kbd>Z</kbd>/<kbd>Y</kbd> hoàn tác / làm lại · <kbd>R</kbd> trả lại · lăn chuột, <kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>0</kbd> vừa khung
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- ===== Review 3D ===== -->
+  <main id="tab-review3d" class="tab-panel review-layout hidden">
+    <aside class="queue">
+      <div class="panel-head"><h2>Mô hình 3D</h2></div>
+      <div class="m3-model-box">
+        <select id="m3-model" title="Mô hình 3D sinh pre-label"></select>
+        <div id="m3-model-info" class="muted m3-model-info"></div>
+      </div>
+      <div class="panel-head">
+        <h2>Keyframe</h2>
+        <select id="m3-sort" title="Sắp xếp">
+          <option value="risk">Khó nhất trước</option>
+          <option value="order">Theo thứ tự</option>
+        </select>
+      </div>
+      <ul id="m3-queue" class="queue-list"></ul>
+    </aside>
+
+    <section class="workspace">
+      <div class="toolbar">
+        <div class="frame-title">
+          <strong id="m3-frame-id">—</strong>
+          <span id="m3-status" class="status-pill"></span>
+          <span class="timer" title="Thời gian duyệt frame này">⏱ <span id="m3-timer">0:00</span></span>
+        </div>
+        <div class="toolbar-actions">
+          <label class="toggle" title="Nhãn gốc nuScenes (box xám). Chỉ để đối chiếu, bước kiểm chứng không dùng nhãn gốc"><input type="checkbox" id="m3-show-gt"> GT <kbd>G</kbd></label>
+          <label class="toggle"><input type="checkbox" id="m3-show-low" checked> Box rủi ro thấp</label>
+          <label class="toggle score-filter" title="Ẩn box của mô hình 3D có score dưới ngưỡng (chỉ đổi cách xem)">Score ≥
+            <input type="range" id="m3-min-score" min="0" max="1" step="0.05" value="0"><span id="m3-min-score-val" class="mono">0.00</span><span id="m3-min-score-count" class="muted"></span></label>
+          <label class="toggle" title="Ghép 6 camera thành ảnh nhìn từ trên xuống bằng homography mặt đường. Chỉ đúng cho mặt đường; vật cao bị kéo dài ra xa camera"><input type="checkbox" id="m3-show-bevimg"> Ảnh BEV <kbd>I</kbd></label>
+          <label class="toggle"><input type="checkbox" id="m3-show-points" checked> LiDAR <kbd>L</kbd></label>
+          <select id="m3-color" title="Tô màu point cloud">
+            <option value="height">Màu theo độ cao</option>
+            <option value="intensity">Màu theo cường độ</option>
+          </select>
+          <span class="m3-seg">
+            <button id="m3-view-3d" class="btn btn-ghost btn-sm active">3D</button>
+            <button id="m3-view-bev" class="btn btn-ghost btn-sm" title="Nhìn từ trên xuống (V)">Từ trên <kbd>V</kbd></button>
+          </span>
+          <span class="m3-seg">
+            <select id="m3-new-class" title="Lớp cho box vẽ thêm"></select>
+            <button id="m3-draw" class="btn btn-ghost btn-sm" title="Vẽ box cho vật mô hình bỏ sót: kéo trên mặt đường từ đuôi tới đầu vật, hoặc bấm một điểm (B)">＋ Box <kbd>B</kbd></button>
+          </span>
+        </div>
+      </div>
+      <div class="m3-stage" id="m3-stage">
+        <canvas id="m3-canvas"></canvas>
+        <div id="m3-tip" class="m3-tip hidden"></div>
+        <div id="m3-hint" class="m3-hint muted">Kéo chuột trái: xoay · lăn chuột: zoom · chuột phải: di chuyển · bấm vào box để chọn</div>
+        <div id="m3-empty" class="empty-state hidden">
+          <p>Chưa có frame 3D nào trong workspace.</p>
+          <code>python -m src.cli label3d --model pointpillars</code>
+        </div>
+      </div>
+      <div class="m3-cams">
+        <div class="m3-cam-main">
+          <canvas id="m3-cam-canvas"></canvas>
+          <span id="m3-cam-name" class="m3-cam-label"></span>
+        </div>
+        <div class="m3-cam-strip" id="m3-cam-strip"></div>
+      </div>
+    </section>
+
+    <aside class="review-panel">
+      <div id="m3-reject-banner" class="reject-banner hidden" role="status"></div>
+      <div class="risk-summary" id="m3-risk-summary"></div>
+      <div class="review-scroll">
+        <div id="m3-edit" class="m3-edit hidden"></div>
+        <section class="group group-high">
+          <h3><span class="dot high"></span>High risk <small>xem chi tiết</small> <span class="count" id="m3-count-high">0</span></h3>
+          <div id="m3-list-high"></div>
+        </section>
+        <section class="group group-medium">
+          <h3><span class="dot medium"></span>Medium risk <span class="count" id="m3-count-medium">0</span></h3>
+          <div id="m3-list-medium"></div>
+        </section>
+        <section class="group group-low">
+          <h3>
+            <button id="m3-toggle-low" class="linklike" aria-expanded="false"><span class="dot low"></span>Low risk <small>camera đã xác nhận</small></button>
+            <span class="count" id="m3-count-low">0</span>
+          </h3>
+          <button id="m3-approve-low" class="btn btn-good wide">✓ Approve all low-risk <kbd>A</kbd></button>
+          <div id="m3-list-low" class="collapsed"></div>
+        </section>
+        <section class="group group-done">
+          <h3>Đã xử lý <span class="count" id="m3-count-done">0</span></h3>
+          <div id="m3-list-done" class="done-list"></div>
+        </section>
+      </div>
+      <div class="review-foot">
+        <div class="progress"><div id="m3-progress-bar" class="m3-progress-bar"></div></div>
+        <div id="m3-reject-box" class="reject-box hidden">
+          <textarea id="m3-reject-reason" rows="2" maxlength="500" placeholder="Lý do trả lại (bắt buộc), vd. sót xe bị che bên trái, box #3 sai lớp"></textarea>
+          <div class="reject-actions">
+            <button id="m3-reject-cancel" class="btn btn-ghost btn-sm" type="button">Huỷ</button>
+            <button id="m3-reject-send" class="btn btn-del btn-sm" type="button">Trả lại frame</button>
+          </div>
+        </div>
+        <div class="foot-row">
+          <span id="m3-progress-text" class="muted"></span>
+          <span class="foot-actions">
+            <button id="m3-btn-undo" class="btn btn-ghost btn-sm" title="Hoàn tác thao tác vừa rồi (Ctrl+Z)" disabled>↶</button>
+            <button id="m3-btn-redo" class="btn btn-ghost btn-sm" title="Làm lại (Ctrl+Y)" disabled>↷</button>
+            <button id="m3-btn-reject" class="btn btn-ghost btn-sm" title="Reviewer trả lại frame kèm lý do (R)">Trả lại</button>
+            <label class="toggle" title="Approve xong thì mang box đã duyệt sang các keyframe sau còn chưa mở (T: lan truyền lại)"><input type="checkbox" id="m3-auto-prop" checked> ↦ Lan truyền</label>
+            <button id="m3-approve-frame" class="btn btn-primary">Approve frame <kbd>Enter</kbd></button>
+          </span>
+        </div>
+        <div class="shortcuts">
+          <kbd>↑</kbd><kbd>↓</kbd> chọn box · <kbd>K</kbd> keep · <kbd>D</kbd> delete · <kbd>C</kbd> đổi lớp · <kbd>A</kbd> duyệt lô · <kbd>E</kbd> sửa box · <kbd>B</kbd> vẽ box · <kbd>G</kbd> GT · <kbd>V</kbd> nhìn từ trên · <kbd>I</kbd> ảnh BEV · <kbd>1</kbd>–<kbd>6</kbd> camera · <kbd>N</kbd>/<kbd>P</kbd> frame kế · <kbd>Ctrl</kbd>+<kbd>Z</kbd>/<kbd>Y</kbd> hoàn tác / làm lại · <kbd>R</kbd> trả lại
         </div>
       </div>
     </aside>
@@ -244,6 +394,47 @@
   </main>
 
   <!-- ===== Metrics & Export ===== -->
+  <!-- ===== Cài đặt ===== -->
+  <main id="tab-settings" class="tab-panel hidden">
+    <div class="page">
+      <div class="page-head">
+        <h2>Cài đặt</h2>
+        <span class="muted" id="settings-scope"></span>
+      </div>
+      <section class="card">
+        <div class="card-head">
+          <h3>Gán nhãn 2D và lan truyền</h3>
+          <span class="card-actions">
+            <button id="settings-reset" class="btn btn-ghost btn-sm" type="button">Về mặc định</button>
+            <button id="settings-save" class="btn btn-primary btn-sm" type="button" disabled>Lưu</button>
+          </span>
+        </div>
+        <p class="muted">Lưu riêng cho workspace / dự án này (không cần sửa file config). Mặc định lấy từ <code>configs/autolabel.yaml</code>.</p>
+        <form id="settings-form" class="settings-form" autocomplete="off"></form>
+      </section>
+      <div class="two-col">
+        <section class="card">
+          <h3>Áp dụng lại cho frame chưa ai mở</h3>
+          <p class="muted">Chạy lại QA / score / ngưỡng theo cài đặt hiện tại, dùng detection đã lưu nên nhanh. Không đụng frame đã mở, đã duyệt, đã nhận nhãn lan truyền hoặc có sweep đã sửa.</p>
+          <button id="relabel-run" class="btn btn-primary btn-sm" type="button">↻ Áp dụng lại</button>
+          <div class="job-status" id="relabel-status"></div>
+        </section>
+        <section class="card">
+          <h3>So sánh trước / sau optical flow</h3>
+          <p class="muted">Chạy mọi cách xử lý trên các frame có nhãn gốc (GT) của workspace này, cùng một detection, rồi so mAP, việc của người duyệt và độ chính xác lan truyền. Vài phút; chạy nền, có thể tiếp tục duyệt.</p>
+          <button id="eval-run" class="btn btn-primary btn-sm" type="button">▶ Chạy đánh giá</button>
+          <div class="job-status" id="eval-status"></div>
+        </section>
+      </div>
+      <section class="card" id="eval-result-card">
+        <h3>Kết quả đánh giá gần nhất</h3>
+        <p class="muted" id="eval-result-note">Chưa chạy.</p>
+        <div class="table-wrap"><table class="data-table" id="eval2d-table"></table></div>
+        <div class="table-wrap"><table class="data-table" id="evalprop-table"></table></div>
+      </section>
+    </div>
+  </main>
+
   <main id="tab-metrics" class="tab-panel hidden">
     <div class="page">
       <div class="page-head">
@@ -263,6 +454,63 @@
           <table class="data-table" id="issue-table"></table>
         </section>
       </div>
+      <section class="card prod-card">
+        <div class="card-head">
+          <h3>Năng suất và throughput</h3>
+          <span class="card-actions">
+            <a id="csv-frames" class="btn btn-ghost btn-sm" download>⭳ CSV từng frame</a>
+            <a id="csv-summary" class="btn btn-ghost btn-sm" download>⭳ CSV tổng hợp</a>
+          </span>
+        </div>
+        <p class="muted">Người duyệt: frame/giờ tính trên thời gian duyệt đo được; phiên = các lần approve cách nhau không quá 30 phút. Auto-label: frame/giờ theo từng phiên chạy (detect + QA).</p>
+        <div class="table-wrap"><table class="data-table" id="prod-table"></table></div>
+        <div class="table-wrap"><table class="data-table" id="infer-table"></table></div>
+      </section>
+
+      <section id="metrics3d" class="hidden">
+        <div class="page-head"><h2>So sánh mô hình 3D</h2></div>
+        <section class="card">
+          <p class="muted" id="m3-compare-note">Chấm chuẩn nuScenes (mAP, NDS) trên các scene val có trên máy, bằng tools3d/run3d.py.</p>
+          <div class="table-wrap"><table class="data-table" id="m3-compare-table"></table></div>
+        </section>
+        <div class="page-head"><h2>Duyệt 3D</h2></div>
+        <div class="tiles" id="m3-tiles"></div>
+        <div class="two-col">
+          <section class="card">
+            <h3>Tỉ lệ phải sửa theo kết luận kiểm chứng</h3>
+            <p class="muted">Tính từ thao tác của người duyệt: box nhóm Đúng phải hiếm khi bị sửa.</p>
+            <table class="data-table" id="m3-verdict-table"></table>
+          </section>
+          <section class="card">
+            <h3>Xuất nhãn 3D</h3>
+            <p>Frame 3D đã <strong>Approve</strong> được xuất thành file kết quả chuẩn nuScenes (<code>labels3d_nusc.json</code>, hệ toàn cục) kèm log thao tác.</p>
+            <button id="m3-export" class="btn btn-primary">Xuất nhãn 3D</button>
+            <button id="m3-export-kitti" class="btn btn-ghost" title="Định dạng KITTI object: ảnh, velodyne, calib, label_2 (camera trước)">Xuất KITTI</button>
+            <div id="m3-export-result"></div>
+          </section>
+        </div>
+      <section class="card prod-card">
+        <div class="card-head">
+          <h3>Năng suất và throughput (3D)</h3>
+          <span class="card-actions">
+            <a id="m3-csv-frames" class="btn btn-ghost btn-sm" download>⭳ CSV từng frame</a>
+            <a id="m3-csv-summary" class="btn btn-ghost btn-sm" download>⭳ CSV tổng hợp</a>
+          </span>
+        </div>
+        <p class="muted">Người duyệt: frame/giờ tính trên thời gian duyệt đo được; phiên = các lần approve cách nhau không quá 30 phút. Auto-label: frame/giờ theo từng phiên chạy (detect + QA).</p>
+        <div class="table-wrap"><table class="data-table" id="m3-prod-table"></table></div>
+        <div class="table-wrap"><table class="data-table" id="m3-infer-table"></table></div>
+      </section>
+      </section>
+
+      <section class="card timing-card">
+        <div class="card-head">
+          <h3>Thời gian từng bước xử lý</h3>
+          <span class="card-actions"><button id="timing-refresh" class="btn btn-ghost btn-sm" type="button">Tải lại</button></span>
+        </div>
+        <p class="muted" id="timing-note">Đo lúc auto-label: mỗi frame ghi thời gian detect, chiếu LiDAR, optical flow, QA (2D) và detect 6 camera, đọc point cloud, kiểm chứng (3D).</p>
+        <div class="table-wrap"><table class="data-table" id="timing-table"></table></div>
+      </section>
 
       <div class="page-head"><h2>Auto-labeled dataset</h2></div>
       <section class="card export-card">
@@ -279,6 +527,8 @@
   </main>
 
   <div id="toast" class="toast hidden" role="status"></div>
-  <script src="app.js?v=qc1"></script>
+  <script src="app.js?v=3d12qc1"></script>
+  <script type="module" src="bev2d.js?v=3d12"></script>
+  <script type="module" src="app3d.js?v=3d12"></script>
 </body>
 </html>
