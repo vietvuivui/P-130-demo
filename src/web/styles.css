@@ -277,6 +277,77 @@ kbd {
   gap: 4px;
 }
 
+.player-controls.hidden,
+#topbar-player-controls.hidden,
+#topbar-player-controls[hidden] {
+  display: none !important;
+}
+
+.labels-scroll, .issues-scroll {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.label-stat-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.label-stat-item:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+.label-stat-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.label-color-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.label-stat-count {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.issue-stat-item {
+  padding: 8px 12px;
+  background: #fff;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.issue-stat-item:hover {
+  background: #fffbe6;
+  border-color: #faad14;
+}
+
+.card-icon-action-btn.active {
+  color: var(--primary) !important;
+  background: rgba(22, 119, 255, 0.1) !important;
+}
+
 .player-btn {
   background: #ffffff;
   border: 1px solid var(--border);
@@ -760,6 +831,11 @@ select {
   background: #e2e8f0;
 }
 
+.side-icon-btn.active {
+  color: #1677ff !important;
+  background: #e6f4ff !important;
+}
+
 /* Object Card Header (Image 1: Green Header Banner) */
 .card-header-bar {
   background: #86efac;
@@ -1203,6 +1279,29 @@ select {
   overflow: hidden;
   display: grid;
   place-items: center;
+}
+
+.canvas-scroll {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.canvas-scroll.zoomed {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.canvas-scroll.panning {
+  cursor: grab !important;
+}
+
+.canvas-scroll.grabbing {
+  cursor: grabbing !important;
 }
 
 #canvas {
