@@ -36,6 +36,9 @@ class Verify3D(BaseModel):
     visible: float | None = None
     occlusion: float | None = None
     clarity: float | None = None
+    # Theo từng camera thấy box: phần box nằm trong ảnh (0..1) và mức bị che (0..1); UI vẽ nét đứt khi bị che / cắt
+    visible_by_cam: dict[str, float] = Field(default_factory=dict)
+    occlusion_by_cam: dict[str, float] = Field(default_factory=dict)
     lidar_points: int = 0
     distance_m: float = 0.0
     det_label: str | None = None  # lớp detector 2D gán ở vị trí đó
