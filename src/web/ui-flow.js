@@ -383,6 +383,14 @@ async function initFramesPage() {
     };
   }
 
+  const actionsMenu = document.getElementById("actionsDropdownMenu");
+  if (actionsMenu && projectId) {
+    const wsLink = actionsMenu.querySelector('a[href*="index.html"]');
+    if (wsLink) wsLink.href = `index.html?project=${encodeURIComponent(projectId)}`;
+    const expLink = actionsMenu.querySelector('a[href*="export.html"]');
+    if (expLink) expLink.href = `export.html?project=${encodeURIComponent(projectId)}`;
+  }
+
   // Edit Project Title
   const btnEditTitle = document.getElementById("btnEditProjectTitle");
   if (btnEditTitle && titleEl) {
@@ -640,8 +648,29 @@ async function initFramesPage() {
   // -------------------------------------------------------------
   let frames = [];
 
-  // 1. If project is a video ID, fetch GET /api/v1/videos/{video_id}
-  if (projectId && projectId.startsWith("vid-")) {
+  // 1. If project has a specific ID (not vid-), try GET /p/{projectId}/api/v1/frames
+  if (projectId && !projectId.startsWith("vid-")) {
+    try {
+      const pFrames = await fetch(`/p/${encodeURIComponent(projectId)}/api/v1/frames`).then(r => r.ok ? r.json() : null);
+      if (Array.isArray(pFrames) && pFrames.length > 0) {
+        frames = pFrames.map((f, idx) => ({
+          task_id: `#${String(idx + 1).padStart(4, '0')}`,
+          title: `${f.frame_id}`,
+          frame_id: f.frame_id,
+          created: "Dự án " + projectId,
+          updated: "Hôm nay",
+          status: f.status,
+          frame_risk: f.frame_risk || 0,
+          total: (f.counts ? (f.counts.high + f.counts.medium + f.counts.low) : f.n_objects) || 0,
+          annotating: f.status === "approved" ? 0 : 1,
+          thumb: `/p/${encodeURIComponent(projectId)}/api/v1/frames/${encodeURIComponent(f.frame_id)}/image`
+        }));
+      }
+    } catch (e) { }
+  }
+
+  // 2. If project is a video ID, fetch GET /api/v1/videos/{video_id}
+  if (frames.length === 0 && projectId && projectId.startsWith("vid-")) {
     try {
       const videoDetail = await fetch(`${API_BASE}/videos/${encodeURIComponent(projectId)}`).then(r => r.ok ? r.json() : null);
       if (videoDetail && Array.isArray(videoDetail.frames)) {
@@ -661,7 +690,7 @@ async function initFramesPage() {
     } catch (e) { }
   }
 
-  // 2. Fetch GET /api/v1/frames?sort=risk
+  // 3. Fetch GET /api/v1/frames?sort=risk
   if (frames.length === 0) {
     try {
       const allFrames = await fetch(`${API_BASE}/frames?sort=risk`).then(r => r.ok ? r.json() : []);
@@ -824,7 +853,8 @@ async function initFramesPage() {
         };
         card.querySelector(".task-menu-export").onclick = (e) => {
           e.stopPropagation();
-          window.location.href = `export.html?frame=${encodeURIComponent(item.frame_id)}`;
+          const pParam = projectId ? `&project=${encodeURIComponent(projectId)}` : '';
+          window.location.href = `export.html?frame=${encodeURIComponent(item.frame_id)}${pParam}`;
         };
       }
 
@@ -837,7 +867,8 @@ async function initFramesPage() {
     if (projectId) {
       try { localStorage.setItem("videoId", projectId); } catch (err) { }
     }
-    window.location.href = `index.html?frame=${encodeURIComponent(frameId)}`;
+    const projectParam = projectId ? `&project=${encodeURIComponent(projectId)}` : '';
+    window.location.href = `index.html?frame=${encodeURIComponent(frameId)}${projectParam}`;
   };
 
   // Search input handler
