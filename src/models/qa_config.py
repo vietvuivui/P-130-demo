@@ -68,7 +68,9 @@ class Lidar3DCfg(BaseModel):
 
     enabled: bool = True
     min_score: float = 0.05  # box 3D yếu hơn không chiếu
-    match_iou: float = 0.5  # box 2D trùng hình chiếu box 3D cùng lớp từ ngưỡng này: lấy box 3D
+    # Box 2D trùng hình chiếu box 3D cùng lớp từ ngưỡng này: lấy box 3D. 0.4 chọn trên dev trong {0.5, 0.4, 0.3}: vật nhỏ
+    # (cọc tiêu, người) hai nguồn lệch vài px nên 0.5 để sót nhiều cặp trùng; 0.3 ghép nhầm sang cọc bên cạnh.
+    match_iou: float = 0.4
     camera_only_scale: float = 0.5  # hệ số điểm của box chỉ detector ảnh thấy
 
 
@@ -251,6 +253,8 @@ class QCCfg(BaseModel):
     cross_class_allowed: list[tuple[str, str]] = [("pedestrian", "bicycle"), ("pedestrian", "motorcycle")]
     quick_check: QuickCheckCfg = QuickCheckCfg()
     audit: AuditCfg = AuditCfg()
+
+
 class Verify3DCfg(BaseModel):
     # Box 3D dưới ngưỡng điểm này không đưa vào duyệt (như ngưỡng 0.3 nhóm 3D dùng)
     min_score: float = 0.3

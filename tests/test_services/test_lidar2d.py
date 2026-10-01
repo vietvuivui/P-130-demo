@@ -69,7 +69,7 @@ def test_no_3d_boxes_only_scales_camera_scores():
 
 def test_config_defaults():
     c = AutoLabelConfig().detection.lidar3d
-    assert c.enabled and c.camera_only_scale == 0.5 and c.match_iou == 0.5
+    assert c.enabled and c.camera_only_scale == 0.5 and c.match_iou == 0.4
 
 
 def test_ground_box_in_ego_frame():

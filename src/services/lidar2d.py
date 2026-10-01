@@ -66,7 +66,7 @@ def project_boxes(preds: Sequence[dict], cam_from_global: np.ndarray, intrinsic:
     return out
 
 
-def merge_boxes(boxes3d: Sequence[dict], boxes2d: Sequence[dict], match_iou: float = 0.5,
+def merge_boxes(boxes3d: Sequence[dict], boxes2d: Sequence[dict], match_iou: float = 0.4,
                 camera_only_scale: float = 0.5) -> list[tuple[dict | None, int | None, float]]:  # fmt: skip
     """Ghép tham lam theo điểm box 3D giảm dần. Trả về [(box 3D | None, chỉ số box 2D | None, điểm)]."""
     used: set[int] = set()
@@ -89,7 +89,7 @@ def merge_boxes(boxes3d: Sequence[dict], boxes2d: Sequence[dict], match_iou: flo
 
 
 def merge_detections(
-    dets: list, boxes3d: Sequence[dict], match_iou: float = 0.5, camera_only_scale: float = 0.5
+    dets: list, boxes3d: Sequence[dict], match_iou: float = 0.4, camera_only_scale: float = 0.5
 ) -> list:
     """Gộp Detection của detector 2D với box 3D đã chiếu. Box lấy từ 3D bỏ mask (mask của detector không còn khớp)."""
     from src.models.schemas import Detection

@@ -53,3 +53,19 @@ Lợi ích nằm ở thứ hạng box (mAP) và ở nhãn 2D gộp (test mAP50 0
 - Trọng số theo độ mạnh mô hình, bán kính gộp x0.75 / x1.5, blend 0.3 / 0.7: giảm trên dev.
 
 Bộ chấm 3D ở đây viết lại bằng numpy (không AAE, không lọc bike rack), khớp số của `run3d.py eval` trong 0.002 mAP.
+
+## 4. Ngưỡng ghép box 2D với hình chiếu box 3D (`match_iou`) — thêm 2026-10-01
+
+Vật nhỏ (cọc tiêu, người) có hai box lệch nhau vài px: box 3D chiếu và box YOLOE. IoU < 0.5 nên không ghép, mỗi vật
+thành hai box (trên BEV box YOLOE còn bị ước lượng vị trí sai vài m). "Cặp trùng" = box 3D và box chỉ camera cùng lớp,
+IoU >= 0.2, cùng qua ngưỡng 0.30.
+
+| match_iou | dev mAP50 / F1 / cặp trùng | test mAP50 / F1 / P / cặp trùng |
+|---|---|---|
+| 0.5 (cũ) | 0.704 / 0.707 / 76 | 0.625 / 0.708 / 0.687 / 662 |
+| **0.4 (mới)** | 0.700 / 0.708 / 32 | 0.628 / 0.722 / 0.710 / 242 |
+| 0.3 | 0.687 / 0.701 / 12 | 0.626 / 0.723 / 0.687 / 60 |
+
+Chọn 0.4 trên dev (F1 giữ nguyên, trùng -58%); 0.3 ghép nhầm cọc tiêu sang cọc bên cạnh (AP cọc tiêu dev 0.68 -> 0.60).
+Ghép theo IoU giảm dần thay vì theo điểm 3D: kém hơn (test 0.620). Khớp rồi giữ box 2D cho lớp nhỏ: kém hẳn (người 0.58 ->
+0.46 trên dev) vì nhãn gốc là hộp bao của box 3D.

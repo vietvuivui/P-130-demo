@@ -21,11 +21,12 @@ detection:
   fusion_iou: 0.55
   # Dự án có LiDAR: sau bước dự đoán 3D, box 3D của ensemble được chiếu xuống ảnh và gộp với box của detector ảnh
   # (src/services/lidar2d.py). Test 957 keyframe: mAP50 0.366 -> 0.618, precision 0.467 -> 0.671, recall 0.582 -> 0.739.
-  # camera_only_scale chọn trên dev trong {1.0, 0.7, 0.5}. Box chiếu là hộp bao của box 3D (bao cả phần bị che).
+  # camera_only_scale chọn trên dev trong {1.0, 0.7, 0.5}; match_iou 0.4 trong {0.5, 0.4, 0.3} (giảm 58% cặp box trùng
+  # của cùng một vật nhỏ, F1 giữ nguyên). Box chiếu là hộp bao của box 3D (bao cả phần bị che).
   lidar3d:
     enabled: true
     min_score: 0.05
-    match_iou: 0.5
+    match_iou: 0.4
     camera_only_scale: 0.5
   # https://github.com/ultralytics/yolo26 — COCO 80 lớp, chỉ giữ lớp trùng prompt của taxonomy
   # Tập lớp đóng COCO: không nhận barrier / traffic_cone / trailer / construction_vehicle
