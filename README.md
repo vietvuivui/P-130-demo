@@ -264,7 +264,10 @@ Phím: `↑/↓` chọn box · `K` `D` `C` `E` · `B` vẽ box · `A` · `Enter`
 
 ## Kết quả đánh giá
 
-Xem [eval/results/autolabel2d_eval.md](eval/results/autolabel2d_eval.md). Optical flow cho lan truyền và QA
+Bảng so sánh mọi phương pháp đã dùng (2D, 3D, có / không dùng thì tăng / giảm bao nhiêu):
+[eval/results/bang-so-sanh.md](eval/results/bang-so-sanh.md). Test case thủ công với output thực tế:
+[docs/eval-evidence.md](docs/eval-evidence.md). Detector 2D: YOLOE-26-L fine-tune trên nuImages, test 24 scene mAP50
+0.366 (zero-shot 0.312). Xem thêm [eval/results/autolabel2d_eval.md](eval/results/autolabel2d_eval.md). Optical flow cho lan truyền và QA
 temporal (trước / sau, dev + held-out): [eval/results/temporal/report.md](eval/results/temporal/report.md).
 
 **3D trên tập test** ([eval/results/det3d_heldout.md](eval/results/det3d_heldout.md)): 24 scene val chưa dùng để chọn
@@ -285,6 +288,27 @@ Hai cột cuối là kết quả QA Agent 3D trên 3 scene demo, dùng ngưỡng
 | PointPillars | LiDAR | 0.470 | 0.562 | 0.85 | 54% (95%) | 88% |
 | PGD | Camera | 0.394 | 0.446 | 2.71 | 59% (87%) | 74% |
 | FCOS3D | Camera | 0.329 | 0.411 | 2.72 | 53% (80%) | 72% |
+
+## Biến môi trường
+
+Chép `.env.example` thành `.env` (không commit). Mọi biến đều có mặc định trong `src/config.py`, nên không có `.env`
+vẫn chạy được bản demo.
+
+| Biến | Mặc định | Dùng để |
+|---|---|---|
+| `NUSCENES_DATAROOT` | `./v1.0-mini-001` | Thư mục nuScenes (`v1.0-*/`, `samples/`, `sweeps/`) |
+| `NUSCENES_VERSION` | `v1.0-mini` | `v1.0-mini` hoặc `v1.0-trainval` |
+| `WORKSPACE_DIR` | `./data/workspace` | Workspace của chế độ Ảnh / Video: frame, nhãn, cache detection, correction log |
+| `PROJECTS_DIR` | `./data/projects` | Dự án của end-user, mỗi dự án một thư mục con |
+| `AUTOLABEL_CONFIG` | `./configs/autolabel.yaml` | Mô hình, ngưỡng, trọng số QA Agent, lan truyền |
+| `REVIEWER_NAME` | `annotator` | Tên ghi vào correction log |
+| `MM3D_PYTHON` | (tự tìm `.venv-mm3d`) | Python của môi trường MMDetection3D cho bước 3D |
+| `APP_HOST`, `APP_PORT`, `APP_ENV`, `LOG_LEVEL`, `CORS_ORIGINS` | `0.0.0.0`, `8000`, `development`, `INFO`, `http://localhost:3000` | Web server |
+| `AI_LOG_SERVER`, `AI_LOG_API_KEY`, `AI_LOG_DIR` | — | Hook ghi log AI khi commit / push (giảng viên cấp key) |
+| `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT`, `LANGCHAIN_TRACING_V2` | — | Tuỳ chọn: trace QA Agent lên LangSmith |
+
+`scripts\tasks.ps1 serve -Workspace <thư mục> -Dataroot <nuScenes>` đặt `WORKSPACE_DIR` / `NUSCENES_DATAROOT` cho một
+lần chạy, không cần sửa `.env`.
 
 ## API
 
@@ -324,6 +348,40 @@ Hai cột cuối là kết quả QA Agent 3D trên 3 scene demo, dùng ngưỡng
 | POST | `/api/v1/3d/export?model=` | Xuất box 3D đã duyệt (định dạng nuScenes detection) |
 | POST | `/api/v1/3d/export-kitti?model=` | Xuất box 3D đã duyệt dạng KITTI object (ảnh, velodyne, calib, label_2), tải ở `/3d/exports/{file}` |
 | POST | `/api/v1/3d/frames/{m}/{f}/reject`, `/undo`, `/redo` | Trả lại / hoàn tác như 2D; `GET /3d/report.csv?model=` |
+
+### Ví dụ gọi API
+
+Server chạy ở `http://localhost:8000` (workspace `data/eval_temporal/ws_dev`). Output dưới đây chép từ lần chạy thật,
+rút gọn; xem thêm [docs/eval-evidence.md](docs/eval-evidence.md).
+
+```bash
+# 1. Hàng đợi frame, khó nhất trước
+curl "http://localhost:8000/api/v1/frames?sort=risk"
+# [{"frame_id": "scene-0101_023", "frame_risk": 0.834, "counts": {"low": 18, "medium": 4, "high": 1}, "pending": 23, ...}, ...]
+
+# 2. Chi tiết một frame: box, mức rủi ro, lý do
+curl "http://localhost:8000/api/v1/frames/scene-0101_023"
+# {"objects": [{"object_id": "23", "label": "traffic_cone", "score": 0.3469, "qa": {"risk": 0.834, "level": "high",
+#   "issues": [{"code": "NO_LIDAR_SUPPORT", "message": "Chỉ 1 điểm LiDAR trong box cao 85px (cần ≥ 3)"}, ...]}}, ...]}
+
+# 3. Sửa nhãn: xoá / đổi lớp / thêm box
+curl -X POST "http://localhost:8000/api/v1/frames/scene-0101_023/actions" -H "Content-Type: application/json" \
+     -d '{"action": "CHANGE_CLASS", "object_id": "18", "label": "barrier"}'
+curl -X POST "http://localhost:8000/api/v1/frames/scene-0101_023/actions" -H "Content-Type: application/json" \
+     -d '{"action": "ADD_BOX", "label": "traffic_cone", "bbox": [1500, 640, 1560, 760]}'
+
+# 4. Duyệt theo lô nhóm low, rồi approve (409 PENDING_OBJECTS nếu còn box chưa xem)
+curl -X POST "http://localhost:8000/api/v1/frames/scene-0101_023/approve-low-risk" -H "Content-Type: application/json" -d "{}"
+curl -X POST "http://localhost:8000/api/v1/frames/scene-0101_023/approve" -H "Content-Type: application/json" -d "{}"
+
+# 5. Số liệu duyệt và xuất dataset
+curl "http://localhost:8000/api/v1/metrics"
+# {"frames": {"total": 119, "approved": 1}, "m4_correction_rate": 0.087, "flag_recall": 1.0, ...}
+curl -X POST "http://localhost:8000/api/v1/export" -H "Content-Type: application/json" -d "{}"
+# {"export_id": "20261001-052938", "n_frames": 1, "n_objects": 23, "files": ["coco.json", "labels.jsonl", "corrections.jsonl", "manifest.json"]}
+```
+
+Trên PowerShell, dùng `curl.exe` thay cho `curl` (hoặc `Invoke-RestMethod`).
 
 ## Duyệt, báo cáo, quyền riêng tư
 

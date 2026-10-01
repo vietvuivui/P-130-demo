@@ -1049,7 +1049,7 @@ Mục này ghi lại những gì đã chạy được trên nhánh `kien`, khác
 | Bộ kiểm tra sau submit, mẫu ngẫu nhiên, VLM | QA Agent chấm rủi ro từng box ngay sau auto-label; box rủi ro thấp duyệt theo lô | Chấm ở mức box để giảm số box người phải xem; VLM và mẫu ngẫu nhiên chưa làm |
 | Điểm độ khó D(f) | Điểm rủi ro từng box: `w1(1 − score) + w2·lidar + w3·temporal + w4·geometric`; frame sắp theo box rủi ro nhất | Cùng điểm dùng cho cả hàng đợi và duyệt theo lô |
 | Nội suy giữa hai keyframe (FR-14) | Lan truyền tiến từ frame đã duyệt | Chỉ cần duyệt một frame, không cần hai |
-| Non-goal: không fine-tune | Có công cụ fine-tune YOLOE trên nuImages (`tools2d/`), chưa đưa vào mặc định | Mô hình pretrained yếu ở barrier, pedestrian, xe đạp |
+| Non-goal: không fine-tune | Fine-tune YOLOE-26-L trên nuImages (linear probe, RTX 3090), đã thành mặc định: test mAP50 0.312 → 0.366 | Mô hình pretrained yếu ở barrier, pedestrian, xe đạp |
 
 ### Thêm ngoài kế hoạch
 
@@ -1095,10 +1095,12 @@ biên dịch op CUDA.
 | --- | --- | --- |
 | YOLO-World (từ vựng COCO) | 0.311 | không có lớp barrier |
 | YOLO26 (tập lớp COCO) | 0.398 | không có lớp barrier |
-| **YOLOE-26 (mặc định)** | **0.452** | open-vocab, có mask; test 20 scene: mAP50 0.296, P 0.49 / R 0.52 |
+| YOLOE-26 zero-shot | 0.452 | open-vocab, có mask; test 24 scene (957 keyframe): mAP50 0.312, P 0.50 / R 0.52 |
+| **YOLOE-26 fine-tune nuImages (mặc định)** | — | test 24 scene: **mAP50 0.366**, P 0.48 / R 0.58; barrier 0.13 → 0.33, cone 0.39 → 0.50 |
 
-Grounding DINO và Florence-2 có trong code làm phương án. Fine-tune YOLOE trên nuImages: công cụ sẵn ở `tools2d/`, chưa
-chạy xong.
+Grounding DINO và Florence-2 có trong code làm phương án. Fine-tune YOLOE trên nuImages: linear probe 10 epoch, 1280 px
+trên RTX 3090 (`tools2d/finetune_yoloe.py`, `weights/yoloe-26l-nuimages-lp-1280.pt`). Tập lớp đóng 10 lớp nuScenes:
+dự án tập lớp khác dùng lại `yoloe-26l-seg.pt`. Bảng đầy đủ mọi phương pháp: `eval/results/bang-so-sanh.md`.
 
 ### Lịch sử tối ưu
 
@@ -1122,6 +1124,8 @@ Mỗi dòng là một lần thử, đo trước / sau trên cùng dữ liệu. "
 | 14 | Hướng theo chuyển động, cỡ theo lớp | VESPA | NDS 0.713 → 0.712–0.713 | Không |
 | 15 | OCR / ORU / OCM cho lan truyền 2D | OC-SORT | điểm (đúng − sai − 2×đổi ID) 2180 → 2173 | Không |
 | 16 | Giữ track 3D 4 keyframe thay vì 2 | OC-SORT | nhãn đúng 23355 → 23731 (+1.6%), đổi ID 470 → 543 | Bật |
+| 17 | Fine-tune YOLOE-26-L trên nuImages (linear probe) | fine-tune | test 24 scene mAP50 0.312 → 0.366, recall 0.52 → 0.58, P 0.50 → 0.48 | Bật |
+| 18 | Lan truyền 2D: không tracker / ByteTrack / OC-SORT (test 20 scene) | ByteTrack, OC-SORT | điểm 2096 / **2180** / 2071; ByteTrack + OC-SORT 2173 | ByteTrack |
 
 Chi tiết: `eval/results/det3d_heldout.md`, `temporal/report.md`, `propagation3d.md`, `vespa.md`, `ocsort.md`.
 
@@ -1130,7 +1134,7 @@ Chi tiết: `eval/results/det3d_heldout.md`, `temporal/report.md`, `propagation3
 | Hạng mục | Kết quả | Nguồn |
 | --- | --- | --- |
 | **3D, test 24 scene (957 keyframe)** | **Ensemble 4 LiDAR + track mAP 0.668 / NDS 0.713** | `eval/results/det3d_heldout.md` |
-| 2D YOLOE-26 zero-shot, test 20 scene | mAP50 0.296, P 0.49 / R 0.52 | `eval/results/temporal/gpu_heldout20.json` |
+| 2D YOLOE-26 fine-tune, test 24 scene (957 keyframe) | mAP50 0.366, P 0.48 / R 0.58 (zero-shot 0.312) | `eval/results/det2d_finetune.json` |
 | Lan truyền 2D, test 20 scene | 3192 box ghi ra đúng / 4128 (77%), đổi ID 76 | `eval/results/ocsort.md` |
 | **Lan truyền 3D, test 24 scene** | **23731 box đúng vật / 25242 (94%)**, 65% vật còn trong tầm có nhãn lan truyền | `eval/results/ocsort.md` |
 | QA 3D (CenterPoint voxel, 3 scene) | Đưa 51% box vào nhóm duyệt theo lô, trong đó 93% đúng; bắt 86% box sai | `README.md` |
@@ -1143,7 +1147,7 @@ Chi tiết: `eval/results/det3d_heldout.md`, `temporal/report.md`, `propagation3
 - **Kiểm soát chất lượng:** VLM (FR-30, FR-31), mẫu ngẫu nhiên mù và điểm tin cậy (FR-32, FR-33), so sánh hai annotator (FR-37).
 - **Năng suất:** đồng hồ dừng theo focus, frame vàng, kết luận P / Q / E (FR-39 → FR-41).
 - **Khác:** brush sửa mask (FR-19), DVC (FR-45), chiều ảnh → 3D (FR-17).
-- **Mô hình:** fine-tune YOLOE trên nuImages (PC 3090), TTA lật trục cho 4 mô hình LiDAR, BEVFusion.
+- **Mô hình:** chạy lại lan truyền 2D với YOLOE fine-tune, fine-tune toàn phần (đã có linear probe), TTA lật trục cho 4 mô hình LiDAR, BEVFusion.
 - **Số liệu:** baseline thủ công, thí nghiệm A/B (M1, M5), tỷ lệ làm mờ (M7). Ngưỡng các chỉ số chưa chốt.
 
 ## Công cụ và lệnh

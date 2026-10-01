@@ -34,7 +34,10 @@ detection:
     imgsz: 1280
   # Open-vocab thế hệ mới (YOLO26 + MobileCLIP2); so sánh: eval/compare_detectors.ipynb
   yoloe:
-    weights: yoloe-26l-seg.pt
+    # Fine-tune trên nuImages (linear probe, 10 lớp nuScenes, tools2d/README.md). Held-out nuScenes CAM_FRONT 957 ảnh:
+    # mAP50 0.312 -> 0.366, recall 0.523 -> 0.581. Tập lớp đóng: không nhận prompt chữ mới; cần open-vocab thì đặt
+    # lại yoloe-26l-seg.pt.
+    weights: weights/yoloe-26l-nuimages-lp-1280.pt
     imgsz: 1280
   grounding_dino:
     model_id: IDEA-Research/grounding-dino-tiny

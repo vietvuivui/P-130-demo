@@ -1,0 +1,126 @@
+{
+ "yoloe-26l-seg.pt@1280:dev": {
+  "mAP50": 0.3915,
+  "P": 0.5655,
+  "R": 0.5781,
+  "F1": 0.5717,
+  "ap": {
+   "barrier": 0.118,
+   "bicycle": 0.192,
+   "bus": 0.775,
+   "car": 0.771,
+   "construction_vehicle": 0.0,
+   "motorcycle": 0.287,
+   "pedestrian": 0.243,
+   "traffic_cone": 0.485,
+   "truck": 0.652
+  },
+  "n_gt": {
+   "car": 440,
+   "pedestrian": 173,
+   "bicycle": 13,
+   "truck": 46,
+   "motorcycle": 8,
+   "bus": 22,
+   "traffic_cone": 203,
+   "barrier": 157,
+   "construction_vehicle": 14
+  },
+  "images": 119,
+  "sec": 1.9
+ },
+ "yoloe-26l-seg.pt@1280:heldout": {
+  "mAP50": 0.3124,
+  "P": 0.4987,
+  "R": 0.5234,
+  "F1": 0.5107,
+  "ap": {
+   "barrier": 0.127,
+   "bicycle": 0.123,
+   "bus": 0.805,
+   "car": 0.707,
+   "construction_vehicle": 0.019,
+   "motorcycle": 0.21,
+   "pedestrian": 0.226,
+   "traffic_cone": 0.39,
+   "trailer": 0.0,
+   "truck": 0.518
+  },
+  "n_gt": {
+   "pedestrian": 1604,
+   "traffic_cone": 908,
+   "car": 2375,
+   "bus": 210,
+   "truck": 543,
+   "bicycle": 134,
+   "construction_vehicle": 112,
+   "barrier": 744,
+   "motorcycle": 81,
+   "trailer": 22
+  },
+  "images": 957,
+  "sec": 11.6
+ },
+ "yoloe-26l-nuimages-lp-1280.pt@1280:dev": {
+  "mAP50": 0.4287,
+  "P": 0.5247,
+  "R": 0.6329,
+  "F1": 0.5737,
+  "ap": {
+   "barrier": 0.273,
+   "bicycle": 0.206,
+   "bus": 0.624,
+   "car": 0.783,
+   "construction_vehicle": 0.0,
+   "motorcycle": 0.458,
+   "pedestrian": 0.264,
+   "traffic_cone": 0.615,
+   "truck": 0.635
+  },
+  "n_gt": {
+   "car": 440,
+   "pedestrian": 173,
+   "bicycle": 13,
+   "truck": 46,
+   "motorcycle": 8,
+   "bus": 22,
+   "traffic_cone": 203,
+   "barrier": 157,
+   "construction_vehicle": 14
+  },
+  "images": 119,
+  "sec": 37.2
+ },
+ "yoloe-26l-nuimages-lp-1280.pt@1280:heldout": {
+  "mAP50": 0.3656,
+  "P": 0.4843,
+  "R": 0.5807,
+  "F1": 0.5281,
+  "ap": {
+   "barrier": 0.333,
+   "bicycle": 0.233,
+   "bus": 0.779,
+   "car": 0.728,
+   "construction_vehicle": 0.029,
+   "motorcycle": 0.275,
+   "pedestrian": 0.294,
+   "traffic_cone": 0.5,
+   "trailer": 0.015,
+   "truck": 0.47
+  },
+  "n_gt": {
+   "pedestrian": 1604,
+   "traffic_cone": 908,
+   "car": 2375,
+   "bus": 210,
+   "truck": 543,
+   "bicycle": 134,
+   "construction_vehicle": 112,
+   "barrier": 744,
+   "motorcycle": 81,
+   "trailer": 22
+  },
+  "images": 957,
+  "sec": 72.7
+ }
+}
