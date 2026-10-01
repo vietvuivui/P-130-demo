@@ -70,3 +70,30 @@ def test_no_3d_boxes_only_scales_camera_scores():
 def test_config_defaults():
     c = AutoLabelConfig().detection.lidar3d
     assert c.enabled and c.camera_only_scale == 0.5 and c.match_iou == 0.5
+
+
+def test_ground_box_in_ego_frame():
+    from src.services.lidar2d import ground_box
+
+    # xe mình quay 90° (hướng +y toàn cục), đứng ở (10, 20); vật ở (10, 30) hướng +y toàn cục -> trước mặt 10 m, cùng hướng
+    c, s = np.cos(np.pi / 4), np.sin(np.pi / 4)
+    global_from_ego = np.array([[0, -1, 0, 10], [1, 0, 0, 20], [0, 0, 1, 0], [0, 0, 0, 1]], float)
+    b = {"translation": [10.0, 30.0, 0.5], "size": [1.9, 4.5, 1.6], "rotation": [c, 0, 0, s]}
+    g = ground_box(b, np.linalg.inv(global_from_ego))
+    assert np.allclose(g["center"], [10, 0, 0.5], atol=1e-3) and g["size"] == [1.9, 4.5, 1.6] and abs(g["yaw"]) < 1e-3
+
+
+def test_merge_detections_carries_box3d():
+    b3 = [
+        {
+            "bbox": [100, 100, 200, 200],
+            "label": "car",
+            "score": 0.6,
+            "box3d": {"center": [10, 0, 0], "size": [2, 4, 1.5], "yaw": 0.1},
+        }
+    ]
+    dets = [Detection(bbox=[105, 105, 200, 200], label="car", score=0.9)]
+    (d,) = merge_detections(dets, b3, 0.5, 0.5)
+    assert d.box3d is not None and d.box3d.yaw == 0.1 and d.box3d.center == [10, 0, 0]
+    (d2,) = merge_detections([], b3, 0.5, 0.5)
+    assert d2.box3d is not None

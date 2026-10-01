@@ -13,6 +13,14 @@ HumanAction = Literal["KEEP", "DELETE", "CHANGE_CLASS", "EDIT_BOX", "ADD_BOX", "
 ObjectSource = Literal["model", "track", "human", "propagated"]
 
 
+class GroundBox(BaseModel):
+    """Hình chiếu của box 3D lên mặt đường, hệ ego tại thời điểm ảnh (x trước, y trái, z lên; gốc dưới trục sau)."""
+
+    center: list[float] = Field(..., min_length=3, max_length=3)
+    size: list[float] = Field(..., min_length=3, max_length=3)  # rộng, dài, cao (m)
+    yaw: float  # rad, 0 = cùng hướng xe mình
+
+
 class Detection(BaseModel):
     """Một box 2D do model (hoặc tracking) sinh ra, [x1, y1, x2, y2] theo pixel."""
 
@@ -27,6 +35,8 @@ class Detection(BaseModel):
     mask: list[float] | None = None
     # Score gốc của detector khi `score` đã được tính lại theo các sweep lân cận (temporal_fusion.py)
     det_score: float | None = None
+    # Box 3D của mô hình LiDAR mà box này được chiếu từ đó (src/services/lidar2d.py); UI vẽ đúng hướng vật trên BEV
+    box3d: GroundBox | None = None
 
 
 class QAIssue(BaseModel):
@@ -85,6 +95,8 @@ class LabelObject(BaseModel):
     alternatives: dict[str, float] = Field(default_factory=dict)
     # Score gốc của detector khi `score` đã được tính lại theo các sweep lân cận
     det_score: float | None = None
+    # Box 3D nguồn (lidar2d.py), chỉ còn đúng khi box chưa bị sửa / lan truyền
+    box3d: GroundBox | None = None
     # Mask sơ bộ từ detector (đa giác phẳng [x1, y1, ...]); bỏ khi người sửa box (không còn khớp), FR-04
     mask: list[float] | None = None
     # Box của cùng object ở các sweep lân cận, key là offset ("-2", "-1", "1", "2")

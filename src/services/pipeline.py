@@ -84,6 +84,7 @@ class AutoLabelPipeline:
             boxes3d = project_boxes(
                 self.preds3d.get(sample_token, []), self.data.cam_from_global(frame.image.sd_token), frame.intrinsic,
                 frame.image.width, frame.image.height, l3d.min_score,
+                ego_from_global=np.linalg.inv(self.data._global_from_ego(frame.image.sd_token)),
             )  # fmt: skip
 
         t0 = time.perf_counter()
@@ -182,6 +183,7 @@ def label_keyframe(
             models=d.models,
             alternatives=d.alternatives,
             mask=d.mask,
+            box3d=d.box3d,
         )
         for i, d in enumerate(key_dets)
     ]

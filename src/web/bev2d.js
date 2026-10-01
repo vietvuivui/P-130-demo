@@ -1,5 +1,7 @@
 // BEV cho chế độ Ảnh / Video: ảnh camera chiếu xuống mặt đường (homography) + box 2D đặt lên mặt đường.
-// Vị trí box: theo điểm LiDAR rơi trong box (nét liền), không có LiDAR thì theo chân vật chạm đường (nét đứt).
+// Box có box3d (chiếu từ mô hình 3D, bước "Gộp box 3D vào nhãn 2D"): vẽ đúng hình chiếu 3D (vị trí, cỡ, hướng).
+// Box khác: vị trí theo điểm LiDAR rơi trong box (nét liền), không có LiDAR thì theo chân vật chạm đường (nét đứt);
+// xe đặt song song hướng xe mình (hướng thật không biết được từ box 2D), vật nhỏ đặt vuông góc tia nhìn.
 // Dùng chung trạng thái với app.js qua window.AL (S, select, ensureLidar).
 
 const PROJECT = new URLSearchParams(location.search).get('project');
@@ -9,6 +11,8 @@ const RISK = { low: '#0ca30c', medium: '#fab219', high: '#d03b3b' };
 const HUMAN = '#3987e5';
 // chiều dài trung bình (m) của từng lớp trên nuScenes: box 2D chỉ cho biết mặt trước của vật
 const LENGTH = { car: 4.6, truck: 6.9, bus: 11, trailer: 12, construction_vehicle: 6.4, pedestrian: 0.73, motorcycle: 2.1, bicycle: 1.7, traffic_cone: 0.41, barrier: 0.5 };
+// chiều rộng trung bình (m) của xe: box 2D của xe nhìn chéo cho chiều ngang lẫn chiều dài, nên không suy ra được rộng
+const WIDTH = { car: 1.95, truck: 2.5, bus: 2.9, trailer: 2.9, construction_vehicle: 2.8 };
 
 const B = {
   on: false, fid: null, meta: null, img: null, loading: false, showImg: true, showPts: true,
@@ -45,7 +49,17 @@ function imgToGround(Hinv, u, v) {
 }
 const quantile = (a, q) => { const s = [...a].sort((m, n) => m - n); return s[Math.min(s.length - 1, Math.floor(q * s.length))]; };
 
+function rect(cx, cy, w, l, yaw) { // 4 góc (hệ ego) của hình chữ nhật dài l theo hướng yaw, rộng w
+  const c = Math.cos(yaw), s = Math.sin(yaw), hl = l / 2, hw = w / 2;
+  return [[1, 1], [-1, 1], [-1, -1], [1, -1]].map(([a, b]) => [cx + a * hl * c - b * hw * s, cy + a * hl * s + b * hw * c]);
+}
+
 function footprint(o, S) {
+  // box chiếu từ mô hình 3D, chưa ai sửa, không phải box lan truyền: hình chiếu 3D thật
+  if (o.box3d && o.source === 'model' && !o.review.final_bbox) {
+    const [cx, cy] = o.box3d.center, [w, l] = o.box3d.size;
+    return { id: o.object_id, src: 'box3d', dist: Math.hypot(cx, cy), pts: rect(cx, cy, w, l, o.box3d.yaw) };
+  }
   const M = B.meta.cam_from_ego, K = S.frame.intrinsic;
   const [fx, fy, cx, cy] = [K[0][0], K[1][1], K[0][2], K[1][2]];
   const box = S.editBox && S.mode === 'edit' && o.object_id === S.selected ? S.editBox : (o.review.final_bbox || o.bbox);
@@ -74,7 +88,13 @@ function footprint(o, S) {
   let dx = P[0] - C[0], dy = P[1] - C[1];
   const n = Math.hypot(dx, dy) || 1;
   dx /= n; dy /= n;
-  const W = Math.max(((x2 - x1) * d) / fx, 0.3), L = LENGTH[o.review.final_label || o.label] || 1;
+  const label = o.review.final_label || o.label, L = LENGTH[label] || 1;
+  if (WIDTH[label]) {
+    // xe: song song hướng xe mình; P là mặt gần nhất nên tâm lùi theo tia nhìn nửa bề dày của box theo tia đó
+    const W = WIDTH[label], s = (Math.abs(dx) * L + Math.abs(dy) * W) / 2;
+    return { id: o.object_id, src, dist: Math.hypot(P[0], P[1]), pts: rect(P[0] + dx * s, P[1] + dy * s, W, L, 0) };
+  }
+  const W = Math.max(((x2 - x1) * d) / fx, 0.3);
   const px = -dy * (W / 2), py = dx * (W / 2);
   const far = [P[0] + dx * L, P[1] + dy * L];
   return {
@@ -199,7 +219,7 @@ export function draw() {
     const o = s.o, isSel = o.object_id === sel;
     const color = isSel ? '#ffffff' : o.source === 'human' ? HUMAN : RISK[o.qa?.level || 'low'];
     ctx.strokeStyle = color; ctx.lineWidth = (isSel ? 3 : 1.8) * dpr;
-    ctx.setLineDash(s.src === 'lidar' ? [] : [5 * dpr, 3 * dpr]);
+    ctx.setLineDash(s.src === 'ground' ? [5 * dpr, 3 * dpr] : []);
     ctx.fillStyle = isSel ? 'rgba(255,255,255,.18)' : color + '33';
     ctx.beginPath(); s.screen.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath();
     ctx.fill(); ctx.stroke();
@@ -272,7 +292,7 @@ function bind() {
     }
     const s = hit(e);
     c.style.cursor = s ? 'pointer' : 'grab';
-    c.title = s ? `#${s.o.object_id} ${s.o.review.final_label || s.o.label} · ${s.dist.toFixed(1)} m · ${s.src === 'lidar' ? 'vị trí theo LiDAR' : 'ước lượng theo chân vật chạm đường'}` : '';
+    c.title = s ? `#${s.o.object_id} ${s.o.review.final_label || s.o.label} · ${s.dist.toFixed(1)} m · ${s.src === 'box3d' ? 'hình chiếu box 3D' : s.src === 'lidar' ? 'vị trí theo LiDAR, hướng ước lượng' : 'ước lượng theo chân vật chạm đường'}` : '';
   });
   c.addEventListener('pointerup', (e) => {
     const d = B.drag;

@@ -12,19 +12,40 @@ Test: mAP50 0.366 -> 0.618, precision 0.467 -> 0.671, recall 0.582 -> 0.739 ở 
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 
 import numpy as np
 
-from src.services.geometry import apply_transform, clip_box, iou, project_points
+from src.services.geometry import apply_transform, clip_box, iou, project_points, quaternion_to_matrix
 from src.services.nuscenes_data import box_corners
 
 SOURCE = "lidar3d"  # khoá trong Detection.models của box đến từ mô hình 3D
 
 
+def _yaw(rotation_wxyz: Sequence[float]) -> float:
+    r = quaternion_to_matrix(rotation_wxyz)
+    return float(math.atan2(r[1, 0], r[0, 0]))
+
+
+def ground_box(b: dict, ego_from_global: np.ndarray) -> dict:
+    """Box nuScenes (hệ toàn cục) -> hình chiếu trên mặt đường trong hệ ego: {center, size [w, l, h], yaw}."""
+    c = apply_transform(ego_from_global, np.asarray([b["translation"]], float))[0]
+    yaw = _yaw(b["rotation"]) + math.atan2(ego_from_global[1, 0], ego_from_global[0, 0])
+    yaw = (yaw + math.pi) % (2 * math.pi) - math.pi
+    return {
+        "center": [round(float(v), 3) for v in c],
+        "size": [round(float(v), 3) for v in b["size"]],
+        "yaw": round(yaw, 4),
+    }
+
+
 def project_boxes(preds: Sequence[dict], cam_from_global: np.ndarray, intrinsic: np.ndarray, width: int, height: int,
-                  min_score: float = 0.05, min_size_px: float = 2.0) -> list[dict]:  # fmt: skip
-    """Box nuScenes (hệ toàn cục) -> [{bbox, label, score}] trên ảnh: hộp bao 8 đỉnh, cắt theo khung ảnh."""
+                  min_score: float = 0.05, min_size_px: float = 2.0,
+                  ego_from_global: np.ndarray | None = None) -> list[dict]:  # fmt: skip
+    """Box nuScenes (hệ toàn cục) -> [{bbox, label, score, box3d?}] trên ảnh: hộp bao 8 đỉnh, cắt theo khung ảnh.
+
+    Có ego_from_global thì kèm box3d (hình chiếu trên mặt đường, hệ ego) để UI vẽ đúng hướng vật trên BEV."""
     out = []
     for b in preds:
         score = float(b["detection_score"])
@@ -38,7 +59,10 @@ def project_boxes(preds: Sequence[dict], cam_from_global: np.ndarray, intrinsic:
         bbox = clip_box([uv[:, 0].min(), uv[:, 1].min(), uv[:, 0].max(), uv[:, 1].max()], width, height)
         if bbox[2] - bbox[0] < min_size_px or bbox[3] - bbox[1] < min_size_px:
             continue
-        out.append({"bbox": [round(v, 1) for v in bbox], "label": b["detection_name"], "score": min(score, 1.0)})
+        item = {"bbox": [round(v, 1) for v in bbox], "label": b["detection_name"], "score": min(score, 1.0)}
+        if ego_from_global is not None:
+            item["box3d"] = ground_box(b, ego_from_global)
+        out.append(item)
     return out
 
 
@@ -80,9 +104,10 @@ def merge_detections(
                 d.model_copy(update={"score": score, "det_score": d.det_score if d.det_score is not None else d.score})
             )
         elif j is None:
-            out.append(Detection(bbox=p["bbox"], label=p["label"], score=score, models={SOURCE: round(p["score"], 4)}))
+            out.append(Detection(bbox=p["bbox"], label=p["label"], score=score, models={SOURCE: round(p["score"], 4)},
+                                 box3d=p.get("box3d")))  # fmt: skip
         else:
             d = dets[j]
             out.append(Detection(bbox=p["bbox"], label=p["label"], score=score, alternatives=d.alternatives,
-                                 models={**d.models, SOURCE: round(p["score"], 4)}))  # fmt: skip
+                                 models={**d.models, SOURCE: round(p["score"], 4)}, box3d=p.get("box3d")))  # fmt: skip
     return sorted(out, key=lambda d: -d.score)
