@@ -56,6 +56,15 @@ class DemoDetectorCfg(BaseModel):
     confident_area: int = 3500
 
 
+class Lidar3DCfg(BaseModel):
+    """Box 3D của ensemble LiDAR chiếu xuống ảnh làm nguồn nhãn 2D (src/services/lidar2d.py)."""
+
+    enabled: bool = True
+    min_score: float = 0.05  # box 3D yếu hơn không chiếu
+    match_iou: float = 0.5  # box 2D trùng hình chiếu box 3D cùng lớp từ ngưỡng này: lấy box 3D
+    camera_only_scale: float = 0.5  # hệ số điểm của box chỉ detector ảnh thấy
+
+
 class DetectionCfg(BaseModel):
     detectors: list[str] = ["yoloe"]
     score_threshold: float = 0.1
@@ -63,6 +72,7 @@ class DetectionCfg(BaseModel):
     min_score: float = 0.1
     min_score_per_class: dict[str, float] = Field(default_factory=dict)
     fusion_iou: float = 0.55
+    lidar3d: Lidar3DCfg = Lidar3DCfg()
     yolo_world: YoloWorldCfg = YoloWorldCfg()
     yoloe: YoloeCfg = YoloeCfg()
     yolo26: Yolo26Cfg = Yolo26Cfg()

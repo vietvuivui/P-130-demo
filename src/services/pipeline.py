@@ -14,6 +14,8 @@ from src.models.qa_config import AutoLabelConfig
 from src.models.schemas import FrameRecord, ImageInfo, LabelObject, SweepInfo
 from src.services.detectors import DetectorEnsemble
 from src.services.flow import FlowProvider
+from src.services.lidar2d import SOURCE as LIDAR3D
+from src.services.lidar2d import merge_detections, project_boxes
 from src.services.nuscenes_data import CameraFrame, NuScenesMini
 from src.services.review import now_iso
 from src.services.store import WORKSPACE_PREFIX, WorkspaceStore
@@ -33,7 +35,9 @@ class AutoLabelPipeline:
         store: WorkspaceStore,
         config: AutoLabelConfig,
         detectors: list[str] | None = None,
+        preds3d: dict[str, list[dict]] | None = None,
     ):
+        self.preds3d = preds3d  # sample_token -> box 3D nuScenes (hệ toàn cục); None: chỉ dùng detector ảnh
         self.data = data
         self.store = store
         self.config = config
@@ -66,12 +70,21 @@ class AutoLabelPipeline:
             )
         return done
 
-    def process(self, scene: str, index: int, sample_token: str, overwrite: bool = False) -> FrameRecord | None:
+    def process(self, scene: str, index: int, sample_token: str, overwrite: bool = False,
+                keep_propagated: bool = False) -> FrameRecord | None:  # fmt: skip
         frame = self.data.camera_frame(sample_token, self.config.camera, self.config.sweep_offsets, scene, index)
         existing = self.store.load_frame(frame.frame_id)
         # Không ghi đè frame người đã bắt đầu duyệt
         if existing and (existing.status != "auto" or not overwrite):
             return None
+        if existing and keep_propagated and existing.prelabel is not None:  # đã nhận nhãn lan truyền từ frame đã duyệt
+            return None
+        boxes3d, l3d = None, self.config.detection.lidar3d
+        if self.preds3d is not None and l3d.enabled:
+            boxes3d = project_boxes(
+                self.preds3d.get(sample_token, []), self.data.cam_from_global(frame.image.sd_token), frame.intrinsic,
+                frame.image.width, frame.image.height, l3d.min_score,
+            )  # fmt: skip
 
         t0 = time.perf_counter()
         uv, depth = (
@@ -92,6 +105,7 @@ class AutoLabelPipeline:
             intrinsic=frame.intrinsic.tolist(),
             uv=uv,
             depth=depth,
+            boxes3d=boxes3d,
         )
         record.autolabel_s, record.autolabel_run = round(time.perf_counter() - t0, 3), self.run_id
         if frame.lidar_sd_token:
@@ -130,6 +144,7 @@ def label_keyframe(
     intrinsic: list[list[float]],
     uv: np.ndarray | None = None,
     depth: np.ndarray | None = None,
+    boxes3d: list[dict] | None = None,
 ) -> FrameRecord:
     """Bước 2 -> 3 cho một keyframe bất kỳ (scene nuScenes hoặc video tải lên): detect keyframe + sweep, QA Agent."""
     offsets = sorted(sweeps)
@@ -153,6 +168,8 @@ def label_keyframe(
         warped = sweep_warps(image, sweeps, sweep_dets, image_file, tcfg) if offsets else {}
     # Score keyframe tính lại theo sweep trước khi lọc ngưỡng: vật thấy ổn định được giữ, box chỉ loé lên bị bỏ
     key_all = rescore(raw[0], sweep_dets, warped, tcfg.rescore, tcfg.match_iou)
+    if boxes3d is not None:  # box 3D chiếu xuống ảnh (lidar2d.py): [{bbox, label, score}]
+        key_all = merge_detections(key_all, boxes3d, det_cfg.lidar3d.match_iou, det_cfg.lidar3d.camera_only_scale)
     key_dets = sorted((d for d in key_all if det_cfg.keep(d.label, d.score)), key=lambda d: -d.score)
 
     objects = [
@@ -194,7 +211,7 @@ def label_keyframe(
         image=image,
         intrinsic=intrinsic,
         sweeps=[SweepInfo(offset=o, detections=sweep_dets[o], **sweeps[o].model_dump()) for o in offsets],
-        detectors=ensemble.names,
+        detectors=ensemble.names + ([LIDAR3D] if boxes3d is not None else []),
         has_lidar=uv is not None,
         frame_risk=state["frame_risk"],
         objects=state["reviewed"],
