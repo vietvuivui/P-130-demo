@@ -46,8 +46,17 @@ function Setup {
     Run "nvidia-smi" @("--query-gpu=name,memory.total,driver_version", "--format=csv")
     if (-not (Test-Path $Py)) {
         Say "Tạo .venv-train (Python 3.11)"
-        $launcher = Get-Command py -ErrorAction SilentlyContinue
-        if ($launcher) { Run "py" @("-3.11", "-m", "venv", ".venv-train") }
+        # py -3.11 nếu có, không thì 3.12 / 3.10; cuối cùng mới dùng python trên PATH
+        $ver = $null
+        if (Get-Command py -ErrorAction SilentlyContinue) {
+            $prev = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+            foreach ($v in @("3.11", "3.12", "3.10")) {
+                & py "-$v" -c "import sys" 2>&1 | Out-Null
+                if ($LASTEXITCODE -eq 0) { $ver = $v; break }
+            }
+            $ErrorActionPreference = $prev
+        }
+        if ($ver) { Run "py" @("-$ver", "-m", "venv", ".venv-train") }
         else { Run "python" @("-m", "venv", ".venv-train") }
     }
     Say "Cài thư viện (PyTorch CUDA 12.6, Ultralytics)"
@@ -62,7 +71,7 @@ function Setup {
     Write-Host "Nên tạm dừng Windows Update vài ngày (Settings > Windows Update > Pause); nếu máy vẫn khởi động lại thì dùng bước resume."
 }
 
-function Data {
+function Extract {  # không đặt tên Data: "data" là từ khoá của PowerShell (data section)
     Say "Giải nén nuImages vào $Nuimages"
     New-Item -ItemType Directory -Force -Path $Nuimages | Out-Null
     foreach ($pair in @(@("nuimages-v1.0-all-metadata.tgz", "v1.0-train"), @("nuimages-v1.0-all-samples.tgz", "samples"))) {
@@ -129,7 +138,7 @@ function Package {
 
 switch ($Step) {
     "setup" { Setup }
-    "data" { Data }
+    "data" { Extract }
     "convert" { Convert }
     "smoke" { Smoke }
     "baseline" { Baseline }
@@ -137,5 +146,5 @@ switch ($Step) {
     "full" { Train "full" }
     "resume" { Resume }
     "package" { Package }
-    "all" { Setup; Data; Convert; Smoke; Baseline; Train "lp"; Train "full"; Package }
+    "all" { Setup; Extract; Convert; Smoke; Baseline; Train "lp"; Train "full"; Package }
 }

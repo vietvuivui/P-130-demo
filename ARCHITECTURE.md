@@ -80,9 +80,13 @@ theo mô hình, khung 3D / BEV, ảnh camera có box chiếu xuống, card từn
 5. Người vẽ thêm box (`ADD_BOX`, `source: human`) cho vật mô hình bỏ sót và sửa box (`EDIT_BOX`, box mô hình giữ ở
    `original_box`). Việc đặt lên mặt đường / co khít điểm LiDAR chạy ngay trên trình duyệt với point cloud đã tải.
 6. Ảnh BEV (`bev.py`): độ cao mặt đường z0 = mode của z các điểm LiDAR thấp quanh xe; mỗi camera có homography
-   H = K·[r1 r2 z0·r3+t] từ mặt đường sang ảnh; mỗi ô BEV lấy màu từ camera nhìn nó gần trục quang học nhất. Cache PNG
-   theo frame ở `workspace/bev3d/`.
-7. BEV của chế độ Ảnh / Video (`bev2d.js`): một camera, mặt đường z = 0 của hệ ego; `/frames/{id}/bev/meta` trả
+   H = K·[r1 r2 z0·r3+t] từ mặt đường sang ảnh (mặt đường thật lấy từ LiDAR: RANSAC + lưới sai lệch). Ô mà tia camera bị
+   vật cao chắn không lấy màu từ camera đó. Ghép thêm ±4 keyframe cùng scene: ô mặt đường đổi sang hệ của từng keyframe
+   bằng `global_from_lidar`, mỗi lần nhìn chấm theo độ nét (1/(1+(ρ/8)²)⁶, ρ = khoảng cách tới camera) nên lần nhìn gần
+   thắng hẳn; bỏ vùng quanh thân xe (camera thấy cốp / capô của chính xe), dọn mảnh vụn, tô lỗ < 3 m². Cache PNG theo
+   frame ở `workspace/bev3d/`.
+7. BEV của chế độ Ảnh / Video (`bev2d.js`): một camera; ảnh nuScenes dùng LiDAR và ghép keyframe lân cận (ego pose) như
+   ảnh BEV 3D, video tải lên dùng mặt đường z = 0 của hệ ego; `/frames/{id}/bev/meta` trả
    cam_from_ego + homography, trình duyệt đổi điểm LiDAR (u, v, độ sâu) về hệ ego và đặt box 2D lên mặt đường.
 
 ## QA Agent
@@ -112,8 +116,11 @@ Người approve một keyframe → `POST /frames/{id}/propagate` (UI tự gọi
    `track_id` = `<keyframe>:<object_id>`, giữ nguyên qua các frame.
 2. **Tracker** đi qua mọi ảnh sau keyframe — CAM_FRONT 12Hz (`NuScenesMini.camera_timeline`) hoặc mọi frame
    10 fps của video tải lên (timeline trong record; `sequence.WorkspaceSequenceSource` chọn nguồn), dự đoán box
-   theo vận tốc không đổi trong toạ độ ảnh, ghép với detection đã cache (IoU ≥ 0.3, một-một). Ảnh chưa có
-   trong cache: chỉ dự đoán. Dừng track khi > 6 ảnh liền không khớp, ra khỏi khung, hoặc box quá nhỏ.
+   ở ảnh kế tiếp bằng **optical flow** giữa hai ảnh (`src/services/flow.py`, OpenCV DIS; `propagation.flow`:
+   `always` mặc định, `missing` chỉ ở ảnh chưa có detection, `off` = vận tốc không đổi như trước), ghép với
+   detection đã cache theo hai lượt kiểu ByteTrack (`propagation.association: byte`): box score ≥ 0.3 trước
+   (IoU ≥ 0.3), box score thấp chỉ cho track còn thiếu (IoU ≥ 0.5), một-một. Sweep người đã sửa (xem dưới) thay cho cache detector. Ảnh chưa có
+   detection: box đi theo flow. Dừng track khi > 6 ảnh liền không khớp, ra khỏi khung, hoặc box quá nhỏ.
 3. **Ở mỗi keyframe đích còn "auto"**: tính c_prop; track nhận box pre-label trùng nó (IoU ≥ 0.5) → object
    `source="propagated"`, lớp của người, box của detector ở chính frame đó. Detector không thấy → thêm box
    dự đoán (`PROP_COASTING`). Track "suppress" chỉ tự xoá box khớp chặt (IoU ≥ 0.5) và cùng lớp.
@@ -135,6 +142,41 @@ thành phần detection = 1 − c_prop; `PROP_LOW_CONF` khi c_prop < 0.6.
 Đánh giá không cần người: `python -m src.cli eval-propagation` lấy GT keyframe đầu mỗi scene làm "nhãn người",
 lan truyền, so với GT cùng `instance_token` ở các keyframe sau (tỉ lệ đúng, đổi ID, độ phủ, c_prop có tách được
 đúng/sai không).
+
+## Lan truyền box 3D
+
+`src/services/propagation3d.py`: approve keyframe 3D → track từ box đã duyệt (lớp / kích thước người chốt; box người
+xoá → track "suppress"). Mỗi keyframe sau: box về hệ toàn cục qua `global_from_lidar`, dịch `c + v·dt` (vận tốc của
+mô hình, vật đứng yên thì không), khớp dự đoán mô hình theo khoảng cách tâm BEV ≤ ngưỡng theo lớp của tracker
+CenterPoint × `propagation3d.dist_scale`; khớp → object `source="propagated"` (tâm / hướng từ mô hình, lớp / kích thước
+từ người, mức low nếu khớp chặt và cùng lớp), không khớp → track chạy tiếp, mất > `max_misses` (4) keyframe thì dừng. Như 2D:
+dựng lại từ `prelabel`, không ghi vào frame đã mở, box người xoá chỉ tự xoá box cùng lớp (`PROPAGATED_DELETE`).
+Đánh giá: `src/services/propagation3d_eval.py`, `tools3d/eval_propagation3d.py`.
+
+OC-SORT (`propagation.oc_*`, `propagation3d.oc_*`, tắt mặc định): OCR ghép thêm track đang mất theo box / tâm quan sát
+cuối, ORU lấy vận tốc theo quan sát cuối → quan sát mới sau khi mất, OCM ưu tiên detection cùng hướng đi đã quan sát. Đo
+trước / sau: `eval/results/ocsort.md` — 2D không lợi; 3D chỉ phần giữ track lâu hơn (`max_misses` 2 → 4) được bật.
+
+## Optical flow và sửa nhãn ở sweep
+
+Ý tưởng lấy từ *Deep Feature Flow* (Zhu et al., arXiv:1611.07715): tính kỹ ở keyframe, mang kết quả sang ảnh lân cận
+bằng flow thay vì chạy lại detector hay đoán. Bài báo warp feature map bên trong mạng (phải train lại cả mạng với
+FlowNet); ở đây làm ở mức box nên không phải train và không đổi detector:
+
+- `flow.FlowField.warp_box`: dời box theo từng cạnh (trung vị flow ở dải trái / phải / trên / dưới bên trong box),
+  theo được cả vật tiến lại gần. DIS ở nửa độ phân giải: ~0.06 s mỗi cặp ảnh trên CPU 2 nhân.
+- **Lan truyền** (`Tracker`, trên): bật mặc định.
+- **Check temporal** (`qa.temporal.flow`) và **tính lại score theo sweep** (`qa.temporal.rescore`,
+  `temporal_fusion.py`, ý tưởng Flow-Guided Feature Aggregation ở mức box): có sẵn, tắt mặc định — đo trên dev
+  không tăng mAP và làm lỗi lọt qua duyệt theo lô tăng (eval/results/temporal/report.md).
+- **Sửa tự do ở sweep** (`sweep_review.py`, `POST /frames/{id}/sweeps/{offset}/actions`): keep / xoá / đổi lớp /
+  sửa box / vẽ thêm / khôi phục. Bản máy (`SweepInfo.detections`) giữ nguyên, bản người sửa ở `SweepInfo.boxes`.
+  Mỗi thao tác tính lại keyframe (`requalify_frame`): score (nếu bật rescore), FLICKER, đề xuất RECOVERED_BY_TRACK
+  (đề xuất cũ còn chờ được thay, cái người đã xử lý giữ nguyên), risk; kết quả LiDAR lúc auto-label giữ nguyên.
+  Sweep không được xuất. Có undo/redo và sự kiện `sweep_action` trong `events.jsonl`.
+
+Đánh giá trước / sau: `python tools2d/eval_temporal.py --dataroot … --workspace … --out …` (dùng lại cache detection
+của workspace, mọi cấu hình cùng một detection).
 
 ## Design Decisions
 

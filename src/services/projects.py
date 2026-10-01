@@ -259,7 +259,9 @@ class ProjectManager:
         old = {s.name: s for s in p.steps}
         p.steps = [old.get(n) or ProjectStep(name=n, label=STEP_LABEL[n]) for n in names]
         self.save(p)
-        config = self.config_loader()
+        from src.services import ui_settings
+
+        config = ui_settings.apply(self.config_loader(), ui_settings.load(self.store(pid).root))  # tab ⚙ Cài đặt
         for name in names:
             st = self._step(p, name)
             if st.status in ("done", "skipped"):

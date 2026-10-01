@@ -160,3 +160,22 @@ async def test_bev_image(client, store3d, dataroot):
     # camera trong test nhìn theo trục x: phía x > 0 có ảnh (đỏ), phía sau xe trống
     assert bev[40, 60, 3] == 255 and bev[40, 60, 0] > 150
     assert bev[40, 10, 3] == 0
+
+
+@pytest.mark.asyncio
+async def test_propagate_3d_api(client, store3d):
+    nxt = frame3d("scene-0035_001")
+    nxt.index = 1
+    store3d.save_frame3d(nxt)
+    base = "/api/v1/3d/frames/pointpillars/scene-0035_000"
+    assert (await client.post(f"{base}/propagate", json={})).status_code == 409  # chưa approve
+    await client.post(f"{base}/actions", json={"action": "CHANGE_CLASS", "object_id": "1", "label": "truck"})
+    for oid in ("2", "3"):
+        await client.post(f"{base}/actions", json={"action": "DELETE", "object_id": oid})
+    assert (await client.post(f"{base}/approve", json={})).status_code == 200
+    r = (await client.post(f"{base}/propagate", json={})).json()
+    assert r["frames_updated"] == ["scene-0035_001"] and r["objects_propagated"] == 1 and r["objects_suppressed"] == 2
+    f = (await client.get("/api/v1/3d/frames/pointpillars/scene-0035_001")).json()
+    o = {x["object_id"]: x for x in f["objects"]}
+    assert o["1"]["source"] == "propagated" and o["1"]["label"] == "truck" and o["1"]["propagation"]["distance_m"] == 0
+    assert o["2"]["review"]["action"] == "PROPAGATED_DELETE"

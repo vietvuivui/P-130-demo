@@ -1,0 +1,94 @@
+{
+ "dev": {
+  "off/single": {
+   "correct": 725,
+   "id_switch": 49,
+   "wrong": 267,
+   "lost": 273,
+   "outputs": 1041,
+   "rate": 0.6964,
+   "iou": 0.549,
+   "sec": 1.8,
+   "c_flag_recall": 0.4241
+  },
+  "off/byte": {
+   "correct": 696,
+   "id_switch": 57,
+   "wrong": 233,
+   "lost": 314,
+   "outputs": 986,
+   "rate": 0.7059,
+   "iou": 0.5529,
+   "sec": 1.5,
+   "c_flag_recall": 0.4414
+  },
+  "always/single": {
+   "correct": 791,
+   "id_switch": 23,
+   "wrong": 224,
+   "lost": 251,
+   "outputs": 1038,
+   "rate": 0.762,
+   "iou": 0.5985,
+   "sec": 67.6,
+   "c_flag_recall": 0.2429
+  },
+  "always/byte": {
+   "correct": 789,
+   "id_switch": 21,
+   "wrong": 203,
+   "lost": 267,
+   "outputs": 1013,
+   "rate": 0.7789,
+   "iou": 0.6094,
+   "sec": 67.4,
+   "c_flag_recall": 0.2455
+  }
+ },
+ "heldout": {
+  "off/single": {
+   "correct": 785,
+   "id_switch": 26,
+   "wrong": 295,
+   "lost": 237,
+   "outputs": 1106,
+   "rate": 0.7098,
+   "iou": 0.5804,
+   "sec": 2.2,
+   "c_flag_recall": 0.3333
+  },
+  "off/byte": {
+   "correct": 787,
+   "id_switch": 20,
+   "wrong": 286,
+   "lost": 244,
+   "outputs": 1093,
+   "rate": 0.72,
+   "iou": 0.5879,
+   "sec": 1.8,
+   "c_flag_recall": 0.3431
+  },
+  "always/single": {
+   "correct": 873,
+   "id_switch": 11,
+   "wrong": 329,
+   "lost": 183,
+   "outputs": 1213,
+   "rate": 0.7197,
+   "iou": 0.5844,
+   "sec": 95.7,
+   "c_flag_recall": 0.2941
+  },
+  "always/byte": {
+   "correct": 876,
+   "id_switch": 9,
+   "wrong": 300,
+   "lost": 201,
+   "outputs": 1185,
+   "rate": 0.7392,
+   "iou": 0.5979,
+   "sec": 93.4,
+   "c_flag_recall": 0.2816
+  }
+ }
+}

@@ -93,24 +93,48 @@ def image(model: str, frame_id: str, camera: str, store: WorkspaceStore = Depend
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
 
 
+def _bev_neighbors(store: WorkspaceStore, model: str, frame: Frame3DRecord, dataroot: Path) -> list:
+    """Keyframe ±BEV_NEIGHBORS cùng scene (id `<scene>_<index:03d>`), gần nhất trước: (ảnh 6 camera, frame, LiDAR)."""
+    out = []
+    for d in sorted(range(-bev.BEV_NEIGHBORS, bev.BEV_NEIGHBORS + 1), key=abs):
+        if d == 0 or frame.index + d < 0:
+            continue
+        nid = f"{frame.scene}_{frame.index + d:03d}"
+        try:
+            nb = store.load_frame3d(model, nid)
+        except ValueError:
+            continue
+        if nb is None or nb.scene != frame.scene:
+            continue
+        p = store.points_path(nid)
+        pts = np.fromfile(p, np.float32).reshape(-1, 4) if p.exists() else None
+        imgs = {c: bev.load_rgb(dataroot / cam.path) for c, cam in nb.cameras.items()}
+        if any(v is not None for v in imgs.values()):
+            out.append((imgs, nb, pts))
+    return out
+
+
 @router3d.get("/frames/{model}/{frame_id}/bev")
 def bev_image(model: str, frame_id: str, range_m: float = Query(40.0, alias="range", ge=10, le=80),
-              res: float = Query(0.1, ge=0.05, le=0.5), store: WorkspaceStore = Depends(get_store),
+              res: float = Query(0.1, ge=0.05, le=0.5), fuse: bool = True, store: WorkspaceStore = Depends(get_store),
               dataroot: Path = Depends(get_dataroot)):  # fmt: skip
-    """Ảnh BEV ghép 6 camera bằng homography mặt đường (PNG RGBA). Header X-Ground-Z: độ cao mặt đường (hệ LiDAR)."""
+    """Ảnh BEV ghép 6 camera bằng homography mặt đường (PNG RGBA). Header X-Ground-Z: độ cao mặt đường (hệ LiDAR).
+    `fuse`: ghép thêm mặt đường từ các keyframe lân cận của cùng scene (lấp vùng bị xe che, ảnh xa hết nhoè)."""
     frame = _load(store, model, frame_id)
     pts_path = store.points_path(frame_id)
     pts = np.fromfile(pts_path, np.float32).reshape(-1, 4) if pts_path.exists() else None
     z0 = bev.ground_height(pts)
     # camera và mặt đường như nhau giữa các mô hình: cache theo frame
-    cache = store.root / "bev3d" / f"{store.check_id(frame_id)}_{range_m:g}_{res:g}.png"
+    tag = "" if fuse else "_single"
+    cache = store.root / "bev3d" / f"{store.check_id(frame_id)}_{range_m:g}_{res:g}{tag}_v{bev.BEV_VERSION}.png"
     if cache.exists():
         data = cache.read_bytes()
     else:
         images = {c: bev.load_rgb(dataroot / cam.path) for c, cam in frame.cameras.items()}
         if not any(v is not None for v in images.values()):
             raise _error(404, "IMAGE_NOT_FOUND", "Không đọc được ảnh camera nào (kiểm tra NUSCENES_DATAROOT)")
-        data = bev.to_png(bev.bev_mosaic(images, frame, z0, range_m, res))
+        nbrs = _bev_neighbors(store, model, frame, dataroot) if fuse else None
+        data = bev.to_png(bev.bev_mosaic(images, frame, z0, range_m, res, points=pts, neighbors=nbrs))
         cache.parent.mkdir(parents=True, exist_ok=True)
         cache.write_bytes(data)
     headers = {"X-Ground-Z": str(z0), "X-BEV-Range": f"{range_m:g}", "Cache-Control": "max-age=3600"}
@@ -159,6 +183,31 @@ def approve(model: str, frame_id: str, req: ReviewerRequest, store: WorkspaceSto
     store.append_event(dict(type="approve", mode="3d", model=model, frame_id=frame_id, reviewer=reviewer,
                             review_time_s=req.review_time_s, n_objects=len(frame.objects)))  # fmt: skip
     return frame
+
+
+@router3d.post("/frames/{model}/{frame_id}/propagate")
+def propagate(model: str, frame_id: str, request: Request, store: WorkspaceStore = Depends(get_store),
+              config: AutoLabelConfig = Depends(get_config)):  # fmt: skip
+    """Mang box người đã duyệt ở keyframe này sang các keyframe sau còn "auto" (src/services/propagation3d.py)."""
+    from src.api.routes import _nuscenes
+    from src.services.propagation3d import propagate3d_from
+
+    _load(store, model, frame_id)
+    timestamps = None
+    try:
+        data = _nuscenes(*data_source(request))
+        timestamps = lambda tok: data.sample[tok]["timestamp"]  # noqa: E731
+    except (FileNotFoundError, KeyError):
+        pass  # không có bảng nuScenes: coi hai keyframe cách nhau 0.5 s
+    try:
+        resp = propagate3d_from(store, model, frame_id, config.propagation3d, timestamps)
+    except ValueError as e:
+        raise _error(409, "NOT_APPROVED", str(e)) from e
+    except KeyError:
+        resp = propagate3d_from(store, model, frame_id, config.propagation3d, None)
+    store.append_event(dict(type="propagate", mode="3d", model=model, frame_id=frame_id,
+                            frames=len(resp["frames_updated"]), objects=resp["objects_propagated"]))  # fmt: skip
+    return resp
 
 
 @router3d.post("/frames/{model}/{frame_id}/reject", response_model=Frame3DRecord)

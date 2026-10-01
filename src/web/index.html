@@ -9,7 +9,7 @@
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=3d7">
+  <link rel="stylesheet" href="styles.css?v=3d12">
 </head>
 
 <body class="dark-theme">
@@ -82,6 +82,7 @@
         <button class="tab active" data-tab="review" role="tab">Review</button>
         <button class="tab" data-tab="log" role="tab">Log</button>
         <button class="tab" data-tab="metrics" role="tab">Metrics</button>
+        <button class="tab" data-tab="settings" role="tab" title="Chỉnh cách gán nhãn / lan truyền, áp dụng lại, đánh giá trước / sau">⚙ Cài đặt</button>
       </nav>
 
       <!-- Reviewer input -->
@@ -272,6 +273,8 @@
         <div class="risk-summary" id="risk-summary"></div>
 
         <!-- High Risk -->
+        <section id="sweep-panel" class="group group-sweep hidden" aria-live="polite"></section>
+
         <section class="group group-high">
           <div id="list-high"></div>
           <span class="count hidden" id="count-high">0</span>
@@ -369,7 +372,7 @@
           </span>
         </div>
         <div class="shortcuts">
-          <kbd>↑</kbd><kbd>↓</kbd> chọn object · <kbd>K</kbd> keep · <kbd>D</kbd> delete · <kbd>C</kbd> đổi lớp · <kbd>E</kbd> sửa box · <kbd>V</kbd> BEV · <kbd>T</kbd> lan truyền · <kbd>Space</kbd> phát video · <kbd>N</kbd>/<kbd>P</kbd> frame kế · <kbd>Ctrl</kbd>+<kbd>Z</kbd>/<kbd>Y</kbd> hoàn tác / làm lại · <kbd>R</kbd> trả lại · lăn chuột, <kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>0</kbd> vừa khung
+          <kbd>↑</kbd><kbd>↓</kbd> chọn object · click ô t±1/t±2 bên dưới để sửa sweep (<kbd>Esc</kbd> quay về) · <kbd>K</kbd> keep · <kbd>D</kbd> delete · <kbd>C</kbd> đổi lớp · <kbd>E</kbd> sửa box · <kbd>V</kbd> BEV · <kbd>T</kbd> lan truyền · <kbd>Space</kbd> phát video · <kbd>N</kbd>/<kbd>P</kbd> frame kế · <kbd>Ctrl</kbd>+<kbd>Z</kbd>/<kbd>Y</kbd> hoàn tác / làm lại · <kbd>R</kbd> trả lại · lăn chuột, <kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>0</kbd> vừa khung
         </div>
       </div>
 
@@ -481,6 +484,7 @@
             <button id="m3-btn-undo" class="btn btn-ghost btn-sm" title="Hoàn tác thao tác vừa rồi (Ctrl+Z)" disabled>↶</button>
             <button id="m3-btn-redo" class="btn btn-ghost btn-sm" title="Làm lại (Ctrl+Y)" disabled>↷</button>
             <button id="m3-btn-reject" class="btn btn-ghost btn-sm" title="Reviewer trả lại frame kèm lý do (R)">Trả lại</button>
+            <label class="toggle" title="Approve xong thì mang box đã duyệt sang các keyframe sau còn chưa mở (T: lan truyền lại)"><input type="checkbox" id="m3-auto-prop" checked> ↦ Lan truyền</label>
             <button id="m3-approve-frame" class="btn btn-primary">Approve frame <kbd>Enter</kbd></button>
           </span>
         </div>
@@ -517,6 +521,47 @@
   </main>
 
   <!-- ===== Metrics & Export ===== -->
+  <!-- ===== Cài đặt ===== -->
+  <main id="tab-settings" class="tab-panel hidden">
+    <div class="page">
+      <div class="page-head">
+        <h2>Cài đặt</h2>
+        <span class="muted" id="settings-scope"></span>
+      </div>
+      <section class="card">
+        <div class="card-head">
+          <h3>Gán nhãn 2D và lan truyền</h3>
+          <span class="card-actions">
+            <button id="settings-reset" class="btn btn-ghost btn-sm" type="button">Về mặc định</button>
+            <button id="settings-save" class="btn btn-primary btn-sm" type="button" disabled>Lưu</button>
+          </span>
+        </div>
+        <p class="muted">Lưu riêng cho workspace / dự án này (không cần sửa file config). Mặc định lấy từ <code>configs/autolabel.yaml</code>.</p>
+        <form id="settings-form" class="settings-form" autocomplete="off"></form>
+      </section>
+      <div class="two-col">
+        <section class="card">
+          <h3>Áp dụng lại cho frame chưa ai mở</h3>
+          <p class="muted">Chạy lại QA / score / ngưỡng theo cài đặt hiện tại, dùng detection đã lưu nên nhanh. Không đụng frame đã mở, đã duyệt, đã nhận nhãn lan truyền hoặc có sweep đã sửa.</p>
+          <button id="relabel-run" class="btn btn-primary btn-sm" type="button">↻ Áp dụng lại</button>
+          <div class="job-status" id="relabel-status"></div>
+        </section>
+        <section class="card">
+          <h3>So sánh trước / sau optical flow</h3>
+          <p class="muted">Chạy mọi cách xử lý trên các frame có nhãn gốc (GT) của workspace này, cùng một detection, rồi so mAP, việc của người duyệt và độ chính xác lan truyền. Vài phút; chạy nền, có thể tiếp tục duyệt.</p>
+          <button id="eval-run" class="btn btn-primary btn-sm" type="button">▶ Chạy đánh giá</button>
+          <div class="job-status" id="eval-status"></div>
+        </section>
+      </div>
+      <section class="card" id="eval-result-card">
+        <h3>Kết quả đánh giá gần nhất</h3>
+        <p class="muted" id="eval-result-note">Chưa chạy.</p>
+        <div class="table-wrap"><table class="data-table" id="eval2d-table"></table></div>
+        <div class="table-wrap"><table class="data-table" id="evalprop-table"></table></div>
+      </section>
+    </div>
+  </main>
+
   <main id="tab-metrics" class="tab-panel hidden">
     <div class="page" style="padding: 16px;">
       <div class="page-head" style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px;">
@@ -583,6 +628,15 @@
           <div class="table-wrap"><table class="data-table" id="m3-prod-table"></table></div>
           <div class="table-wrap"><table class="data-table" id="m3-infer-table"></table></div>
         </section>
+      </section>
+
+      <section class="card timing-card">
+        <div class="card-head">
+          <h3>Thời gian từng bước xử lý</h3>
+          <span class="card-actions"><button id="timing-refresh" class="btn btn-ghost btn-sm" type="button">Tải lại</button></span>
+        </div>
+        <p class="muted" id="timing-note">Đo lúc auto-label: mỗi frame ghi thời gian detect, chiếu LiDAR, optical flow, QA (2D) và detect 6 camera, đọc point cloud, kiểm chứng (3D).</p>
+        <div class="table-wrap"><table class="data-table" id="timing-table"></table></div>
       </section>
 
       <div class="page-head"><h2>Auto-labeled dataset</h2></div>
@@ -657,9 +711,9 @@
     }
   </script>
 
-  <script src="app.js?v=3d7"></script>
-  <script type="module" src="bev2d.js?v=3d7"></script>
-  <script type="module" src="app3d.js?v=3d7"></script>
+  <script src="app.js?v=3d12"></script>
+  <script type="module" src="bev2d.js?v=3d12"></script>
+  <script type="module" src="app3d.js?v=3d12"></script>
 </body>
 
 </html>

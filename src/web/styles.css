@@ -1500,6 +1500,18 @@ select {
   line-height: 1.8;
 }
 
+/* Sửa tự do ở sweep t-2 … t+2 */
+.review-scroll.sweep-mode > .group:not(.group-sweep) { display: none; }
+.group-sweep h3 { display: flex; align-items: center; gap: 8px; }
+.group-sweep h3 small { flex: 1; }
+.sw-note { font-size: 12px; margin: 4px 0 8px; line-height: 1.4; }
+.sw-list { display: grid; gap: 4px; margin-top: 8px; }
+.sw-row { padding: 6px 8px; border-radius: 6px; font-size: 12px; cursor: pointer; border: 1px solid transparent; }
+.sw-row:hover { background: var(--surface-2); }
+.sw-row.selected { background: var(--accent-soft); border-color: var(--accent); }
+.sw-row.deleted .sw-line > span:first-child { text-decoration: line-through; color: var(--muted); }
+.sw-line { display: flex; justify-content: space-between; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+
 /* ---- pages ---- */
 .tab-panel:not(.review-layout) {
   flex: 1;
@@ -2158,3 +2170,29 @@ body.in-project .brand-sub { display: none; }
 .score-filter input[type=range] { width: 90px; accent-color: var(--accent); }
 .score-filter .mono { font-family: var(--mono); font-size: 12px; min-width: 32px; }
 .score-filter .muted { font-size: 12px; }
+
+/* Tab ⚙ Cài đặt */
+.settings-form { display: grid; gap: 14px; }
+.set-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 320px); gap: 6px 16px; align-items: start; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.set-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.set-row label { font-weight: 600; font-size: 13px; }
+.set-row .set-help { grid-column: 1 / -1; font-size: 12px; color: var(--muted); line-height: 1.45; }
+.set-row select, .set-row input[type=number] { width: 100%; padding: 6px 8px; font: inherit; font-size: 13px; }
+.set-row .set-meta { font-size: 11px; color: var(--muted); font-weight: 400; margin-left: 6px; }
+.set-row .set-meta.changed { color: var(--accent); }
+.set-control { display: flex; align-items: center; gap: 8px; }
+.job-status { margin-top: 10px; font-size: 12px; display: grid; gap: 6px; }
+.job-status .progress { height: 6px; }
+.job-status .job-bar { height: 100%; background: var(--meter-fill); border-radius: 3px; transition: width .3s; }
+.job-status.error { color: var(--high); }
+#eval-result-card .table-wrap + .table-wrap { margin-top: 12px; }
+#eval-result-card tr.best td { font-weight: 700; }
+@media (max-width: 720px) { .set-row { grid-template-columns: minmax(0, 1fr); } }
+.delta-good { color: var(--low); font-weight: 600; }
+.delta-bad { color: var(--high); font-weight: 600; }
+.timing-card { margin: 16px 0; }
+#timing-table tr.timing-sec td { background: var(--surface-2); font-weight: 600; color: var(--text-2); cursor: default; }
+.prop-note { color: var(--accent); }
+
+/* Panel đang ẩn phải thắng display:flex !important của layout workstation */
+.tab-panel.hidden { display: none !important; }

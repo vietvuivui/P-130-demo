@@ -22,7 +22,10 @@ detection:
     imgsz: 1280
   # Open-vocab thế hệ mới (YOLO26 + MobileCLIP2); so sánh: eval/compare_detectors.ipynb
   yoloe:
-    weights: yoloe-26l-seg.pt
+    # Fine-tune trên nuImages (linear probe, 10 lớp nuScenes, tools2d/README.md). Held-out nuScenes CAM_FRONT 957 ảnh:
+    # mAP50 0.312 -> 0.366, recall 0.523 -> 0.581. Tập lớp đóng: không nhận prompt chữ mới; cần open-vocab thì đặt
+    # lại yoloe-26l-seg.pt.
+    weights: weights/yoloe-26l-nuimages-lp-1280.pt
     imgsz: 1280
   # Tập lớp đóng COCO: không nhận barrier / traffic_cone / trailer / construction_vehicle
   yolo26:
@@ -135,6 +138,22 @@ qa:
     min_support: 2
     # Track có ở sweep trước + sau với score >= ngưỡng này mới được đề xuất RECOVERED_BY_TRACK
     recover_min_score: 0.35
+    # Optical flow (OpenCV DIS, ~0.06 s/cặp ảnh trên CPU) dời box của sweep về thời điểm keyframe trước khi so khớp:
+    # box sweep khớp keyframe đúng hơn hẳn (IoU TB ở t±2: 0.58 -> 0.83), cờ FLICKER đúng hơn nhưng bắt ít lỗi hơn:
+    # held-out 20 scene (795 keyframe) lỗi lọt qua duyệt theo lô 1632 -> 2082. Không khuyên bật.
+    # Xem eval/results/temporal/report.md. Chỉnh được ở tab ⚙ Cài đặt trên web.
+    flow: false
+    flow_scale: 0.5
+    # Tính lại score keyframe theo các sweep (src/services/temporal_fusion.py):
+    #   off    : score detector
+    #   mean   : (score keyframe + score box ghép được ở từng sweep) / (1 + số sweep) — box loé lên một lần bị hạ
+    #   linked : trung bình các lần thấy (kiểu Seq-NMS) — tăng recall, thêm box sai
+    # mAP gần như không đổi. Held-out 20 scene, mean (flow tắt): box phải xem tay 1707 -> 648, box sai 2980 -> 1860,
+    # lỗi còn lại sau duyệt như cũ (4197 -> 4190) nhưng vật sót 2565 -> 2791. Tắt mặc định (chọn trên dev), nhóm quyết.
+    rescore: "off"
+    # Ngưỡng score của box ở sweep khi làm bằng chứng cho keyframe (null = như detection.min_score). Đã thử 0.1 (kiểu
+    # ByteTrack): FLICKER giảm 190 -> 120 nhưng phần lớn là cờ đúng, lỗi còn lại dev 704 -> 736, held-out 662 -> 693
+    sweep_min_score: null
   geometry:
     max_area_ratio: 0.35
     border_margin_px: 4
@@ -187,10 +206,49 @@ propagation:
   # Đo bằng eval/review_simulation.ipynb (2 scene nuScenes, người duyệt mô phỏng theo GT): chỉ ~17% box loại này đúng, người phải xoá
   # phần còn lại nên lan truyền không đỡ công. Tắt thì track vẫn chạy tiếp và bắt lại vật khi detector thấy lại.
   emit_coasting: false
+  # Dự đoán box ở ảnh kế tiếp bằng optical flow thay vì vận tốc không đổi (ý tưởng Deep Feature Flow ở mức box):
+  #   off     : vận tốc không đổi (như trước)
+  #   missing : chỉ ở ảnh chưa có detection (ảnh giữa hai keyframe mà `run` không detect)
+  #   always  : mọi ảnh — held-out 20 scene (154 lần lan truyền, 1060 object, tối đa 10 keyframe): nhãn đúng
+  #             2910 -> 3329 (+14%), đổi ID 265 -> 97, mất dấu -22%; tốn ~1 s mỗi lần lan truyền 10 keyframe (CPU)
+  flow: always
+  flow_scale: 0.5
+  # Ghép track với detection: single = một lượt (như trước) | byte = hai lượt kiểu ByteTrack: box score ≥ byte_high_score
+  # trước, box score thấp chỉ cho track còn thiếu với IoU ≥ byte_low_iou. Dev (cùng flow always): box lan truyền sai
+  # 224 -> 203, nhãn đúng giữ nguyên (791 -> 789), tỉ lệ đúng 0.762 -> 0.779; held-out 4 scene: sai 329 -> 300
+  association: byte
+  byte_high_score: 0.3
+  byte_low_iou: 0.5
+  # OC-SORT (Cao et al., CVPR 2023): OCR = ghép thêm track đang mất theo box quan sát cuối (oc_recover_iou), sống tới
+  # oc_max_lost ảnh; ORU = vận tốc theo quan sát cuối -> quan sát mới sau khi mất; OCM = ưu tiên detection cùng hướng đi.
+  # Tắt: 20 scene test, box ghi ra đúng 3192 -> 3215 (+0.7%) nhưng đổi ID 76 -> 87, box sai 860 -> 868 — không lợi.
+  # ORU / OCM không đổi gì đo được (flow đã dự đoán theo quan sát). eval/results/ocsort.md
+  oc_recover: false
+  oc_reupdate: false
+  oc_momentum: 0.0
+  oc_max_lost: 6
+  oc_recover_iou: 0.5
   # Số keyframe tối đa đi tới trong một lần lan truyền
   max_keyframes: 20
   # Detector ở frame đích gán lớp khác lớp lan truyền với score >= ngưỡng -> PROP_CLASS_DIFFERS
   class_differs_score: 0.5
+
+# Lan truyền box 3D đã duyệt sang keyframe sau (src/services/propagation3d.py): box về hệ toàn cục (bù chuyển động xe),
+# dịch theo vận tốc mô hình dự đoán, khớp dự đoán ở keyframe sau theo khoảng cách tâm (ngưỡng theo lớp của tracker
+# CenterPoint × dist_scale). Chọn trên 3 scene dev (thí nghiệm keyframe hoàn hảo, ensemble): so với chỉ bù chuyển động
+# xe, nhãn đúng 3650 -> 4074, đổi ID 182 -> 106; held-out 4 scene: 3031 -> 3339, đổi ID 98 -> 36, tỉ lệ đúng 0.95.
+# max_misses 2 -> 4 (thử OC-SORT, 2026-10-01): giữ track qua vật che lâu hơn. Dev: nhãn đúng 4074 -> 4126, đổi ID
+# 106 -> 116; test 24 scene: 23355 -> 23731 (+1.6%), đổi ID 470 -> 543, tỉ lệ đúng 0.943 -> 0.940. Bước OCR của OC-SORT
+# (nhận lại theo quan sát cuối) thêm được trên test nhưng không trên dev nên tắt; ORU / OCM không đổi gì.
+propagation3d:
+  motion: velocity
+  dist_scale: 0.5
+  max_misses: 4
+  max_keyframes: 20
+  oc_recover: false
+  oc_reupdate: false
+  oc_momentum: 0.0
+  oc_max_lost: 4
 
 # Video mp4 tải lên (chế độ Video trên UI). Frame cắt ở track_fps dùng cho tracking khi lan truyền; cứ
 # track_fps/label_fps frame thì có một keyframe để gán nhãn (giống keyframe 2Hz + sweep 12Hz của nuScenes)
