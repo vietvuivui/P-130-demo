@@ -30,6 +30,25 @@ Quy tắc:
 
 ---
 
+## 2026-10-01 (2) · Kiên · nhánh `kien`
+
+**Làm gì:**
+
+- **Bảng so sánh mọi phương pháp đã dùng** (2D, 3D; chỉ số quyết định, có / không dùng thì tăng / giảm bao nhiêu):
+  `eval/results/bang-so-sanh.md`. Đo thêm trên test 20 scene: lan truyền 2D không tracker / ByteTrack / OC-SORT /
+  ByteTrack + OC-SORT, có và không optical flow (`eval/results/tracker_test20.json`). ByteTrack vẫn tốt nhất (điểm 2180).
+- Kết quả `eval2d` của detector fine-tune lưu vào `eval/results/det2d_finetune.json`.
+- PRD: lịch sử tối ưu thêm dòng 17–18, bảng detector 2D, kết quả đo.
+
+**File chính:** `eval/results/bang-so-sanh.md`, `eval/results/det2d_finetune.json`, `eval/results/tracker_test20.json`,
+`PRD-AutoLabel3D.md`.
+
+**Ảnh hưởng tới người khác:** Không (chỉ tài liệu và số liệu).
+
+**Cách kiểm tra:** mở `eval/results/bang-so-sanh.md`.
+
+**Còn dở / việc tiếp:** chạy lại lan truyền 2D và QA với detector mới (`scripts\tasks.ps1 evaltemporal`).
+
 ## 2026-10-01 · Kiên · nhánh `kien`
 
 **Làm gì:** Detector 2D mặc định đổi sang YOLOE-26L fine-tune trên nuImages (linear probe, 1280 px, 10 epoch trên RTX
