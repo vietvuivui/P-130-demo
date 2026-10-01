@@ -1017,7 +1017,7 @@ function objectCard(o) {
       <div class="oc-body">
         <canvas class="oc-crop" width="192" height="144" data-crop="${esc(o.object_id)}"></canvas>
         <div class="oc-info">
-          <div class="oc-stats">${facts.join(' · ')}</div>
+          <div class="oc-stats">${facts.join(' · ')}${srcNote}</div>
           ${status}
           ${issues.length ? `<ul class="issues">${issues.map((i) => `<li title="${esc(S.cfg.issue_help[i.code] || '')}"><span class="issue-code">${esc(i.code)}</span> <span class="issue-msg">${esc(i.message)}</span></li>`).join('')}</ul>` : ''}
           ${qcFor(o.object_id).length ? `<div class="oc-qc"><span class="qc-mark sm">QC</span>${qcFor(o.object_id).map((x) => `<span class="issue-code qc" title="${esc(x.message)}">${esc(x.code)}</span>`).join(' ')}</div>` : ''}

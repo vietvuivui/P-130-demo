@@ -59,6 +59,11 @@ body {
   flex-direction: column;
 }
 
+/* Thanh tab trên topbar */
+.tabs { display: flex; gap: 4px; margin-left: 16px; }
+.tab { border: 0; background: none; padding: 8px 14px; border-radius: 8px; font: inherit; color: var(--text-2); cursor: pointer; white-space: nowrap; }
+.tab.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
 .hidden {
   display: none !important;
 }
@@ -445,6 +450,13 @@ select {
   height: auto;
   overflow: hidden;
   background: #f1f5f9;
+}
+
+/* Panel ẩn (tab / chế độ khác) phải thắng display: flex !important ở trên: cùng độ ưu tiên với .hidden nhưng
+   khai báo sau, nên thiếu dòng này thì khung Review và khung 3D luôn hiện chồng lên nhau */
+.review-layout.hidden,
+.workstation-layout.hidden {
+  display: none !important;
 }
 
 /* Left Vertical Toolbar (Image 1) */
