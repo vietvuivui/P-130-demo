@@ -9,7 +9,7 @@
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=3d13ui2qc2">
+  <link rel="stylesheet" href="styles.css?v=3d18team">
 </head>
 
 <body class="dark-theme">
@@ -660,6 +660,11 @@
         <div class="table-wrap"><table class="data-table" id="infer-table"></table></div>
       </section>
 
+      <section class="card">
+        <h3>Tracking (chuẩn TrackEval)</h3>
+        <p class="muted">Nhãn 2D theo <code>track_id</code> so với nhãn gốc nuScenes (IoU ≥ 0.5): HOTA = √(DetA · AssA); MOTA phạt sót, thừa và đổi ID; IDF1 theo ghép ID toàn cục. Chạy đủ cả 3D: <code>python -m src.cli trackeval</code>.</p>
+        <div class="table-wrap"><table class="data-table" id="track-table"></table></div>
+      </section>
       <section id="metrics3d" class="hidden">
         <div class="page-head"><h2>So sánh mô hình 3D</h2></div>
         <section class="card">
@@ -780,9 +785,9 @@
     }
   </script>
 
-  <script src="app.js?v=3d17play"></script>
-  <script type="module" src="bev2d.js?v=3d16film"></script>
-  <script type="module" src="app3d.js?v=3d16film"></script>
+  <script src="app.js?v=3d18team"></script>
+  <script type="module" src="bev2d.js?v=3d18team"></script>
+  <script type="module" src="app3d.js?v=3d18team"></script>
 </body>
 
 </html>

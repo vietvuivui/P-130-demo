@@ -40,6 +40,10 @@ const S = {
   videos: [],
   video: null, // VideoDetail đang mở
   playback: null, // đang phát video: {items, i, imgs, ...}
+  me: null, // người đang đăng nhập ({id, name, email, admin}) hoặc null
+  presence: { locks: {}, assignments: {}, users: {} }, // ai đang mở frame nào, frame giao cho ai (GET /presence)
+  lockedBy: null, // frame đang mở bị người khác giữ -> chỉ xem
+  mineOnly: false, // hàng đợi: chỉ frame giao cho tôi
   videoPoll: null,
   uploads: new Set(), // video vừa tải lên, đang chờ auto-label xong để báo
   zoom: 1, // 1 = vừa khung; phóng to tới 8x
@@ -223,6 +227,7 @@ async function loadQueue() {
   const q = new URLSearchParams({ sort: S.sort });
   if (S.statusFilter) q.set('status', S.statusFilter);
   S.queue = await api('/frames?' + q);
+  if (S.mineOnly && S.me) S.queue = S.queue.filter((f) => S.presence.assignments[f.frame_id] === S.me.id);
   renderQueue();
   $('empty-state').classList.toggle('hidden', S.queue.length > 0 || !!S.frame);
 }
@@ -237,8 +242,14 @@ function renderQueue() {
   list.innerHTML = S.queue.map((f) => {
     const lv = riskLevel(f.frame_risk);
     const statusText = STATUS_TEXT[f.status];
+    const lock = S.presence.locks[f.frame_id];
+    const who = S.presence.assignments[f.frame_id];
+    const whoName = who ? (S.presence.users[who] || who) : '';
+    const tag = lock && lock.user_id !== S.me?.id
+      ? `<span class="qi-who" title="${esc(lock.name)} đang mở"><span class="av lock">🔒</span>${esc(lock.name)}</span>`
+      : who ? `<span class="qi-who" title="Giao cho ${esc(whoName)}"><span class="av ${who === S.me?.id ? 'me' : ''}">${esc(initials(whoName))}</span>${who === S.me?.id ? 'tôi' : esc(whoName)}</span>` : '';
     return `<li class="queue-item ${S.frame?.frame_id === f.frame_id ? 'active' : ''}" data-id="${esc(f.frame_id)}">
-      <div class="qi-top"><span class="qi-id">${esc(f.frame_id)}</span>${f.propagated_from && f.status === 'auto' ? `<span class="prop-tag" title="Nhãn lan truyền từ ${esc(f.propagated_from)}">↦</span>` : ''}<span class="status-pill ${f.status}">${statusText}</span></div>
+      <div class="qi-top"><span class="qi-id">${esc(f.frame_id)}</span>${tag}${f.propagated_from && f.status === 'auto' ? `<span class="prop-tag" title="Nhãn lan truyền từ ${esc(f.propagated_from)}">↦</span>` : ''}<span class="status-pill ${f.status}">${statusText}</span></div>
       <div class="risk-meter" title="Frame risk ${fx(f.frame_risk)} (${LEVEL_NAME[lv]})"><span style="width:${Math.max(4, f.frame_risk * 100)}%;background:${RISK_COLOR[lv]}"></span></div>
       <div class="qi-meta">
         <span class="lv" title="High"><span class="dot high"></span>${f.counts.high}</span>
@@ -267,6 +278,8 @@ async function openFrame(id, { preview = false } = {}) {
   stopTimer();
   const frame = await api(`/frames/${encodeURIComponent(id)}`);
   S.frame = frame;
+  if (!preview && S.lockedBy) { S.lockedBy = null; renderLockBanner(); }
+  if (!preview) acquireLock(id);
   S.img = null;
   S.lidar = S.gt = null;
   S.sweepImgs = {};
@@ -973,6 +986,8 @@ function classOptions(selected) {
 }
 
 function objectCard(o) {
+  // Thẻ gọn kiểu CVAT: một dòng tiêu đề (#id · lớp · mức rủi ro · nút), một dòng số liệu, lỗi QA dạng chip (rê chuột xem
+  // giải thích); ảnh cắt + chi tiết chỉ mở cho thẻ đang chọn
   const lv = levelOf(o);
   const issues = o.qa?.issues || [];
   const lid = o.qa?.lidar || {};
@@ -980,56 +995,36 @@ function objectCard(o) {
   const locked = S.frame.status === 'approved';
   const done = o.review.status !== 'pending';
   const pr = o.propagation;
-  const srcNote = o.source === 'track' ? ' · box nội suy' : o.source === 'human' ? ' · người vẽ' : isProp(o) ? ` · ↦ từ ${esc(frameRef(pr.keyframe_id))}` : '';
+  const sel = o.object_id === S.selected;
   const facts = [];
-  if (isProp(o)) {
-    facts.push(`c_prop ${fx(pr.prop_conf)}`);
-    facts.push(pr.matched ? `detector: ${esc(pr.detector_label)} ${fx(pr.detector_score)}` : 'detector không thấy, box dự đoán');
-  } else if (o.source !== 'human') facts.push(o.det_score != null && Math.abs(o.det_score - o.score) >= 0.005 ? `score ${fx(o.score)} <span class="muted" title="Score tính lại theo các sweep lân cận (vật thấy ổn định được tăng, box chỉ loé lên bị hạ); số trong ngoặc là score gốc của detector">(detector ${fx(o.det_score)})</span>` : `score ${fx(o.score)}`);
-  if (lid.available) facts.push(`${lid.n_points ?? 0} điểm LiDAR${lid.depth_m != null ? ` · ${fx(lid.depth_m, 1)} m` : ''}${lid.est_height_m != null ? ` · cao ~${fx(lid.est_height_m, 1)} m` : ''}`);
-  if (tmp.available) facts.push(`sweep ${tmp.support}/${tmp.available}`);
+  if (isProp(o)) facts.push(`<span title="Độ tin cậy lan truyền từ ${esc(frameRef(pr.keyframe_id))}">↦ ${fx(pr.prop_conf)}</span>`, pr.matched ? `<span title="Detector thấy ở frame này">det ${esc(pr.detector_label)} ${fx(pr.detector_score)}</span>` : '<span title="Detector không thấy, box dự đoán từ chuyển động">dự đoán</span>');
+  else if (o.source === 'track') facts.push('<span title="Box nội suy từ các sweep lân cận (RECOVERED_BY_TRACK)">nội suy</span>');
+  else if (o.source === 'human') facts.push('người vẽ');
+  else facts.push(`<span title="${o.det_score != null && Math.abs(o.det_score - o.score) >= 0.005 ? `Detector ${fx(o.det_score)}, tính lại theo sweep lân cận` : 'Score detector'}">score ${fx(o.score)}</span>`);
+  if (lid.available) facts.push(`<span title="${lid.n_points ?? 0} điểm LiDAR trong box${lid.est_height_m != null ? `, cao ~${fx(lid.est_height_m, 1)} m` : ''}">${lid.depth_m != null ? `${fx(lid.depth_m, 0)} m` : `${lid.n_points ?? 0} pt`}</span>`);
+  if (tmp.available) facts.push(`<span title="Thấy ở ${tmp.support}/${tmp.available} sweep lân cận">${tmp.support}/${tmp.available} sw</span>`);
   const status = !done
     ? ''
     : isAutoDeleted(o)
-      ? `<span class="done-tag deleted" title="Người đã xoá object này ở ${esc(pr?.keyframe_id)}. Bấm Keep nếu đây là object thật.">✗ Tự xoá</span>`
-      : `<span class="done-tag ${o.review.status}">${o.review.status === 'deleted' ? '✗ Đã xoá' : `✓ ${o.review.action}${o.review.final_label !== o.label ? ' → ' + esc(o.review.final_label) : ''}`}</span>`;
-
-  return `<div class="obj-card ${lv} ${o.object_id === S.selected ? 'selected' : ''}" data-oid="${esc(o.object_id)}">
-    <div class="card-header-bar">
-      <div class="card-header-left">
-        <span class="card-num">#${esc(o.object_id)}</span>
-        <span class="card-shape">HÌNH CHỮ NHẬT</span>
-      </div>
-      <div class="card-header-right">
-        <select data-class class="card-select" ${locked ? 'disabled' : ''} title="Chọn lớp khác để đổi lớp ngay (bàn phím: C → chọn → Enter)">${classOptions(finalLabel(o))}</select>
-        <button class="card-more-btn" title="Thao tác"><i class="ri-more-2-fill"></i></button>
-      </div>
+      ? `<span class="done-tag deleted" title="Người đã xoá object này ở ${esc(pr?.keyframe_id)}. Bấm Giữ nếu đây là object thật.">✗ tự xoá</span>`
+      : `<span class="done-tag ${o.review.status}">${o.review.status === 'deleted' ? '✗ đã xoá' : `✓ ${o.review.final_label && o.review.final_label !== o.label ? '→ ' + esc(o.review.final_label) : 'giữ'}`}</span>`;
+  const chips = issues.map((i) => `<span class="chip-issue" title="${esc(i.message)}${S.cfg.issue_help[i.code] ? '\n\n' + esc(S.cfg.issue_help[i.code]) : ''}">${esc(i.code)}</span>`).join('');
+  const qc = qcFor(o.object_id).map((x) => `<span class="chip-issue qc" title="QC: ${esc(x.message)}">${esc(x.code)}</span>`).join('');
+  return `<div class="obj-card ${lv} ${sel ? 'selected' : ''}" data-oid="${esc(o.object_id)}">
+    <div class="oc-row">
+      <span class="oid">#${esc(o.object_id)}</span>
+      <select data-class class="card-select" ${locked ? 'disabled' : ''} title="Đổi lớp (phím C)">${classOptions(finalLabel(o))}</select>
+      ${o.qa ? `<span class="risk-badge ${lv}" title="Mức rủi ro ${fx(o.qa.risk)}">${fx(o.qa.risk)}</span>` : ''}
+      ${locked ? '' : `<span class="oc-btns">
+        <button class="ib keep" data-act="KEEP" title="Giữ (K)">✓</button>
+        <button class="ib del" data-act="DELETE" title="Xoá (D)">✕</button>
+        <button class="ib" data-act="EDIT" title="Sửa box (E)">✎</button>
+      </span>`}
     </div>
-    <div class="card-icon-actions">
-      <button class="card-icon-action-btn" title="Khóa"><i class="ri-lock-line"></i></button>
-      <button class="card-icon-action-btn" title="Người phụ trách"><i class="ri-user-line"></i></button>
-      <button class="card-icon-action-btn" title="Ẩn/Hiện"><i class="ri-eye-line"></i></button>
-      <button class="card-icon-action-btn" title="Ghim"><i class="ri-pushpin-line"></i></button>
-      ${o.qa ? `<span class="risk-badge ${lv}" style="margin-left: auto;">${LEVEL_NAME[lv]} ${fx(o.qa.risk)}</span>` : ''}
-      ${qcFor(o.object_id).length ? `<span class="qc-mark sm" style="margin-left: 6px;" title="Nhãn cuối còn lỗi QC">QC</span>` : ''}
-    </div>
-    <details class="card-details" ${o.object_id === S.selected ? 'open' : ''}>
-      <summary class="card-details-sum"><i class="ri-arrow-right-s-line"></i> CHI TIẾT ĐỐI TƯỢNG</summary>
-      <div class="oc-body">
-        <canvas class="oc-crop" width="192" height="144" data-crop="${esc(o.object_id)}"></canvas>
-        <div class="oc-info">
-          <div class="oc-stats">${facts.join(' · ')}${srcNote}</div>
-          ${status}
-          ${issues.length ? `<ul class="issues">${issues.map((i) => `<li title="${esc(S.cfg.issue_help[i.code] || '')}"><span class="issue-code">${esc(i.code)}</span> <span class="issue-msg">${esc(i.message)}</span></li>`).join('')}</ul>` : ''}
-          ${qcFor(o.object_id).length ? `<div class="oc-qc"><span class="qc-mark sm">QC</span>${qcFor(o.object_id).map((x) => `<span class="issue-code qc" title="${esc(x.message)}">${esc(x.code)}</span>`).join(' ')}</div>` : ''}
-        </div>
-      </div>
-      ${locked ? '' : `<div class="oc-actions">
-        <button class="btn btn-sm btn-keep" data-act="KEEP">✓ Giữ</button>
-        <button class="btn btn-sm btn-del" data-act="DELETE">🗑 Xóa</button>
-        <button class="btn btn-sm btn-edit" data-act="EDIT">✎ Sửa box</button>
-      </div>`}
-    </details>
+    <div class="oc-row oc-meta">${facts.join('<i>·</i>')}${status}${chips}${qc}</div>
+    ${sel ? `<div class="oc-body"><canvas class="oc-crop" width="192" height="144" data-crop="${esc(o.object_id)}"></canvas>
+      <div class="oc-info">${issues.length ? `<ul class="issues">${issues.map((i) => `<li><span class="issue-code">${esc(i.code)}</span> <span class="issue-msg">${esc(i.message)}</span></li>`).join('')}</ul>` : '<span class="muted">Không có lỗi QA</span>'}
+      ${isProp(o) ? `<div class="muted">↦ lan truyền từ ${esc(frameRef(pr.keyframe_id))}</div>` : ''}</div></div>` : ''}
   </div>`;
 }
 
@@ -1607,6 +1602,12 @@ async function loadMetrics() {
       '<tr><td colspan="4" class="muted">Chưa có object gắn issue nào được duyệt</td></tr>') + '</tbody>';
   renderProductivity(m.productivity, '', API + '/report.csv');
   loadExports();
+  api('/metrics/tracking').then((t) => {
+    $('track-table').innerHTML = !t.frames
+      ? '<tr><td class="muted">Workspace chưa có frame nào có nhãn gốc</td></tr>'
+      : `<thead><tr><th>Frame</th><th class="num">HOTA</th><th class="num">DetA</th><th class="num">AssA</th><th class="num">MOTA</th><th class="num">IDF1</th><th class="num">Đổi ID</th><th class="num">Thừa</th><th class="num">Sót</th></tr></thead>
+        <tbody><tr><td>${t.frames}</td><td class="num">${fx(t.HOTA)}</td><td class="num">${fx(t.DetA)}</td><td class="num">${fx(t.AssA)}</td><td class="num">${fx(t.MOTA)}</td><td class="num">${fx(t.IDF1)}</td><td class="num">${t.IDSW}</td><td class="num">${t.FP}</td><td class="num">${t.FN}</td></tr></tbody>`;
+  }).catch(() => { $('track-table').innerHTML = ''; });
 }
 
 const EXPORT_FILES = ['coco.json', 'labels.jsonl', 'corrections.jsonl', 'qc_log.jsonl', 'qa_report.md', 'manifest.json'];
@@ -2259,6 +2260,84 @@ new ResizeObserver(() => { fitCanvas(); draw(); }).observe($('canvas-wrap'));
 window.AL = { get S() { return S; }, select, ensureLidar, renderProductivity };
 
 // Dự án: hiện tên + link quay lại, ẩn chế độ không có dữ liệu (không LiDAR -> không 3D)
+// ---------- nhiều người dùng: người đăng nhập, ai đang mở frame nào, khoá frame ----------
+const initials = (name) => String(name || '?').trim().split(/\s+/).map((w) => w[0]).slice(-2).join('').toUpperCase();
+
+async function initUser() {
+  try {
+    const me = await fetch('/api/v1/auth/me').then((r) => r.json());
+    S.me = me.user;
+    if (me.auth_required && !S.me) { location.href = '/ui/login.html'; return; }
+  } catch { S.me = null; }
+  const box = $('reviewer');
+  if (S.me) {
+    // Tên người duyệt lấy theo tài khoản (ghi vào lịch sử sửa / corrections.jsonl), không gõ tay
+    box.value = S.me.name;
+    box.readOnly = true;
+    box.title = `${S.me.name} (${S.me.email}) — đăng xuất ở trang Dự án`;
+    const chip = document.createElement('button');
+    chip.className = 'chip';
+    chip.id = 'chip-mine';
+    chip.textContent = 'Của tôi';
+    chip.title = 'Chỉ frame được giao cho tôi (chia việc ở trang Dự án → Thành viên)';
+    chip.addEventListener('click', (e) => { e.stopPropagation(); S.mineOnly = !S.mineOnly; chip.classList.toggle('active', S.mineOnly); loadQueue(); });
+    $('queue-filter').appendChild(chip);
+  }
+  await refreshPresence();
+  setInterval(refreshPresence, 15000);
+  setInterval(() => { if (S.frame && S.me && !S.lockedBy) acquireLock(S.frame.frame_id, true); }, 30000); // gia hạn khoá
+  window.addEventListener('beforeunload', () => {
+    if (S.frame && S.me && !S.lockedBy) fetch(`${API}/frames/${encodeURIComponent(S.frame.frame_id)}/lock`, { method: 'DELETE', keepalive: true }).catch(() => {});
+  });
+}
+
+async function refreshPresence() {
+  try {
+    const p = await api('/presence');
+    S.presence = { locks: p.locks || {}, assignments: p.assignments || {}, users: p.users || {} };
+    if (p.me && !S.me) S.me = p.me;
+    renderQueue();
+    if (S.frame) renderLockBanner();
+  } catch { /* server cũ */ }
+}
+
+async function acquireLock(id, quiet = false) {
+  if (!S.me) return;
+  try {
+    await api(`/frames/${encodeURIComponent(id)}/lock`, { method: 'POST' });
+    if (S.lockedBy) { S.lockedBy = null; renderLockBanner(); }
+    S.presence.locks[id] = { user_id: S.me.id, name: S.me.name, at: Date.now() / 1000 };
+  } catch (err) {
+    if (err.code === 'FRAME_LOCKED') {
+      const holder = S.presence.locks[id];
+      S.lockedBy = holder?.name || 'người khác';
+      renderLockBanner();
+      if (!quiet) toast(`${S.lockedBy} đang mở frame này: bạn chỉ xem được`, true);
+    }
+  }
+}
+
+function renderLockBanner() {
+  let b = $('lock-banner');
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'lock-banner';
+    b.className = 'lock-banner hidden';
+    $('reject-banner').insertAdjacentElement('beforebegin', b);
+    b.addEventListener('click', async (e) => {
+      if (!e.target.closest('[data-take]') || !S.frame) return;
+      try {
+        await api(`/frames/${encodeURIComponent(S.frame.frame_id)}/lock?force=true`, { method: 'POST' });
+        S.lockedBy = null; renderLockBanner(); refreshPresence(); toast('Bạn đã lấy quyền sửa frame này');
+      } catch (err) { toast(err.message, true); }
+    });
+  }
+  const locked = !!S.lockedBy && S.viewMode !== '3d';
+  b.classList.toggle('hidden', !locked);
+  document.body.classList.toggle('readonly', locked);
+  if (locked) b.innerHTML = `🔒 <b>${esc(S.lockedBy)}</b> đang mở frame này — bạn chỉ xem. <button class="btn btn-ghost btn-sm" data-take title="Lấy quyền sửa (người kia sẽ bị chuyển sang chỉ xem)">Lấy quyền sửa</button>`;
+}
+
 async function initProject() {
   const r = await fetch(`/api/v1/projects/${encodeURIComponent(PROJECT)}`);
   if (!r.ok) throw new Error(`Không tìm thấy dự án ${PROJECT}`);
@@ -2278,6 +2357,7 @@ async function initProject() {
   try {
     S.cfg = await api('/config');
     $('reviewer').value = storageGet('reviewer', S.cfg.reviewer);
+    await initUser();
     S.autoProp = storageGet('autoProp', '1') === '1';
     $('auto-prop').checked = S.autoProp;
     $('add-class').innerHTML = classOptions('car');

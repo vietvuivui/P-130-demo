@@ -2278,3 +2278,42 @@ body.in-project .brand-sub { display: none; }
 /* Dải sweep t-2 … t+2 dưới ảnh: giữ chiều cao cố định, ảnh chính co lại để nhường chỗ */
 .workspace > .filmstrip-head, .workspace > .filmstrip { flex: none; }
 .workspace > .filmstrip .film canvas { max-height: 92px; object-fit: contain; }
+
+/* ===== Thẻ object gọn (CVAT-like) ===== */
+.obj-card { padding: 6px 8px; margin-bottom: 6px; }
+.oc-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.oc-row .oid { font-family: var(--mono); font-size: 12px; color: var(--muted); flex: none; }
+.oc-row .card-select { flex: 1 1 auto; min-width: 0; max-width: 150px; padding: 2px 4px; font-size: 12px; height: 24px; }
+.oc-row .risk-badge, .oc-row .verdict { flex: none; }
+.oc-btns { display: inline-flex; gap: 2px; margin-left: auto; flex: none; }
+.ib { width: 24px; height: 24px; border: 1px solid var(--border); background: var(--surface); border-radius: 6px; font-size: 13px; line-height: 1; cursor: pointer; color: var(--text-2); padding: 0; }
+.ib:hover { border-color: var(--border-strong, var(--accent)); color: var(--text); }
+.ib.keep:hover { color: #fff; background: var(--low); border-color: var(--low); }
+.ib.del:hover { color: #fff; background: var(--high); border-color: var(--high); }
+.oc-meta { margin-top: 3px; font-size: 11px; color: var(--text-2); flex-wrap: wrap; gap: 4px; row-gap: 2px; font-variant-numeric: tabular-nums; }
+.oc-meta i { font-style: normal; color: var(--border-strong, var(--muted)); }
+.oc-meta .done-tag { margin-left: 2px; }
+.chip-issue { font-family: var(--mono); font-size: 10px; font-weight: 600; padding: 0 5px; border-radius: 4px; background: var(--high-soft, #fee2e2); color: var(--high); cursor: help; }
+.chip-issue.qc { background: var(--medium-soft, #fef3c7); color: #9a6700; }
+.obj-card .oc-body { margin-top: 6px; gap: 8px; }
+.obj-card .oc-crop { width: 84px; height: 63px; }
+.obj-card .oc-info { font-size: 11px; }
+.obj-card .issues li { margin-bottom: 2px; }
+.obj-card .m3-comment { font-size: 11px; margin-top: 4px; }
+
+/* ===== Nhiều người dùng ===== */
+.pj-user { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 13px; white-space: nowrap; }
+.pj-team { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); display: grid; gap: 8px; font-size: 13px; }
+.pj-team .data-table td, .pj-team .data-table th { padding: 4px 6px; }
+.pj-team-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pj-invite { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.pj-invite input[type=email] { flex: 1 1 220px; }
+.pj-invite-link { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.pj-invite-link input { flex: 1 1 320px; font-family: var(--mono); font-size: 12px; }
+.qi-who { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; margin-left: auto; }
+.qi-who .av { width: 16px; height: 16px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: inline-grid; place-items: center; font-size: 9px; }
+.qi-who .av.lock { background: var(--medium-soft, #fef3c7); color: #9a6700; }
+.qi-who .av.me { background: var(--low-soft, #d1fae5); color: var(--low); }
+.lock-banner { background: var(--medium-soft, #fef3c7); color: #7c5a00; border: 1px solid var(--medium); border-radius: 8px; padding: 6px 10px; font-size: 12px; margin: 6px 12px 0; display: flex; gap: 8px; align-items: center; }
+.lock-banner .btn { margin-left: auto; }
+body.readonly .oc-btns, body.readonly #btn-approve-low, body.readonly #btn-approve-frame, body.readonly #btn-add, body.readonly #btn-reject, body.readonly #btn-propagate { opacity: .4; pointer-events: none; }
