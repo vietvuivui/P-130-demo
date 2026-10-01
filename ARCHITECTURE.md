@@ -16,8 +16,11 @@ Sơ đồ: [docs/architecture_diagram.md](docs/architecture_diagram.md).
 2. Detector chạy trên keyframe và sweep; kết quả thô cache ở `data/workspace/cache/detections/`.
 3. QA Agent (LangGraph) chạy 3 check song song → sinh issue → tính risk.
 4. Frame JSON ghi vào `data/workspace/frames/`, kèm LiDAR đã chiếu (`lidar/`) và GT 2D (`gt/`).
-5. `uvicorn src.main:app` phục vụ API + UI. Người duyệt; mỗi thao tác ghi `corrections.jsonl`.
-6. `POST /api/v1/export` ghi dataset vào `data/workspace/exports/<id>/`.
+5. `uvicorn src.main:app` phục vụ API + UI. Người duyệt; mỗi thao tác ghi `corrections.jsonl`. Sau mỗi thao tác,
+   QC kiểm lại nhãn cuối; approve bị chặn khi còn lỗi QC chưa sửa / chưa xác nhận.
+6. Tab QC: audit ngẫu nhiên phần duyệt theo lô, checklist READY (`qc/audit.json`, `qc/qc_log.jsonl`).
+7. `POST /api/v1/export` ghi dataset vào `data/workspace/exports/<id>/`: chỉ frame đã approve và sạch QC, kèm
+   `qa_report.md` và manifest (READY / NOT_READY, SHA256 từng file).
 
 Video mp4 tải lên (`POST /api/v1/videos/upload`, `src/services/video.py`) đi cùng đường, chỉ khác bước 1:
 
@@ -143,6 +146,39 @@ thành phần detection = 1 − c_prop; `PROP_LOW_CONF` khi c_prop < 0.6.
 lan truyền, so với GT cùng `instance_token` ở các keyframe sau (tỉ lệ đúng, đổi ID, độ phủ, c_prop có tách được
 đúng/sai không).
 
+## QC (`src/services/qc/`)
+
+QA Agent chấm box detector lúc pipeline chạy; QC kiểm những gì đến *sau* đó.
+
+```
+               thao tác của người (sửa box, đổi lớp, vẽ, nhận box nội suy, duyệt theo lô)
+                                  │
+   checks.py  QC nhãn cuối ◄──────┘  chạy lại sau mỗi thao tác; chặn approve khi còn lỗi mở
+                                  │
+   audit.py   audit ngẫu nhiên ───┤  mẫu object BATCH_APPROVE + mẫu frame; Wilson 95%; mẫu sai -> mở lại frame
+                                  │
+   report.py  checklist READY ────┴─> exporter.py: bỏ frame còn lỗi QC, qa_report.md, manifest SHA256
+   quick_check.py  file nhãn ngoài -> cùng checks.py + đối chiếu LiDAR / detection đã lưu, không ghi gì
+```
+
+| Check | Mức | Áp cho | Cách tính |
+|---|---|---|---|
+| `UNKNOWN_CLASS`, `INVALID_BOX`, `BOX_OUT_OF_IMAGE` | error | mọi nhãn | lớp ngoài taxonomy; cạnh < `qc.min_box_px` / toạ độ ngược / không hữu hạn; vượt biên ảnh > 1 px (đề xuất cắt về biên) |
+| `NO_LIDAR_SUPPORT`, `SIZE_DEPTH_MISMATCH`, `ASPECT_RATIO_ABNORMAL`, `BOX_TOO_LARGE` | warning | nhãn cuối **khác** cái QA Agent đã chấm (box người vẽ, box đã sửa IoU < 0.99, lớp đã đổi) | gọi lại đúng `check_lidar` / `check_geometry` của QA Agent với box + lớp cuối, LiDAR lấy từ `workspace/lidar/` |
+| `DUPLICATE_BOX` | warning | cặp cùng lớp IoU ≥ `qc.duplicate_iou` | đề xuất xoá box yếu hơn (ưu tiên giữ: người vẽ > người xem riêng > duyệt theo lô) |
+| `OVERLAP_CROSS_CLASS` | warning | cặp khác lớp IoU ≥ `qc.cross_class_iou` | trừ cặp được phép (`pedestrian`+`bicycle`/`motorcycle`) |
+| `AUDIT_MISSING_OBJECT` | warning | frame audit báo thiếu vật | gắn tay vào `frame.qc_manual`, xác nhận sau khi vẽ thêm box |
+| `POSSIBLY_MISSING`, `MODEL_DISAGREES` | warning | chỉ Quick Check | detection keyframe score ≥ 0.5, có ở ≥ `min_support` sweep, không khớp nhãn nào (bỏ box người đã xoá); nhãn khớp detection IoU ≥ 0.5 mà khác lớp, score ≥ 0.6 |
+
+| Quy tắc | Vì sao |
+|---|---|
+| Nhãn KEEP / duyệt theo lô mà không đổi thì không kiểm lại | Issue của nó người đã thấy lúc duyệt; báo lại chỉ làm ồn (đo: 0 finding trên output detector chưa sửa) |
+| Error không xác nhận bỏ qua được, warning thì được (kèm lý do, ghi `qc_log.jsonl`) | Box hỏng không bao giờ là nhãn đúng; box trùng / tỉ lệ lạ đôi khi đúng thật |
+| Xác nhận gắn với fingerprint (lớp + box cuối) | Sửa box sau khi xác nhận thì phải kiểm lại, không mang xác nhận cũ sang nhãn mới |
+| Audit chỉ lấy object `BATCH_APPROVE` | Đó là phần duy nhất không ai xem riêng; tỉ lệ sửa nhóm low trong Metrics bằng 0 theo định nghĩa nên không đo được lỗi của nó |
+| Đạt audit: cận trên Wilson 95% ≤ ngưỡng, hoặc đã audit hết tổng thể | Khoảng Wilson đúng cả khi 0 lỗi / mẫu nhỏ; audit hết thì không còn bất định lấy mẫu |
+| Correction log phải khớp nhãn đang lưu (dòng log cuối của mỗi object) | Không có log nói đã sửa mà nhãn không đổi, không có nhãn đổi mà không có log |
+| Quick Check tôn trọng quyết định file ghi lại (`qc_acknowledged`, `issues` của nhãn `KEEP`) | Export của chính hệ thống kiểm lại phải sạch; nhãn đã sửa box / đổi lớp thì issue cũ không còn áp dụng |
 ## Lan truyền box 3D
 
 `src/services/propagation3d.py`: approve keyframe 3D → track từ box đã duyệt (lớp / kích thước người chốt; box người
@@ -183,7 +219,9 @@ của workspace, mọi cấu hình cùng một detection).
 | Decision | Choice | Reason |
 |---|---|---|
 | Loader dữ liệu | Tự viết, chỉ numpy | nuscenes-devkit kéo nhiều dependency, pipeline chỉ cần vài bảng |
-| Detector mặc định | YOLOE-26-L (trước đây YOLO-World-L) | Open-vocab, nhận được barrier/cone; trên 2 scene trainval ngẫu nhiên mAP@0.5 0.45 so với 0.31 (YOLO-World từ vựng COCO) và 0.40 (YOLO26), lan truyền 50/52 đúng — `eval/compare_detectors.ipynb` |
+| Detector mặc định | YOLOE-26-L (trước đây YOLO-World-L), detector `yoloe` | Open-vocab, nhận được barrier/cone; trên 2 scene trainval ngẫu nhiên mAP@0.5 0.45 so với 0.31 (YOLO-World từ vựng COCO) và 0.40 (YOLO26), lan truyền 50/52 đúng — `eval/compare_detectors.ipynb`. Bản riêng `yoloe26` (text encoder MobileCLIP2 nạp từ file trong config) vẫn chọn được; số đo so với các tổ hợp: [eval/results/detector_comparison.md](eval/results/detector_comparison.md) |
+| Fusion nhiều model | Chia điểm theo số model **nhận được lớp đó** | YOLO26 không có lớp cone: không để nó kéo điểm mọi cone xuống một nửa |
+| Weights | `scripts/download_weights.py`, nhận file theo SHA256 của bản phát hành chính thức | File .pt là pickle (nạp là chạy code); bản trên Hugging Face openvision được kiểm là cùng model đã fuse |
 | Grounding DINO | bản open-weight tiny | Bản 1.5 Edge chỉ có qua API |
 | QA Agent | LangGraph, deterministic | Cần chạy trong batch và test; không có câu hỏi mở nào cần LLM |
 | Lưu trữ | File JSON + JSONL | 404 frame, 1 người duyệt; không cần DB cho demo, dễ diff/export |
@@ -203,6 +241,9 @@ của workspace, mọi cấu hình cùng một detection).
 | Web end-user | Dự án = thư mục riêng + một luồng nền, router review gắn lại dưới `/p/{id}` | Một GPU, không đăng nhập (theo yêu cầu); dùng lại toàn bộ UI review, không nhân bản code |
 | Định dạng trung gian | Mọi dữ liệu có LiDAR đổi sang bảng nuScenes | Loader, mô hình 3D, kiểm chứng, xuất đều đã viết cho nuScenes; thêm định dạng mới chỉ cần một converter |
 | Demo không GPU | Video tổng hợp + detector theo màu (`detectors/demo.py`) | Chạy được trên máy bất kỳ, có sẵn các tình huống lỗi để trình diễn QA và lan truyền |
+| QC nhãn cuối | Dùng lại hàm check của QA Agent, chạy trên nhãn cuối | Một định nghĩa cho "box đáng ngờ" ở cả pre-label, sau khi sửa và Quick Check |
+| Chặn ở đâu | Approve frame (sửa ngay khi còn trên frame) + export (bỏ frame còn lỗi) | Lỗi phát hiện lúc approve rẻ nhất; export là chốt cuối, kể cả frame approve trước khi có QC |
+| Lưu QC | `qc/audit.json` + `qc/qc_log.jsonl` chỉ ghi thêm, xác nhận nằm trong frame JSON | Cùng kiểu lưu file như phần còn lại; nhật ký tách khỏi `corrections.jsonl` để không lẫn vào đối chiếu log |
 
 ## Duyệt: trả lại, hoàn tác, lịch sử, năng suất
 

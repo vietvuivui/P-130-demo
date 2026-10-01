@@ -27,6 +27,7 @@ logging.getLogger("ultralytics").addFilter(_DropHalfDeprecation())
 # Thư viện mỗi detector cần (ngoài requirements.txt): báo lỗi dễ hiểu thay cho ModuleNotFoundError
 DETECTOR_PACKAGES = {
     "yolo_world": ["ultralytics", "torch"], "yoloe": ["ultralytics", "torch"], "yolo26": ["ultralytics", "torch"],
+    "yoloe26": ["ultralytics", "torch"],
     "grounding_dino": ["transformers", "torch"], "florence2": ["transformers", "torch"], "demo": [],
 }  # fmt: skip
 
@@ -67,6 +68,14 @@ def build_detector(name: str, config: AutoLabelConfig) -> Detector:
     if missing:
         raise MissingPackagesError(missing)
     # Import lười để phần còn lại của app không cần torch
+    if name == "yolo26":
+        from src.services.detectors.yolo26 import Yolo26Detector
+
+        return Yolo26Detector(config)
+    if name == "yoloe26":
+        from src.services.detectors.yoloe26 import YoloE26Detector
+
+        return YoloE26Detector(config)
     if name == "yolo_world":
         from src.services.detectors.yolo_world import YoloWorldDetector
 
@@ -75,10 +84,6 @@ def build_detector(name: str, config: AutoLabelConfig) -> Detector:
         from src.services.detectors.yoloe import YoloeDetector
 
         return YoloeDetector(config)
-    if name == "yolo26":
-        from src.services.detectors.yolo26 import Yolo26Detector
-
-        return Yolo26Detector(config)
     if name == "grounding_dino":
         from src.services.detectors.grounding_dino import GroundingDinoDetector
 
@@ -94,6 +99,13 @@ def build_detector(name: str, config: AutoLabelConfig) -> Detector:
     raise ValueError(f"Detector không hỗ trợ: {name}")
 
 
+def detector_classes(name: str, config: AutoLabelConfig) -> set[str] | None:
+    """Lớp nội bộ mà detector có thể sinh ra; None = mọi lớp trong taxonomy (model open-vocab). Không cần torch."""
+    if name == "yolo26":
+        from src.services.detectors.yolo26 import coco_class_map
+
+        return set(coco_class_map(config).values())
+    return None
 _SHARED: dict[tuple[str, str], Detector] = {}
 _SHARED_LOCK = threading.Lock()
 
@@ -108,6 +120,12 @@ class DetectorEnsemble:
         self._detectors: dict[str, Detector] = {}
         self._lock = threading.Lock()
         self.model_images = 0  # số ảnh đã chạy model (không có cache), để đo thời gian detect thật
+
+    @property
+    def coverage(self) -> dict[str, set[str] | None]:
+        # Lớp mỗi model phủ: fusion chỉ tính phiếu của model nhận được lớp đó. Tính theo self.names hiện tại vì
+        # `detect-sweeps --detectors` đổi names sau khi tạo ensemble
+        return {name: detector_classes(name, self.config) for name in self.names}
 
     def _get(self, name: str) -> Detector:
         # Model dùng chung giữa các ensemble có cùng cấu hình (mỗi dự án một workspace/cache, nhưng chỉ nạp model một
@@ -147,7 +165,7 @@ class DetectorEnsemble:
             if not cache.exists():
                 return None
             per_model[name] = [Detection.model_validate(d) for d in json.loads(cache.read_text())]
-        return fuse_detections(per_model, self.config.detection.fusion_iou)
+        return fuse_detections(per_model, self.config.detection.fusion_iou, self.coverage)
 
     def detect_batch(self, images: list[tuple[str, Path]]) -> list[list[Detection]]:
         """images: list (sd_token, path). Trả về detection đã fuse cho từng ảnh."""
@@ -169,4 +187,4 @@ class DetectorEnsemble:
                 cache = self._cache_file(name, images[i][0])
                 cache.parent.mkdir(parents=True, exist_ok=True)
                 cache.write_text(json.dumps([d.model_dump() for d in dets]))
-        return [fuse_detections(dets, self.config.detection.fusion_iou) for dets in per_image]
+        return [fuse_detections(dets, self.config.detection.fusion_iou, self.coverage) for dets in per_image]
