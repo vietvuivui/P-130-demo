@@ -30,6 +30,32 @@ Quy tắc:
 
 ---
 
+## 2026-10-01 (3) · Danh · nhánh `danh`
+
+**Làm gì:** Hoàn thiện và kích hoạt toàn bộ tính năng tương tác chuyên sâu cho Workspace Review Panel (`index.html`) và thanh điều khiển topbar:
+- Thanh điều khiển Video: Tự động ẩn cụm player controls (`.player-controls`) trên topbar khi ở chế độ 🖼 Ảnh hoặc 🧊 3D, chỉ hiển thị ở chế độ 🎞 Video.
+- Thanh bên phải Review Panel: Kích hoạt chuyển đổi mượt mà giữa các tab `Đối tượng`, `Nhãn` (thống kê phân bố nhãn, click chọn nhanh đối tượng) và `Sự cố` (cảnh báo QA, click nhảy đến box lỗi).
+- Bộ công cụ quản lý đối tượng: Sắp xếp theo rủi ro QA / ID tăng / ID giảm; thao tác nhanh Khóa tất cả, Ẩn/Hiện tất cả box, bộ lọc theo mức rủi ro / score.
+- Thao tác chi tiết trên thẻ đối tượng: Khóa box chống sửa (`LOCK`), gán người phụ trách (`ASSIGN`), ẩn/hiện box (`VISIBILITY`), ghim lên đầu (`PIN`), mở rộng xem chi tiết thông số.
+- Hộp điều khiển Appearance: Đổi chế độ màu (theo Nhãn / Đối tượng / Nhóm rủi ro), thanh trượt chỉnh độ mờ nền box (Opacity) và box đang chọn (Selected Opacity) realtime, toggle viền ngoài, bitmap mask và hình chiếu 3D/LiDAR.
+
+**File chính:** `src/web/index.html`, `src/web/app.js`, `src/web/styles.css`, `src/web/ui-flow.css`.
+
+**Ảnh hưởng tới người khác:** Không ảnh hưởng schema backend hay API. Giữ nguyên toàn bộ logic pipeline và endpoint hiện hành.
+
+**Cách kiểm tra:**
+- `ruff check src tests` → All checks passed.
+- `.venv\Scripts\python -m pytest tests/test_api/` → 34 passed.
+- `node -c src/web/app.js src/web/ui-flow.js src/web/projects.js` → Không lỗi cú pháp.
+- Mở `http://localhost:8000/ui/index.html`:
+  - Chuyển đổi giữa 🖼 Ảnh, 🎞 Video, 🧊 3D để kiểm tra ẩn/hiện cụm tua video trên topbar.
+  - Kiểm tra tab Nhãn, tab Sự cố và tab Đối tượng bên thanh phải.
+  - Thử nghiệm các nút Khóa, Gán người, Ẩn/Hiện, Ghim trên từng thẻ đối tượng và thanh trượt Opacity trong hộp Appearance.
+
+**Còn dở / việc tiếp:**
+
+---
+
 ## 2026-10-01 (2) · Kiên · nhánh `kien`
 
 **Làm gì:**
