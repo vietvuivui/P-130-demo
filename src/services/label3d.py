@@ -135,9 +135,13 @@ def build_frame(
         objects.append(Object3D(object_id=str(len(objects) + 1), label=label, score=round(score, 4), box=box,
                                 track_id=b.get("tracking_id")))  # fmt: skip
 
+    from src.services.timing import Stopwatch
+
+    sw = Stopwatch()
     cams, inputs = {}, []
     images = [(kf[c], data.dataroot / data.sample_data[kf[c]]["filename"]) for c in CAMERAS if c in kf]
-    dets_all = ensemble.detect_batch(images) if objects else [[] for _ in images]
+    with sw("detect_6cam"):
+        dets_all = ensemble.detect_batch(images) if objects else [[] for _ in images]
     for (sd_tok, path), dets, cam in zip(images, dets_all, [c for c in CAMERAS if c in kf], strict=True):
         sd = data.sample_data[sd_tok]
         cs = data.calibrated_sensor[sd["calibrated_sensor_token"]]
@@ -154,9 +158,12 @@ def build_frame(
         ]
         inputs.append(CamInput(cam, intr, c_from_l, sd["width"], sd["height"], _gray(path) if objects else None, keep))
 
-    pts = load_points(data, lidar_sd, vcfg.lidar_sweeps)
+    with sw("points"):
+        pts = load_points(data, lidar_sd, vcfg.lidar_sweeps)
     boxes = [Box(o.label, o.score, np.array(o.box.center), np.array(o.box.size), o.box.yaw) for o in objects]
-    for o, v in zip(objects, verify_boxes(boxes, inputs, pts), strict=True):
+    with sw("verify"):
+        verdicts = verify_boxes(boxes, inputs, pts)
+    for o, v in zip(objects, verdicts, strict=True):
         o.verify = v
     record = Frame3DRecord(
         frame_id=f"{scene}_{index:03d}",
@@ -170,6 +177,7 @@ def build_frame(
         objects=objects,
         frame_risk=max((LEVEL_RISK[o.verify.level] for o in objects), default=0.0),
         created_at=now_iso(),
+        autolabel_timing=sw.result(),
     )
     return record, pts, gt_boxes(data, sample_token, l_from_g, config.gt_category_map)
 

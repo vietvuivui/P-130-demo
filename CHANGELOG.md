@@ -30,6 +30,107 @@ Quy tắc:
 
 ---
 
+## 2026-09-30 (2) · Kiên · nhánh `kien`
+
+**Làm gì:**
+
+- **Tab ⚙ Cài đặt** trên UI (mở cả từ thẻ dự án): chỉnh optical flow, cách ghép của tracker, tính lại score theo sweep,
+  ngưỡng giữ box, số keyframe lan truyền; lưu theo workspace / dự án. Nút **Áp dụng lại** và **Chạy đánh giá** (trước /
+  sau) chạy nền — không phải sửa config hay mở terminal.
+- **Tracker lan truyền 2D ghép hai lượt kiểu ByteTrack** (mặc định). Dev: box sai 224 → 203; held-out 4 scene: 329 → 300.
+- **Optical flow đo lại trên 20 scene held-out (795 keyframe, GPU):** nhãn lan truyền đúng 2910 → 3329 (+14%), đổi ID
+  265 → 97. Thử "tin box sweep score thấp" cho QA: lỗi lọt qua tăng, không bật.
+- **Lan truyền box 3D đã duyệt:** approve một keyframe 3D thì box sang các keyframe sau (bù chuyển động xe + vận tốc,
+  lớp / kích thước theo người, box người xoá tự xoá). UI 3D: ô "↦ Lan truyền", phím `T`. Held-out 4 scene: ~95% box
+  đúng vật, đổi ID 98 → 36.
+- **Đo thời gian từng bước** (2D, 3D, nạp model, làm mờ ảnh): bảng ở tab Metrics, lệnh `profile`. CPU: detect
+  17.7 s/frame; GPU laptop: 2D ~1 s, 3D ~4 s/frame.
+- `tasks.ps1 serve -Workspace` để demo; ẩn cảnh báo `'half' is deprecated`.
+- **Ảnh BEV dễ nhìn hơn** (3D và 2D): ghép mặt đường từ ±4 keyframe cùng scene theo ego pose, mỗi ô lấy từ lần camera
+  nhìn gần nhất — lấp vùng bị xe che, hết nhoè ở xa, 2D đặt vạch đường đúng chỗ hơn; bỏ vệt cốp / capô xe mình, dọn mảnh vụn.
+- **Mô hình 3D trên tập test** (24 scene, 957 keyframe, so với nhãn gốc): ensemble 4 LiDAR + track mAP 0.668 / NDS 0.713,
+  CenterPoint voxel 0.578 (`eval/results/det3d_heldout.md`).
+- **Thử ý tưởng VESPA** (box 3D từ box 2D + LiDAR, hướng theo chuyển động, cỡ theo lớp): không tăng mAP, không bật
+  (`eval/results/vespa.md`; `src/services/fill3d.py` giữ để thử tiếp).
+- **Thử OC-SORT** (OCR / ORU / OCM) cho tracker lan truyền 2D và 3D, đo trước / sau trên dev và test: 2D không lợi (tắt,
+  bật được ở tab Cài đặt); 3D bật phần giữ track qua che khuất `propagation3d.max_misses: 2 → 4` — test 24 scene nhãn đúng
+  +1.6%, đổi ID 470 → 543 (`eval/results/ocsort.md`).
+- PRD: trạng thái từng FR, mô hình đã thử, lịch sử 16 lần tối ưu, kết quả đo, giải thích công cụ; slide MVP + so sánh.
+
+**File chính:**
+
+- Mới: `src/services/ui_settings.py`, `jobs.py`, `relabel.py`, `temporal_eval.py`, `timing.py`, `profiling.py`,
+  `propagation3d.py`, `propagation3d_eval.py`, `fill3d.py`, `tools3d/eval_propagation3d.py`,
+  `eval/results/propagation3d.md`, `det3d_heldout.md`, `vespa.md`, `ocsort.md`, `tests/test_services/test_ocsort.py`.
+- Sửa: `propagation.py`, `pipeline.py`, `bev.py`, `routes.py`, `routes3d.py`, `projects.py`, `label3d.py`, `privacy.py`,
+  `cli.py`, `web/app.js`, `web/app3d.js`, `configs/autolabel.yaml`, `scripts/tasks.ps1`, `PRD-AutoLabel3D.md`.
+
+**Ảnh hưởng tới người khác:**
+
+- Schema: `FrameRecord.autolabel_timing`, `Frame3DRecord.autolabel_timing` / `propagated_from` / `propagated_at` /
+  `prelabel`; `Object3D.source` thêm `"propagated"`, `Object3D.propagation`.
+- Config: `propagation.association`, `byte_high_score`, `byte_low_iou`, `oc_*`; `qa.temporal.sweep_min_score`;
+  `propagation3d` (`max_misses` mặc định 4, `oc_*`).
+- `routes.get_config(request)` áp thêm `<workspace>/settings.json`; có thêm `get_base_config`. Bước gán nhãn của dự án
+  cũng dùng cài đặt này.
+- API mới: `/settings`, `/relabel`, `/eval-temporal`, `/timing`, `POST /3d/frames/{m}/{f}/propagate`.
+- `bev.bev_mosaic(..., neighbors=)`, `bev.bev_camera(..., neighbors=)`; `GET /3d/frames/{m}/{f}/bev?fuse=false` để lấy ảnh một frame như cũ.
+
+**Cách kiểm tra:**
+
+- `pytest` (152 pass), `ruff check src tests`.
+- UI: tab ⚙ Cài đặt → đổi một mục → Lưu → Áp dụng lại → Chạy đánh giá; chế độ 3D: approve có ô "↦ Lan truyền".
+- `scripts\tasks.ps1 profile`, `scripts\tasks.ps1 evalprop3d` (đủ 27 scene val).
+
+**Còn dở / việc tiếp:** Chạy `evalprop3d` trên 27 scene; nhóm quyết định có bật `rescore: mean` không.
+
+---
+
+## 2026-09-30 · Kiên · nhánh `kien`
+
+**Làm gì:** Đưa ý tưởng *Deep Feature Flow* (arXiv:1611.07715) vào sản phẩm ở mức box (optical flow OpenCV DIS, không
+train lại detector) và cho sửa nhãn ở các sweep t−2…t+2:
+
+- **Lan truyền nhãn dùng optical flow** (`propagation.flow: always`, mặc định bật). Held-out: +88 nhãn lan truyền
+  đúng (+11%), đổi ID 26 → 11, mất dấu −23%.
+- **QA temporal dùng flow + tính lại score theo sweep** (`qa.temporal.flow`, `qa.temporal.rescore`): có sẵn, **tắt
+  mặc định**. mAP không đổi; bật `flow + mean` bớt ~60% box phải xem tay nhưng lỗi còn lại sau duyệt +5–7%.
+- **Sửa tự do ở sweep** trên UI 2D: click ô t±1/t±2, keep / xoá / đổi lớp / sửa box / vẽ thêm / khôi phục, có
+  hoàn tác. Keyframe được tính lại ngay (FLICKER, RECOVERED_BY_TRACK, risk). Tracker lan truyền dùng bản đã sửa.
+  Box ở sweep không được xuất.
+- Bảng trước / sau (dev 119 + held-out 159 keyframe): `eval/results/temporal/report.md`.
+
+**File chính:**
+
+- Mới: `src/services/flow.py`, `src/services/temporal_fusion.py`, `src/services/sweep_review.py`,
+  `tools2d/eval_temporal.py`.
+- Sửa: `pipeline.py`, `agents/nodes/temporal.py`, `propagation.py`, `sequence.py`, `routes.py`, `web/app.js`.
+
+**Ảnh hưởng tới người khác:**
+
+- Schema:
+  - `Detection.det_score`, `LabelObject.det_score`;
+  - `SweepInfo.boxes` (list `SweepBox`, None = chưa sửa);
+  - `SweepActionRequest`.
+- API: `POST /frames/{id}/sweeps/{offset}/actions`.
+- Config: `qa.temporal.flow`, `flow_scale`, `rescore`; `propagation.flow`, `flow_scale`.
+- `evaluate_propagation(..., start_every=)`.
+- `WorkspaceSequenceSource(..., dataroot)`.
+- Báo cáo năng suất có cột "Box sweep đã sửa". Frame cũ vẫn đọc được.
+
+**Cách kiểm tra:**
+
+- `pytest` (129 pass), `ruff check src tests`.
+- UI: mở một frame, click ô t−1 ở dải dưới, xoá / vẽ box, xem keyframe đổi cờ.
+- `python tools2d/eval_temporal.py --dataroot <nuscenes> --workspace <ws đã run> --out <thư mục>`.
+
+**Còn dở / việc tiếp:**
+
+- Nhóm quyết định có bật `flow + mean` (đổi chất lượng lấy công duyệt) hay không.
+- Đo lại trên GPU với nhiều scene hơn.
+
+---
+
 ## 2026-09-29 (4) · Kiên · nhánh `kien`
 
 **Làm gì:** Làm các yêu cầu còn thiếu của PRD không phụ thuộc giao diện:

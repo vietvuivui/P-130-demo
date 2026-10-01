@@ -9,6 +9,7 @@ from typing import Literal
 import numpy as np
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from src.config import get_settings
 from src.models.qa_config import AutoLabelConfig, get_autolabel_config
@@ -21,6 +22,7 @@ from src.models.schemas import (
     RejectRequest,
     ReviewActionRequest,
     ReviewerRequest,
+    SweepActionRequest,
     VideoDetail,
     VideoSummary,
 )
@@ -74,8 +76,16 @@ def get_store(request: Request = None) -> WorkspaceStore:
     return _store(get_settings().workspace_dir)
 
 
-def get_config() -> AutoLabelConfig:
+def get_base_config() -> AutoLabelConfig:
+    """configs/autolabel.yaml (mặc định chung, chưa áp cài đặt của workspace)."""
     return get_autolabel_config(get_settings().autolabel_config)
+
+
+def get_config(request: Request = None) -> AutoLabelConfig:
+    """Config dùng cho workspace / dự án: mặc định + cài đặt người dùng đổi trên tab ⚙ Cài đặt (settings.json)."""
+    from src.services import ui_settings
+
+    return ui_settings.apply(get_base_config(), ui_settings.load(get_store(request).root))
 
 
 def data_source(request: Request | None) -> tuple[str, str]:
@@ -121,7 +131,7 @@ def get_sequence_source(
     ensemble: DetectorEnsemble = Depends(get_ensemble),
 ) -> SequenceSource:
     root, version = data_source(request)
-    return WorkspaceSequenceSource(store, ensemble, lambda: _nuscenes(root, version))
+    return WorkspaceSequenceSource(store, ensemble, lambda: _nuscenes(root, version), root)
 
 
 def resume_videos() -> None:
@@ -163,6 +173,148 @@ def ui_config(config: AutoLabelConfig = Depends(get_config)):
         "issue_help": ISSUE_HELP,
         "reviewer": get_settings().reviewer_name,
     }
+
+
+# ---------- ⚙ Cài đặt: chỉnh trên UI, áp dụng lại, đánh giá trước / sau ----------
+
+
+class SettingsRequest(BaseModel):
+    values: dict = {}
+
+
+@router.get("/settings")
+def get_ui_settings(store: WorkspaceStore = Depends(get_store), base: AutoLabelConfig = Depends(get_base_config)):
+    from src.services import temporal_eval, ui_settings
+
+    return {"fields": ui_settings.describe(base, ui_settings.load(store.root)),
+            "gt_frames": temporal_eval.gt_frames(store)}  # fmt: skip
+
+
+@router.put("/settings")
+def put_ui_settings(req: SettingsRequest, store: WorkspaceStore = Depends(get_store),
+                    base: AutoLabelConfig = Depends(get_base_config)):  # fmt: skip
+    from src.services import ui_settings
+
+    current = {**ui_settings.load(store.root), **req.values}
+    try:
+        current = ui_settings.validate(current)
+    except ValueError as e:
+        raise _error(422, "INVALID_SETTING", str(e)) from e
+    defaults = {f["path"]: f["default"] for f in ui_settings.describe(base, {})}
+    ui_settings.save(store.root, {k: v for k, v in current.items() if v != defaults[k]})
+    store.append_event(dict(type="settings", mode="2d", values=req.values))
+    return get_ui_settings(store, base)
+
+
+@router.delete("/settings")
+def reset_ui_settings(store: WorkspaceStore = Depends(get_store), base: AutoLabelConfig = Depends(get_base_config)):
+    from src.services import ui_settings
+
+    ui_settings.save(store.root, {})
+    return get_ui_settings(store, base)
+
+
+def _job_key(store: WorkspaceStore, kind: str) -> str:
+    return f"{Path(store.root).resolve()}:{kind}"
+
+
+@router.get("/relabel")
+def relabel_status(store: WorkspaceStore = Depends(get_store)):
+    from src.services import jobs
+
+    return jobs.status(_job_key(store, "relabel"))
+
+
+@router.post("/relabel")
+def relabel(
+    request: Request, store: WorkspaceStore = Depends(get_store), config: AutoLabelConfig = Depends(get_config)
+):
+    """Auto-label lại (dùng cache detection) các frame chưa ai mở, theo cài đặt hiện tại. Chạy nền."""
+    from src.services import jobs
+    from src.services.relabel import relabel_auto_frames
+
+    ensemble = get_ensemble(request)
+    root, version = data_source(request)
+
+    def work(progress):
+        with video_service._PROCESS_LOCK:
+            return relabel_auto_frames(store, config, ensemble, root, version, progress)
+
+    return jobs.start(_job_key(store, "relabel"), work)
+
+
+@router.get("/eval-temporal")
+def eval_temporal_status(store: WorkspaceStore = Depends(get_store)):
+    import json
+
+    from src.services import jobs, temporal_eval
+
+    path = Path(store.root) / "eval_temporal" / "temporal_eval.json"
+    last = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+    return {
+        "job": jobs.status(_job_key(store, "eval_temporal")),
+        "gt_frames": temporal_eval.gt_frames(store),
+        "last": {**temporal_eval.summary_rows(last), "finished_at": last.get("finished_at")} if last else None,
+    }
+
+
+@router.post("/eval-temporal")
+def eval_temporal(request: Request, store: WorkspaceStore = Depends(get_store),
+                  config: AutoLabelConfig = Depends(get_config)):  # fmt: skip
+    """So sánh trước / sau optical flow trên các frame có nhãn gốc (GT) của workspace. Chạy nền, vài phút."""
+    from src.services import jobs, temporal_eval
+
+    if temporal_eval.gt_frames(store) == 0:
+        raise _error(409, "NO_GT", "Cần dữ liệu có nhãn gốc (nuScenes có sample_annotation) để đánh giá")
+    root, version = data_source(request)
+    try:
+        data = _nuscenes(root, version)
+    except FileNotFoundError as e:
+        raise _error(503, "DATA_UNAVAILABLE", f"Đánh giá cần bảng nuScenes: {e}") from e
+
+    def work(progress):
+        with video_service._PROCESS_LOCK:
+            res = temporal_eval.evaluate(data, Path(store.root), Path(store.root) / "eval_temporal", config,
+                                         progress=progress)  # fmt: skip
+        return temporal_eval.summary_rows(res)
+
+    return jobs.start(_job_key(store, "eval_temporal"), work)
+
+
+@router.get("/timing")
+def timing_report(request: Request, store: WorkspaceStore = Depends(get_store)):
+    """Thời gian từng bước: 2D / 3D theo frame đã auto-label, việc của server (nạp model, làm mờ), bước của dự án."""
+    from datetime import datetime
+
+    from src.services import timing
+
+    frames = store.list_frames()
+    t2d = [f.autolabel_timing for f in frames if f.autolabel_timing]
+    out = {
+        "frames2d": len(t2d),
+        "rows2d": timing.summarize(t2d),
+        "mean_total2d": round(sum(f.autolabel_s for f in frames if f.autolabel_timing) / len(t2d), 3) if t2d else None,
+        "model_images_per_frame": round(sum(t.get("n_model_images", 0) for t in t2d) / len(t2d), 2) if t2d else None,
+        "rows3d": {},
+        "server": {k: {**v, "name": timing.STAGE_NAME.get(k, k)} for k, v in timing.snapshot().items()},
+        "steps": [],
+    }
+    for model in store.models3d():
+        t3d = [f.autolabel_timing for f in store.list_frames3d(model) if f.autolabel_timing]
+        if t3d:
+            out["rows3d"][model] = {"frames": len(t3d), "rows": timing.summarize(t3d)}
+    pid = _project_id(request)
+    if pid:
+        from src.services.projects import get_manager
+
+        p = get_manager().get(pid)
+        n = (p.stats or {}).get("frames") or (p.stats or {}).get("frames2d")
+        for st in p.steps:
+            if st.started_at and st.finished_at and st.status == "done":
+                sec = (datetime.fromisoformat(st.finished_at) - datetime.fromisoformat(st.started_at)).total_seconds()
+                out["steps"].append({"name": st.name, "label": st.label, "seconds": round(sec, 1), "frames": n,
+                                     "s_per_frame": round(sec / n, 2) if n else None})  # fmt: skip
+    return out
 
 
 @router.get("/frames", response_model=list[FrameSummary])
@@ -243,6 +395,43 @@ def get_bev_meta(frame_id: str, request: Request, store: WorkspaceStore = Depend
     }  # fmt: skip
 
 
+BEV2D_NEIGHBORS = (1, -1, 2, -2, 3, 4)  # keyframe sau nhìn gần mặt đường phía trước nên lấy nhiều hơn
+
+
+def _bev2d_neighbors(frame: FrameRecord, request: Request, store: WorkspaceStore, dataroot: Path) -> list | None:
+    """Keyframe cùng scene quanh frame này (ảnh, intrinsic, camera <- ego, ego của nó <- ego frame này, LiDAR)."""
+    from src.services import bev
+
+    root, version = data_source(request)
+    try:
+        data = _nuscenes(root, version)
+        ref = data._global_from_ego(frame.image.sd_token)
+    except (FileNotFoundError, KeyError):
+        return None
+    out = []
+    for d in BEV2D_NEIGHBORS:
+        if frame.index + d < 0:
+            continue
+        try:
+            nb = store.load_frame(f"{frame.scene}_{frame.index + d:03d}")
+        except ValueError:
+            continue
+        if nb is None or nb.scene != frame.scene or nb.image.path.startswith("@workspace"):
+            continue
+        img = bev.load_rgb(image_path(dataroot, nb, 0, workspace=store.root))
+        try:
+            cfe = np.linalg.inv(data._ego_from_sensor(nb.image.sd_token))
+            from_ref = np.linalg.inv(data._global_from_ego(nb.image.sd_token)) @ ref
+        except KeyError:
+            continue
+        if img is None:
+            continue
+        intr = np.asarray(nb.intrinsic, float)
+        pts = bev.lidar_uvd_to_ego(store.load_aux("lidar", nb.frame_id), intr, cfe)
+        out.append((img, intr, cfe, from_ref, pts))
+    return out
+
+
 @router.get("/frames/{frame_id}/bev")
 def get_bev(frame_id: str, request: Request, store: WorkspaceStore = Depends(get_store),
             dataroot: Path = Depends(get_dataroot)):  # fmt: skip
@@ -250,13 +439,18 @@ def get_bev(frame_id: str, request: Request, store: WorkspaceStore = Depends(get
     from src.services import bev
 
     frame = _load(store, frame_id)
-    cache = store.root / "bev2d" / f"{store.check_id(frame_id)}.png"
+    cache = store.root / "bev2d" / f"{store.check_id(frame_id)}_v{bev.BEV_VERSION}.png"
     if not cache.exists():
         img = bev.load_rgb(image_path(dataroot, frame, 0, workspace=store.root))
         if img is None:
             raise _error(404, "IMAGE_NOT_FOUND", "Không tìm thấy file ảnh trong dataroot")
-        cam_from_ego, _ = _cam_from_ego(frame, request)
-        data = bev.to_png(bev.bev_camera(img, np.asarray(frame.intrinsic, float), cam_from_ego))
+        cam_from_ego, estimated = _cam_from_ego(frame, request)
+        intrinsic = np.asarray(frame.intrinsic, float)
+        # có LiDAR + calibration thật: bỏ vùng bị vật cao che (vệt kéo dài), mặt đường theo LiDAR, ghép thêm mặt đường
+        # từ keyframe lân cận (ego pose): ảnh xa hết nhoè, chỗ bị xe trước che được lấp
+        points = None if estimated else bev.lidar_uvd_to_ego(store.load_aux("lidar", frame_id), intrinsic, cam_from_ego)
+        nbrs = None if estimated else _bev2d_neighbors(frame, request, store, dataroot)
+        data = bev.to_png(bev.bev_camera(img, intrinsic, cam_from_ego, points_ego=points, neighbors=nbrs))
         cache.parent.mkdir(parents=True, exist_ok=True)
         cache.write_bytes(data)
     return FileResponse(cache, media_type="image/png", headers={"Cache-Control": "max-age=3600"})
@@ -284,6 +478,35 @@ def review_action(
         raise _error(422, "INVALID_ACTION", str(e)) from e
     store.save_frame(frame)
     store.append_corrections([entry])
+    history.record(store, history.kind_2d(), frame_id, before)
+    return frame
+
+
+@router.post("/frames/{frame_id}/sweeps/{offset}/actions", response_model=FrameRecord)
+def sweep_action(
+    frame_id: str,
+    offset: int,
+    req: SweepActionRequest,
+    store: WorkspaceStore = Depends(get_store),
+    dataroot: Path = Depends(get_dataroot),
+    config: AutoLabelConfig = Depends(get_config),
+):
+    """Sửa một box ở sweep t±n (giữ / xoá / đổi lớp / sửa / vẽ thêm) rồi tính lại QA và score của keyframe."""
+    from src.services.pipeline import resolve_image
+    from src.services.propagation import lidar_arrays
+    from src.services.sweep_review import apply_sweep_action, requalify_frame
+
+    frame = _load(store, frame_id)
+    before = frame.model_dump_json()
+    reviewer = req.reviewer or get_settings().reviewer_name
+    try:
+        entry = apply_sweep_action(frame, offset, req, reviewer, config)
+    except review.ReviewError as e:
+        raise _error(422, "INVALID_ACTION", str(e)) from e
+    uv, depth = lidar_arrays(store.load_aux("lidar", frame_id))
+    requalify_frame(frame, config, lambda p: resolve_image(dataroot, store.root, p), uv, depth)
+    store.save_frame(frame)
+    store.append_event(dict(type="sweep_action", mode="2d", **entry))
     history.record(store, history.kind_2d(), frame_id, before)
     return frame
 

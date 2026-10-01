@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import threading
 from pathlib import Path
 
@@ -11,6 +12,17 @@ from src.models.qa_config import AutoLabelConfig
 from src.models.schemas import Detection
 from src.services.detectors.base import Detector
 from src.services.detectors.fusion import fuse_detections
+
+
+class _DropHalfDeprecation(logging.Filter):
+    """Ultralytics 8.4 in cảnh báo "'half' is deprecated" ở MỖI lần predict (hàng nghìn dòng khi chạy cả scene).
+    half=True vẫn chạy đúng trên GPU; chỉ bỏ dòng cảnh báo lặp lại."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "'half' is deprecated" not in record.getMessage()
+
+
+logging.getLogger("ultralytics").addFilter(_DropHalfDeprecation())
 
 # Thư viện mỗi detector cần (ngoài requirements.txt): báo lỗi dễ hiểu thay cho ModuleNotFoundError
 DETECTOR_PACKAGES = {
@@ -95,6 +107,7 @@ class DetectorEnsemble:
         self.cache_dir = cache_dir
         self._detectors: dict[str, Detector] = {}
         self._lock = threading.Lock()
+        self.model_images = 0  # số ảnh đã chạy model (không có cache), để đo thời gian detect thật
 
     def _get(self, name: str) -> Detector:
         # Model dùng chung giữa các ensemble có cùng cấu hình (mỗi dự án một workspace/cache, nhưng chỉ nạp model một
@@ -103,7 +116,13 @@ class DetectorEnsemble:
             if name not in self._detectors:
                 key = (name, self._cache_file(name, "_").parent.name)
                 if key not in _SHARED:
+                    import time
+
+                    from src.services import timing
+
+                    t0 = time.perf_counter()
                     _SHARED[key] = build_detector(name, self.config)
+                    timing.record("load_model", time.perf_counter() - t0)
                 self._detectors[name] = _SHARED[key]
             return self._detectors[name]
 
@@ -143,6 +162,7 @@ class DetectorEnsemble:
                     missing.append(i)
             if not missing:
                 continue
+            self.model_images += len(missing)  # ảnh thật sự chạy model (không có trong cache)
             results = self._get(name).detect([images[i][1] for i in missing])
             for i, dets in zip(missing, results, strict=True):
                 per_image[i][name] = dets

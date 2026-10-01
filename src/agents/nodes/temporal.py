@@ -38,13 +38,15 @@ def check_temporal(
 
     for offset, sweep in sorted(sweeps.items()):
         dets = sweep["detections"]
-        pairs = match_greedy(boxes, [d.bbox for d in dets], cfg.match_iou)
+        # Box sweep đã dời về thời điểm keyframe bằng optical flow (nếu có), để so khớp không lệch vì vật đang chạy
+        pairs = match_greedy(boxes, sweep.get("warped") or [d.bbox for d in dets], cfg.match_iou)
         for i, o in enumerate(objects):
             j = pairs.get(i)
             results[o.object_id]["presence"][str(offset)] = j is not None
             results[o.object_id]["track"][str(offset)] = dets[j].bbox if j is not None else None
         matched = set(pairs.values())
-        unmatched[offset] = [d for j, d in enumerate(dets) if j not in matched]
+        warped = sweep.get("warped") or [None] * len(dets)
+        unmatched[offset] = [(d, w) for j, (d, w) in enumerate(zip(dets, warped, strict=True)) if j not in matched]
 
     available = len(sweeps)
     for o in objects:
@@ -84,7 +86,7 @@ def check_temporal(
 def _recover_missed(
     objects: list[LabelObject],
     sweeps: dict[int, SweepDetections],
-    unmatched: dict[int, list[Detection]],
+    unmatched: dict[int, list[tuple[Detection, list[float] | None]]],
     key_timestamp: int,
     config: AutoLabelConfig,
 ) -> list[LabelObject]:
@@ -95,21 +97,25 @@ def _recover_missed(
     proposals: list[LabelObject] = []
 
     for ob in before:
-        for p in unmatched[ob]:
+        for p, pw in unmatched[ob]:
             if p.score < cfg.recover_min_score:
                 continue
-            best: tuple[float, int, Detection] | None = None
+            best: tuple[float, int, Detection, list[float] | None] | None = None
             for oa in after:
-                for q in unmatched[oa]:
+                for q, qw in unmatched[oa]:
                     if q.score < cfg.recover_min_score or q.label != p.label:
                         continue
-                    v = iou(p.bbox, q.bbox)
+                    # Có flow: so hai box sau khi cùng dời về keyframe (vật chạy nhanh vẫn khớp)
+                    v = iou(pw, qw) if pw is not None and qw is not None else iou(p.bbox, q.bbox)
                     if v >= cfg.match_iou and (best is None or v > best[0]):
-                        best = (v, oa, q)
+                        best = (v, oa, q, qw)
             if best is None:
                 continue
-            _, oa, q = best
-            box = interpolate_box(p.bbox, sweeps[ob]["timestamp"], q.bbox, sweeps[oa]["timestamp"], key_timestamp)
+            _, oa, q, qw = best
+            if pw is not None and qw is not None:
+                box = [(a + b) / 2 for a, b in zip(pw, qw, strict=True)]
+            else:
+                box = interpolate_box(p.bbox, sweeps[ob]["timestamp"], q.bbox, sweeps[oa]["timestamp"], key_timestamp)
             if any(iou(box, b) >= cfg.match_iou for b in existing + [r.bbox for r in proposals]):
                 continue
             proposals.append(

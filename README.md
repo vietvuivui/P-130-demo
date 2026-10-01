@@ -164,7 +164,9 @@ Chế độ Ảnh:
   rộng hơn box detector; box GT mờ không chữ = vật hiển thị 0–40% hoặc không có điểm LiDAR/radar, bỏ qua khi đánh giá.
 - **Zoom**: lăn chuột trên ảnh (phóng quanh con trỏ), `+`/`−`, `0` về vừa khung, hoặc nút `− 100% +`; khi phóng to
   kéo vùng trống để di chuyển ảnh. Vẽ/sửa box vẫn đúng toạ độ ở mọi mức zoom.
-- **Temporal strip** t-2 … t+2: xem object đang chọn có/không ở từng sweep; click để xem sweep đó.
+- **Temporal strip** t-2 … t+2: xem object đang chọn có/không ở từng sweep; click để mở sweep đó và **sửa tự do**
+  (keep / xoá / đổi lớp / sửa box / vẽ thêm, cùng phím tắt, `Esc` quay về keyframe). Box ở sweep không được xuất;
+  sửa để FLICKER / RECOVERED_BY_TRACK, risk và lan truyền của keyframe đúng hơn — keyframe được tính lại ngay.
 - **Panel risk**: High (card chi tiết + crop + issue + giải thích), Medium, Low (thu gọn + *Approve all low-risk*).
 - **Correction log** và **Metrics & Export**: M4 (tỉ lệ nhãn phải sửa), M1 (thời gian/frame),
   flag precision/recall của agent tính từ thao tác thật của người, precision của từng issue code.
@@ -182,7 +184,8 @@ Chế độ Video:
   Video không có LiDAR/calibration nên các check LiDAR tự bỏ qua, risk dựa trên score, temporal và hình học.
 
 **BEV** (`V`, cả chế độ Ảnh và Video): khung bên phải nhìn từ trên xuống. Ảnh camera được chiếu xuống mặt đường bằng
-homography (nuScenes: ngoại tham số thật của camera; video tải lên: giả định camera cao 1.5 m, nhìn thẳng), trên đó là
+homography (nuScenes: ngoại tham số thật của camera, mặt đường theo LiDAR, ghép thêm các keyframe lân cận như ảnh BEV
+3D; video tải lên: giả định camera cao 1.5 m, nhìn thẳng), trên đó là
 điểm LiDAR và từng box 2D đặt lên mặt đường: có điểm LiDAR trong box thì theo độ sâu LiDAR (nét liền), không thì theo
 chân vật chạm đường (nét đứt); bề ngang theo box, chiều dài theo cỡ trung bình của lớp. Bấm box trên BEV để chọn, sửa
 box trên ảnh thì BEV cập nhật ngay; kéo để di chuyển, lăn chuột để zoom.
@@ -209,7 +212,7 @@ sinh pre-label box 3D; QA Agent kiểm chứng từng box bằng 6 camera + LiDA
 ```bash
 # 1. Suy luận + chấm mAP/NDS các mô hình trên máy có GPU (môi trường riêng, xem tools3d/README.md)
 .venv-mm3d\Scripts\python tools3d\run3d.py all --dataroot ..\v1.0-trainval
-#    thêm --tta và "ensemble" (gộp 4 mô hình LiDAR + tinh chỉnh theo track): dev mAP 0.537 -> 0.644, xem tools3d/README.md
+#    thêm --tta và "ensemble" (gộp 4 mô hình LiDAR + tinh chỉnh theo track): dev mAP 0.537 -> 0.644, test 0.578 -> 0.668
 # 2. Kiểm chứng bằng camera, tạo frame 3D cho UI (môi trường chính)
 python -m src.cli label3d --model centerpoint_voxel
 python -m src.cli evaluate3d --model centerpoint_voxel   # kết luận kiểm chứng so với nhãn gốc
@@ -222,7 +225,9 @@ box chiếu xuống (camera tốt nhất tự chọn, `1`–`6` đổi camera). 
 
 - **Ảnh BEV** (`I`): 6 camera ghép thành ảnh nhìn từ trên xuống bằng homography mặt đường
   (`src/services/bev.py`), trải dưới point cloud. Thấy được vạch kẻ đường, lề, vị trí xe trên làn quanh cả xe thay vì
-  nhìn từng camera một. Chỉ đúng cho mặt đường: vật cao bị kéo dài ra xa camera; xa hơn 25 m ảnh mờ dần.
+  nhìn từng camera một. Mặt đường ghép thêm từ ±4 keyframe cùng scene (nối bằng ego pose), mỗi ô lấy từ lần camera
+  nhìn gần nhất: chỗ bị xe che được lấp, ảnh ở xa hết nhoè. Chỗ mặt đường bị vật cao che ở mọi lần nhìn để trống cho
+  point cloud hiện ra. Lần đầu mở một frame mất vài giây (sau đó lấy từ cache).
 - **Vẽ thêm box** (`B`, cho vật mô hình bỏ sót): chọn lớp, kéo trên mặt đường từ đuôi tới đầu vật (hoặc bấm một điểm để
   đặt box cỡ trung bình của lớp, cùng hướng với xe gần nhất). Box tự đặt đáy lên mặt đường và lấy chiều cao theo điểm
   LiDAR; `F` co khít đám điểm LiDAR (giữ cạnh gần xe khi vật chỉ lộ một mặt). Box hiện ngay trên ảnh camera để so.
@@ -235,7 +240,15 @@ Phím: `↑/↓` chọn box · `K` `D` `C` `E` · `B` vẽ box · `A` · `Enter`
 
 ## Kết quả đánh giá
 
-Xem [eval/results/autolabel2d_eval.md](eval/results/autolabel2d_eval.md).
+Xem [eval/results/autolabel2d_eval.md](eval/results/autolabel2d_eval.md). Optical flow cho lan truyền và QA
+temporal (trước / sau, dev + held-out): [eval/results/temporal/report.md](eval/results/temporal/report.md).
+
+**3D trên tập test** ([eval/results/det3d_heldout.md](eval/results/det3d_heldout.md)): 24 scene val chưa dùng để chọn
+cấu hình (957 keyframe), so với nhãn gốc nuScenes. Mô hình đơn tốt nhất CenterPoint voxel mAP 0.578 / NDS 0.655; gộp 4 mô
+hình LiDAR + tinh chỉnh theo track (mặc định) **mAP 0.668 / NDS 0.713**. Thử ý tưởng VESPA (box 3D từ box 2D + LiDAR,
+hướng theo chuyển động, cỡ theo lớp): không tăng mAP ([eval/results/vespa.md](eval/results/vespa.md)). Thử OC-SORT cho
+tracker lan truyền ([eval/results/ocsort.md](eval/results/ocsort.md)): 2D không lợi; 3D giữ track 4 keyframe thay vì 2
+(test 24 scene: nhãn lan truyền đúng +1.6%, 94% box đúng vật). Mọi lần tối ưu: PRD, mục "Lịch sử tối ưu".
 
 3D ([eval/compare_3d.ipynb](eval/compare_3d.ipynb)): trọng số có sẵn, 27 scene val nuScenes (1076 keyframe), RTX 4050.
 Hai cột cuối là kết quả QA Agent 3D trên 3 scene demo, dùng ngưỡng điểm riêng của từng mô hình.
@@ -259,6 +272,7 @@ Hai cột cuối là kết quả QA Agent 3D trên 3 scene demo, dùng ngưỡng
 | GET | `/api/v1/frames/{id}/lidar`, `/gt` | Điểm LiDAR đã chiếu, GT 2D |
 | GET | `/api/v1/frames/{id}/bev`, `/bev/meta` | Ảnh camera chiếu xuống mặt đường (PNG) và homography / ngoại tham số để đặt box lên BEV |
 | POST | `/api/v1/frames/{id}/actions` | `KEEP` / `DELETE` / `CHANGE_CLASS` / `EDIT_BOX` / `ADD_BOX` |
+| POST | `/api/v1/frames/{id}/sweeps/{offset}/actions` | Sửa box ở sweep t±n: `KEEP` / `DELETE` / `CHANGE_CLASS` / `EDIT_BOX` / `ADD_BOX` / `RESTORE` (`box_id`), rồi tính lại QA keyframe |
 | POST | `/api/v1/frames/{id}/approve-low-risk` | Duyệt theo lô nhóm low |
 | POST | `/api/v1/frames/{id}/approve`, `/reopen` | Approve frame (chặn nếu còn object chờ) / mở lại |
 | GET | `/api/v1/corrections?frame_id=` | Correction log |
@@ -269,6 +283,8 @@ Hai cột cuối là kết quả QA Agent 3D trên 3 scene demo, dùng ngưỡng
 | POST | `/api/v1/videos/upload` | Tải lên mp4 (multipart `file`); cắt frame ngay, auto-label chạy nền |
 | POST | `/api/v1/frames/{id}/reject` | Reviewer trả lại frame, bắt buộc có lý do (`reason`) |
 | POST | `/api/v1/frames/{id}/undo`, `/redo`; GET `/history` | Hoàn tác / làm lại thao tác trên frame (Ctrl+Z / Ctrl+Y) |
+| GET/PUT/DELETE | `/api/v1/settings` | Cài đặt chỉnh trên UI của workspace / dự án (`{"values": {"qa.temporal.rescore": "mean", ...}}`) |
+| POST/GET | `/api/v1/relabel`, `/api/v1/eval-temporal` | Chạy nền: áp dụng lại cài đặt cho frame chưa mở; so sánh trước / sau optical flow (GET trả tiến độ và kết quả gần nhất) |
 | GET | `/api/v1/report.csv?kind=frames\|summary` | Báo cáo CSV: từng frame / số liệu tổng hợp (gồm năng suất) |
 | POST | `/api/v1/export` | Xuất dataset các frame đã approve (COCO có `segmentation` từ mask sơ bộ) |
 | GET | `/api/v1/3d/models`, `/3d/frames?model=` | Mô hình 3D có frame; hàng đợi frame 3D |
@@ -292,6 +308,9 @@ Hai cột cuối là kết quả QA Agent 3D trên 3 scene demo, dùng ngưỡng
 | FR-16 lịch sử | `corrections.jsonl` (từng object) + `events.jsonl` (approve / reject / reopen / undo / redo của từng frame) |
 | FR-17 xuất KITTI | Nút **Xuất KITTI** (tab Metrics ở chế độ 3D, trang Dự án); đọc lại được bằng `KittiDB` của nuscenes-devkit |
 | FR-19 báo cáo CSV | Tab Metrics: **CSV từng frame**, **CSV tổng hợp** (Excel mở đúng tiếng Việt) |
+| Lan truyền 3D | Approve một keyframe 3D (ô **↦ Lan truyền** bật) hoặc phím `T`: box đã duyệt sang các keyframe sau còn chưa mở, bù chuyển động xe + dịch theo vận tốc, lớp / kích thước theo người, box người đã xoá tự xoá. Held-out: ~95% box lan truyền đúng vật ([eval/results/propagation3d.md](eval/results/propagation3d.md)). `POST /3d/frames/{m}/{f}/propagate` |
+| Thời gian từng bước | Mỗi frame ghi giây của từng bước (detect, chiếu LiDAR, flow, QA; 3D: detect 6 camera, point cloud, kiểm chứng), thêm nạp model và làm mờ ảnh lần đầu: bảng ở tab **Metrics** (`GET /timing`). Đo từ đầu không dùng cache: `python -m src.cli profile --limit 10` hoặc `scripts\tasks.ps1 profile` |
+| Cài đặt trên UI | Tab **⚙ Cài đặt** (cũng mở từ thẻ dự án): optical flow cho lan truyền / QA temporal, tính lại score theo sweep, ngưỡng giữ box, số keyframe lan truyền — lưu theo workspace / dự án (`settings.json`), không phải sửa `configs/autolabel.yaml`. Nút **Áp dụng lại** (frame chưa ai mở, dùng cache detection) và **Chạy đánh giá** (so sánh trước / sau trên frame có GT, bảng ngay trên trang) chạy nền |
 | FR-27 năng suất | Tab Metrics: frame/giờ theo người và theo phiên (cách nhau > 30 phút là phiên mới); auto-label frame/giờ theo phiên chạy |
 
 Các việc chạy trên terminal gom trong `scripts\tasks.ps1` (PowerShell): `check`, `install`, `serve`, `test`, `demozip`,

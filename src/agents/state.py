@@ -8,9 +8,11 @@ from src.models.qa_config import AutoLabelConfig
 from src.models.schemas import Detection, LabelObject
 
 
-class SweepDetections(TypedDict):
+class SweepDetections(TypedDict, total=False):
     timestamp: int
     detections: list[Detection]
+    # Box của detections dời về thời điểm keyframe bằng optical flow (cùng thứ tự); thiếu = so khớp trực tiếp
+    warped: list[list[float]]
 
 
 class QAState(TypedDict, total=False):

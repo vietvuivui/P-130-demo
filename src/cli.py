@@ -13,6 +13,8 @@ python -m src.cli eval-propagation                     # thí nghiệm keyframe 
 Phần 3D (dự đoán từ tools3d/run3d.py trên máy có GPU):
 python -m src.cli label3d --model pointpillars          # kiểm chứng box 3D bằng camera, tạo frame 3D để duyệt
 python -m src.cli evaluate3d --model pointpillars       # kết luận kiểm chứng so với nhãn gốc -> eval/results/det3d/
+
+python -m src.cli profile --limit 10                   # một frame tốn thời gian ở bước nào (không dùng cache)
 """
 
 from __future__ import annotations
@@ -189,6 +191,16 @@ def cmd_evaluate3d(args) -> None:
         )
 
 
+def cmd_profile(args) -> None:
+    from src.services.nuscenes_data import NuScenesMini
+    from src.services.profiling import print_profile, profile
+
+    settings = get_settings()
+    config = load_autolabel_config(settings.autolabel_config)
+    data = NuScenesMini(settings.nuscenes_dataroot, settings.nuscenes_version)
+    print_profile(profile(data, config, args.scenes, args.limit, privacy=not args.no_privacy))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m src.cli")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -230,6 +242,12 @@ def main() -> None:
     e3.add_argument("--model", nargs="*", help="Mặc định: mọi mô hình có frame 3D")
     e3.add_argument("--out", default="eval/results/det3d")
     e3.set_defaults(func=cmd_evaluate3d)
+
+    pf = sub.add_parser("profile", help="Đo thời gian từng bước cho N keyframe, không dùng cache")
+    pf.add_argument("--scenes", nargs="*", help="Tên scene (mặc định: scene đầu tiên có dữ liệu)")
+    pf.add_argument("--limit", type=int, default=10, help="Số keyframe")
+    pf.add_argument("--no-privacy", action="store_true", help="Bỏ đo làm mờ mặt / biển số")
+    pf.set_defaults(func=cmd_profile)
 
     ep = sub.add_parser("eval-propagation", help="Thí nghiệm keyframe hoàn hảo: lan truyền GT, so với GT")
     ep.add_argument("--scenes", nargs="*", help="Tên scene (mặc định: mọi scene có trong workspace)")

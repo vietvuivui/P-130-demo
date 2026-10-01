@@ -139,8 +139,14 @@ def anonymized_path(cache_root: Path, src: Path, cfg: PrivacyCfg, detector=None)
         img = cv2.imdecode(np.fromfile(str(src), np.uint8), cv2.IMREAD_COLOR)
         if img is None:
             return src
+        import time
+
+        from src.services import timing
+
+        t0 = time.perf_counter()
         regions = (detector or detect_regions)(img, cfg)
         out = blur_regions(img, regions, cfg.pad) if regions else img
+        timing.record("privacy_blur", time.perf_counter() - t0)
         dst.parent.mkdir(parents=True, exist_ok=True)
         ok, buf = cv2.imencode(".jpg", out, [cv2.IMWRITE_JPEG_QUALITY, 92])
         if not ok:

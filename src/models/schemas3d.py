@@ -46,18 +46,28 @@ class Verify3D(BaseModel):
     iou: float | None = None
 
 
+class Propagation3DInfo(BaseModel):
+    """Box này được lan truyền từ quyết định của người ở một keyframe 3D trước (src/services/propagation3d.py)."""
+
+    keyframe_id: str
+    keyframe_object_id: str
+    distance_m: float  # lệch giữa vị trí dự đoán theo chuyển động và box mô hình ở frame này
+    hops: int = 1
+
+
 class Object3D(BaseModel):
     object_id: str
     label: str
     score: float
     box: Box3D
-    source: Literal["model", "human"] = "model"
+    source: Literal["model", "human", "propagated"] = "model"
     track_id: str | None = (
         None  # cùng vật qua các keyframe (tinh chỉnh theo track), dùng làm instance khi xuất nuScenes
     )
     original_box: Box3D | None = None  # box mô hình sinh ra, giữ lại khi người sửa box (EDIT_BOX)
     verify: Verify3D | None = None
     review: ReviewState = Field(default_factory=ReviewState)
+    propagation: Propagation3DInfo | None = None
 
 
 class Camera3D(BaseModel):
@@ -90,6 +100,12 @@ class Frame3DRecord(BaseModel):
     rejected_at: str | None = None
     autolabel_s: float | None = None
     autolabel_run: str | None = None
+    # Giây theo từng bước (detect, lidar, flow, qa / detect_6cam, points, verify), src/services/timing.py
+    autolabel_timing: dict[str, float] | None = None
+    # Lan truyền: keyframe gốc, lúc lan truyền; prelabel = box mô hình trước lần lan truyền đầu (lan truyền lại từ đó)
+    propagated_from: str | None = None
+    propagated_at: str | None = None
+    prelabel: list[Object3D] | None = None
 
 
 class Frame3DSummary(BaseModel):
