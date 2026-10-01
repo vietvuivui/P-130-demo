@@ -452,6 +452,13 @@ select {
   background: #f1f5f9;
 }
 
+/* Panel ẩn (tab / chế độ khác) phải thắng display: flex !important ở trên: cùng độ ưu tiên với .hidden nhưng
+   khai báo sau, nên thiếu dòng này thì khung Review và khung 3D luôn hiện chồng lên nhau */
+.review-layout.hidden,
+.workstation-layout.hidden {
+  display: none !important;
+}
+
 /* Left Vertical Toolbar (Image 1) */
 .left-toolbar {
   width: 44px;
