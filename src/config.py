@@ -20,12 +20,13 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     cors_origins: str = "http://localhost:3000"
 
-    # Dữ liệu nuScenes
-    nuscenes_dataroot: str = "./v1.0-mini-001"
-    nuscenes_version: str = "v1.0-mini"
+    # Dữ liệu nuScenes: trainval blob01 (85 scene, 3376 keyframe, đủ 6 camera + LiDAR). Bảng v1.0-trainval-blob01
+    # chỉ gồm các scene có file trên máy; bảng v1.0-trainval đầy đủ (850 scene) thiếu ảnh của phần lớn scene
+    nuscenes_dataroot: str = "./data/nuscenes-trainval"
+    nuscenes_version: str = "v1.0-trainval-blob01"
 
     # Nơi lưu kết quả auto-label, trạng thái review, correction log, export
-    workspace_dir: str = "./data/workspace"
+    workspace_dir: str = "./data/workspace-trainval-yoloe"
     autolabel_config: str = "./configs/autolabel.yaml"
     reviewer_name: str = "annotator"
 

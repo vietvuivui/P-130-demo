@@ -17,6 +17,19 @@ class ClassSpec(BaseModel):
     color: str = "#64748b"
 
 
+class Yolo26Cfg(BaseModel):
+    # YOLO26 thường: tập lớp đóng COCO 80, chỉ giữ lớp trùng tên prompt (car, truck, bus, person, bicycle, motorcycle)
+    weights: str = "weights/yolo26l.pt"
+    imgsz: int = 1280
+
+
+class YoloE26Cfg(BaseModel):
+    weights: str = "weights/yoloe-26l-seg.pt"
+    imgsz: int = 1280
+    # Text encoder mã hoá prompt (MobileCLIP2-B, TorchScript) mà YOLOE-26 được train cùng
+    text_encoder: str = "weights/mobileclip2_b.ts"
+
+
 class YoloWorldCfg(BaseModel):
     weights: str = "yolov8l-worldv2.pt"
     imgsz: int = 1280
@@ -30,12 +43,6 @@ class YoloeCfg(BaseModel):
     tta_flip: bool = False
     # Lưu mask segmentation sơ bộ của model -seg (đa giác đã đơn giản hoá), FR-04
     masks: bool = True
-
-
-class Yolo26Cfg(BaseModel):
-    # YOLO26 thường: tập lớp đóng COCO 80, chỉ giữ lớp trùng tên prompt (car, truck, bus, person, bicycle, motorcycle)
-    weights: str = "yolo26l.pt"
-    imgsz: int = 1280
 
 
 class GroundingDinoCfg(BaseModel):
@@ -63,6 +70,8 @@ class DetectionCfg(BaseModel):
     min_score: float = 0.1
     min_score_per_class: dict[str, float] = Field(default_factory=dict)
     fusion_iou: float = 0.55
+    yolo26: Yolo26Cfg = Yolo26Cfg()
+    yoloe26: YoloE26Cfg = YoloE26Cfg()
     yolo_world: YoloWorldCfg = YoloWorldCfg()
     yoloe: YoloeCfg = YoloeCfg()
     yolo26: Yolo26Cfg = Yolo26Cfg()
@@ -209,6 +218,30 @@ class VideoCfg(BaseModel):
     max_sweep_gap_s: float = 0.25
 
 
+class QuickCheckCfg(BaseModel):
+    max_file_mb: int = 20
+    missing_min_score: float = 0.5
+    missing_match_iou: float = 0.3
+    disagree_min_score: float = 0.6
+
+
+class AuditCfg(BaseModel):
+    # Mẫu object duyệt theo lô (lỗi nhãn) và mẫu frame (vật bị sót). sample_size = 0: không bắt buộc audit loại đó
+    object_sample_size: int = Field(default=50, ge=0)
+    object_max_error_upper: float = 0.10
+    frame_sample_size: int = Field(default=10, ge=0)
+    frame_max_error_upper: float = 0.30
+    confidence_z: float = 1.96
+
+
+class QCCfg(BaseModel):
+    gate_on_approve: bool = True
+    min_box_px: float = 2
+    duplicate_iou: float = 0.7
+    cross_class_iou: float = 0.85
+    cross_class_allowed: list[tuple[str, str]] = [("pedestrian", "bicycle"), ("pedestrian", "motorcycle")]
+    quick_check: QuickCheckCfg = QuickCheckCfg()
+    audit: AuditCfg = AuditCfg()
 class Verify3DCfg(BaseModel):
     # Box 3D dưới ngưỡng điểm này không đưa vào duyệt (như ngưỡng 0.3 nhóm 3D dùng)
     min_score: float = 0.3
@@ -253,6 +286,7 @@ class AutoLabelConfig(BaseModel):
     classes: dict[str, ClassSpec] = Field(default_factory=dict)
     gt_category_map: dict[str, str] = Field(default_factory=dict)
     qa: QACfg = QACfg()
+    qc: QCCfg = QCCfg()
     propagation: PropagationCfg = PropagationCfg()
     propagation3d: Propagation3DCfg = Propagation3DCfg()
     video: VideoCfg = VideoCfg()

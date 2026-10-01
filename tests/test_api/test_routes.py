@@ -62,6 +62,14 @@ async def test_review_flow_and_export(client):
     )
     assert r.status_code == 200
 
+    # QC nhãn cuối: box 100x30 px đổi thành traffic_cone -> tỉ lệ rộng/cao sai với lớp mới, chặn approve
+    r = await client.post(f"/api/v1/frames/{FID}/approve", json={"reviewer": "an", "review_time_s": 42})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "QC_FINDINGS"
+    [finding] = r.json()["detail"]["findings"]
+    assert finding["code"] == "ASPECT_RATIO_ABNORMAL" and finding["object_id"] == "3"
+    ack = {"key": finding["key"], "fingerprint": finding["fingerprint"], "note": "cone nằm ngang", "reviewer": "an"}
+    assert (await client.post(f"/api/v1/frames/{FID}/qc/ack", json=ack)).json()["open"] == 0
+
     r = await client.post(f"/api/v1/frames/{FID}/approve", json={"reviewer": "an", "review_time_s": 42})
     assert r.json()["status"] == "approved"
 

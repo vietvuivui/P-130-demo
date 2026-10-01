@@ -14,11 +14,16 @@ from pydantic import BaseModel
 from src.config import get_settings
 from src.models.qa_config import AutoLabelConfig, get_autolabel_config
 from src.models.schemas import (
+    AuditResultRequest,
+    AuditSampleRequest,
     ExportResponse,
+    FrameQCResponse,
     FrameRecord,
     FrameSummary,
     PropagateRequest,
     PropagateResponse,
+    QCAckRequest,
+    QuickCheckResponse,
     RejectRequest,
     ReviewActionRequest,
     ReviewerRequest,
@@ -26,10 +31,10 @@ from src.models.schemas import (
     VideoDetail,
     VideoSummary,
 )
-from src.services import history, review
+from src.services import history, qc, review
 from src.services import video as video_service
 from src.services.detectors import DetectorEnsemble
-from src.services.exporter import EXPORT_FILES, NothingToExportError, export_dataset
+from src.services.exporter import EXPORT_FILES, NothingToExportError, NotReadyError, export_dataset
 from src.services.pipeline import image_path
 from src.services.sequence import PropagationError, SequenceSource, WorkspaceSequenceSource, propagate_from
 from src.services.store import WorkspaceStore
@@ -50,6 +55,17 @@ ISSUE_HELP = {
     "PROP_LOW_CONF": "Nhãn lan truyền từ keyframe trước nhưng độ tin cậy thấp: kiểm tra box có còn đúng object",
     "PROP_COASTING": "Detector không thấy object ở frame này, box chỉ là dự đoán theo chuyển động: dễ lệch hoặc bị che",
     "PROP_CLASS_DIFFERS": "Detector ở frame này nhận lớp khác lớp người đã chốt: có thể track đã nhảy sang object khác",
+    # QC nhãn cuối / Quick Check / audit
+    "UNKNOWN_CLASS": "Lớp không có trong taxonomy (configs/autolabel.yaml): phải đổi sang lớp hợp lệ",
+    "INVALID_BOX": "Box hỏng: toạ độ ngược, quá nhỏ hoặc nằm ngoài ảnh",
+    "BOX_OUT_OF_IMAGE": "Box vượt ra ngoài ảnh: cắt về biên ảnh",
+    "DUPLICATE_BOX": "Hai box cùng lớp gần như trùng nhau: một vật bị gán hai lần (hay gặp sau Add box / nhận box nội suy)",
+    "OVERLAP_CROSS_CLASS": "Hai box khác lớp chồng khít lên nhau: một vật bị gán hai lớp",
+    "POSSIBLY_MISSING": "Detector thấy vật ở đây, ổn định qua các sweep, nhưng file nhãn không có box nào",
+    "MODEL_DISAGREES": "Detector gán lớp khác cho cùng vị trí với score cao",
+    "FRAME_NOT_IN_WORKSPACE": "Frame không có trong workspace nên không có LiDAR / detection để đối chiếu",
+    "AUDIT_FAILED": "Audit ngẫu nhiên phát hiện nhãn duyệt theo lô này bị sai: xem lại và sửa",
+    "AUDIT_MISSING_OBJECT": "Audit ngẫu nhiên: frame còn vật chưa được gán nhãn. Vẽ thêm box rồi xác nhận",
 }
 
 
@@ -172,6 +188,11 @@ def ui_config(config: AutoLabelConfig = Depends(get_config)):
         "sweep_offsets": config.sweep_offsets,
         "issue_help": ISSUE_HELP,
         "reviewer": get_settings().reviewer_name,
+        "qc": {
+            "gate_on_approve": config.qc.gate_on_approve,
+            "object_sample_size": config.qc.audit.object_sample_size,
+            "frame_sample_size": config.qc.audit.frame_sample_size,
+        },
     }
 
 
@@ -527,19 +548,150 @@ def approve_low_risk(frame_id: str, req: ReviewerRequest, store: WorkspaceStore 
 
 
 @router.post("/frames/{frame_id}/approve", response_model=FrameRecord)
-def approve_frame(frame_id: str, req: ReviewerRequest, store: WorkspaceStore = Depends(get_store)):
+def approve_frame(
+    frame_id: str,
+    req: ReviewerRequest,
+    store: WorkspaceStore = Depends(get_store),
+    config: AutoLabelConfig = Depends(get_config),
+):
     frame = _load(store, frame_id)
     reviewer = req.reviewer or get_settings().reviewer_name
     try:
         review.approve_frame(frame, reviewer, req.review_time_s)
     except review.ReviewError as e:
         raise _error(409, "PENDING_OBJECTS", str(e)) from e
+    # QC nhãn cuối: nhãn người sửa / vẽ chưa đi qua kiểm tra nào -> không cho approve khi còn lỗi chưa xử lý
+    if config.qc.gate_on_approve:
+        pending_qc = qc.open_findings(qc.load_frame_findings(store, frame, config))
+        if pending_qc:
+            codes = ", ".join(sorted({f.code for f in pending_qc}))
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "QC_FINDINGS",
+                    "message": f"Còn {len(pending_qc)} lỗi QC ở nhãn cuối ({codes}): sửa, hoặc xác nhận cảnh báo",
+                    "findings": [f.model_dump() for f in pending_qc],
+                },
+            )
     store.save_frame(frame)
     store.append_event(dict(type="approve", mode="2d", frame_id=frame_id, reviewer=reviewer,
                             review_time_s=req.review_time_s, n_objects=len(frame.objects)))  # fmt: skip
     return frame
 
 
+# ---- QC ----
+
+
+def _frame_qc(store: WorkspaceStore, frame: FrameRecord, config: AutoLabelConfig) -> FrameQCResponse:
+    findings = qc.load_frame_findings(store, frame, config)
+    return FrameQCResponse(frame_id=frame.frame_id, findings=findings, open=len(qc.open_findings(findings)))
+
+
+@router.get("/frames/{frame_id}/qc", response_model=FrameQCResponse)
+def frame_qc(frame_id: str, store: WorkspaceStore = Depends(get_store), config: AutoLabelConfig = Depends(get_config)):
+    """QC nhãn cuối của frame: chạy lại sau mỗi thao tác của người (UI gọi sau khi sửa)."""
+    return _frame_qc(store, _load(store, frame_id), config)
+
+
+@router.post("/frames/{frame_id}/qc/ack", response_model=FrameQCResponse)
+def ack_qc(
+    frame_id: str,
+    req: QCAckRequest,
+    store: WorkspaceStore = Depends(get_store),
+    config: AutoLabelConfig = Depends(get_config),
+):
+    """Xác nhận "đã kiểm, giữ nguyên" một cảnh báo QC. Lỗi (error) không xác nhận được, phải sửa."""
+    frame = _load(store, frame_id)
+    reviewer = req.reviewer or get_settings().reviewer_name
+    at = review.now_iso()
+    try:
+        finding = qc.ack_finding(
+            frame, qc.load_frame_findings(store, frame, config), req.key, req.fingerprint, reviewer, req.note, at
+        )
+    except qc.QCError as e:
+        raise _error(409, "QC_ACK_REJECTED", str(e)) from e
+    store.save_frame(frame)
+    store.append_qc_events(
+        [
+            {
+                "event": "QC_ACK",
+                "frame_id": frame_id,
+                "object_id": finding.object_id,
+                "code": finding.code,
+                "key": finding.key,
+                "fingerprint": finding.fingerprint,
+                "message": finding.message,
+                "note": req.note,
+                "reviewer": reviewer,
+                "timestamp": at,
+            }
+        ]
+    )
+    return _frame_qc(store, frame, config)
+
+
+@router.get("/qc/report")
+def qc_report(store: WorkspaceStore = Depends(get_store), config: AutoLabelConfig = Depends(get_config)):
+    """Checklist "sẵn sàng phát hành" của cả dataset + lỗi QC còn mở, track đổi lớp, lệch log, audit."""
+    return qc.dataset_report(store, config)
+
+
+@router.post("/qc/quick-check", response_model=QuickCheckResponse)
+def quick_check(
+    file: UploadFile = File(...),
+    store: WorkspaceStore = Depends(get_store),
+    config: AutoLabelConfig = Depends(get_config),
+):
+    """Kiểm nhanh file nhãn (COCO .json / .jsonl / {"frames": [...]}) — chỉ đọc, không ghi gì vào workspace."""
+    name = file.filename or "labels.json"
+    if Path(name).suffix.lower() not in (".json", ".jsonl"):
+        raise _error(422, "QC_FORMAT", "Chỉ nhận file .json (COCO hoặc danh sách frame) hoặc .jsonl")
+    limit = config.qc.quick_check.max_file_mb * 1024 * 1024
+    data = file.file.read(limit + 1)
+    if len(data) > limit:
+        raise _error(413, "QC_FILE_TOO_LARGE", f"File lớn hơn {config.qc.quick_check.max_file_mb} MB")
+    try:
+        return qc.quick_check(store, config, name, data)
+    except qc.QCError as e:
+        raise _error(422, "QC_PARSE", str(e)) from e
+
+
+def _audit_state(store: WorkspaceStore, config: AutoLabelConfig) -> dict:
+    return {"items": store.load_audit(), "summary": qc.audit_summary(store, config)}
+
+
+@router.get("/qc/audit")
+def audit(store: WorkspaceStore = Depends(get_store), config: AutoLabelConfig = Depends(get_config)):
+    return _audit_state(store, config)
+
+
+@router.post("/qc/audit/sample")
+def audit_sample(
+    req: AuditSampleRequest,
+    store: WorkspaceStore = Depends(get_store),
+    config: AutoLabelConfig = Depends(get_config),
+):
+    """Lấy mẫu ngẫu nhiên (seed được lưu) object duyệt theo lô hoặc frame đã approve để người audit."""
+    try:
+        qc.create_sample(store, config, req.kind, req.size, req.seed)
+    except qc.AuditError as e:
+        raise _error(e.status, e.code, str(e)) from e
+    return _audit_state(store, config)
+
+
+@router.post("/qc/audit/{audit_id}")
+def audit_result(
+    audit_id: str,
+    req: AuditResultRequest,
+    store: WorkspaceStore = Depends(get_store),
+    config: AutoLabelConfig = Depends(get_config),
+):
+    """Kết quả audit một mẫu. Sai -> frame mở lại, object quay về chờ duyệt (AUDIT_FAILED) / frame cần thêm box."""
+    try:
+        qc.record_result(store, config, audit_id, req.result, req.note, req.reviewer or get_settings().reviewer_name)
+    except qc.AuditError as e:
+        raise _error(e.status, e.code, str(e)) from e
+    return _audit_state(store, config)
 @router.post("/frames/{frame_id}/reject", response_model=FrameRecord)
 def reject_frame(frame_id: str, req: RejectRequest, store: WorkspaceStore = Depends(get_store)):
     """Reviewer trả lại frame, bắt buộc có lý do (FR-15)."""
@@ -717,11 +869,17 @@ def report_csv(kind: Literal["frames", "summary"] = "frames", store: WorkspaceSt
 
 
 @router.post("/export", response_model=ExportResponse)
-def export(store: WorkspaceStore = Depends(get_store), config: AutoLabelConfig = Depends(get_config)):
+def export(
+    require_ready: bool = Query(False, description="Chỉ xuất khi checklist QC là READY"),
+    store: WorkspaceStore = Depends(get_store),
+    config: AutoLabelConfig = Depends(get_config),
+):
     try:
-        return export_dataset(store, config)
+        return export_dataset(store, config, require_ready=require_ready)
     except NothingToExportError as e:
         raise _error(409, "NOTHING_TO_EXPORT", str(e)) from e
+    except NotReadyError as e:
+        raise _error(409, "NOT_READY", str(e)) from e
 
 
 @router.get("/exports")
