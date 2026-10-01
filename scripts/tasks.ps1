@@ -17,6 +17,10 @@
 #               dev (3 scene demo) và held-out (-Scenes, mặc định 20 scene val có đủ dữ liệu); detect chạy GPU, có cache
 #   rescore     bật / tắt tính lại score keyframe theo sweep trong configs/autolabel.yaml: -Mode off | mean | linked
 #               (trên web: tab ⚙ Cài đặt làm được việc này và evaltemporal cho từng workspace / dự án, không cần terminal)
+#   trackeval   HOTA / MOTA / IDF1 (chuẩn TrackEval) của nhãn lan truyền 2D + box 3D trong workspace (-Workspace),
+#               ghi MOTChallenge và chạy TrackEval chính thức nếu đã cài
+#   dam4sam     lan truyền box/mask bằng DAM4SAM (SAM 2.1, GPU) từ keyframe đã duyệt và so với tracker hiện tại
+#               (-Scenes; cần clone repo DAM4SAM + checkpoint, hướng dẫn ở đầu tools2d/dam4sam.py)
 #   push        đẩy nhánh hiện tại lên GitHub
 #   all         check -> test -> eval3d -> label3d -> eval2d
 #
@@ -26,7 +30,7 @@
 param(
     [Parameter(Position = 0)]
     [ValidateSet("check", "install", "serve", "test", "demozip", "eval3d", "label3d", "eval2d", "evaltemporal", "rescore", "profile", "evalprop3d",
-        "push", "all")]
+        "push", "trackeval", "dam4sam", "all")]
     [string]$Task = "check",
     [string]$Dataroot = "..\v1.0-trainval",
     [string]$Scene = "scene-0035",
@@ -191,6 +195,23 @@ function EvalProp3d {
     Run "python" @("tools3d\eval_propagation3d.py", "--dataroot", $Dataroot)
 }
 
+function TrackEval {
+    Step "HOTA / MOTA / IDF1 của nhãn 2D (track_id) và box 3D so với nhãn gốc"
+    $saved = $env:WORKSPACE_DIR
+    try {
+        if ($Workspace) { $env:WORKSPACE_DIR = $Workspace }
+        Run "python" @("-m", "src.cli", "trackeval", "--export-mot")
+    } finally { $env:WORKSPACE_DIR = $saved }
+}
+
+function Dam4Sam {
+    Step "DAM4SAM (SAM 2.1) lan truyền từ keyframe đã duyệt, so với tracker flow + BoT-SORT"
+    $args_ = @("tools2d\dam4sam.py", "--dataroot", $Dataroot)
+    if ($Workspace) { $args_ += @("--workspace", $Workspace) }
+    if ($Scenes.Count) { $args_ += @("--scenes") + $Scenes }
+    Run "python" $args_
+}
+
 function Push {
     Step "git push"
     $branch = (git rev-parse --abbrev-ref HEAD).Trim()
@@ -211,6 +232,8 @@ switch ($Task) {
     "rescore" { Rescore }
     "profile" { Profile }
     "evalprop3d" { EvalProp3d }
+    "trackeval" { TrackEval }
+    "dam4sam" { Dam4Sam }
     "push" { Push }
     "all" { Check; Test; Eval3d; Label3d; Eval2d }
 }

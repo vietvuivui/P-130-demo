@@ -238,6 +238,44 @@ def cmd_evaluate3d(args) -> None:
         )
 
 
+def cmd_trackeval(args) -> None:
+    """HOTA / MOTA / IDF1 của nhãn lan truyền 2D và box 3D (src/services/trackeval.py); tuỳ chọn chạy TrackEval chính thức."""
+    from src.services import trackeval as te
+    from src.services.store import WorkspaceStore
+
+    store = WorkspaceStore(get_settings().workspace_dir)
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    results = {}
+    if args.mode in ("2d", "both"):
+        results["2d"] = te.evaluate_workspace(store, "2d", scenes=args.scenes, min_score=args.min_score,
+                                              propagated_only=args.propagated_only)  # fmt: skip
+    if args.mode in ("3d", "both"):
+        for model in args.model or store.models3d():
+            results[f"3d:{model}"] = te.evaluate_workspace(store, "3d", model, scenes=args.scenes)
+    lines = ["| Chế độ | Frame | HOTA | DetA | AssA | MOTA | IDF1 | IDSW | FP | FN |", "|---|---|---|---|---|---|---|---|---|---|"]
+    for name, r in results.items():
+        o = r["overall"]
+        lines.append(f"| {name} | {o['frames']} | {o['HOTA']:.3f} | {o['DetA']:.3f} | {o['AssA']:.3f} | {o['MOTA']:.3f} | "
+                     f"{o['IDF1']:.3f} | {o['IDSW']} | {o['FP']} | {o['FN']} |")  # fmt: skip
+        if args.export_mot:
+            mode = "2d" if name == "2d" else "3d"
+            seqs = {s: (te.sequence_2d(store, s, args.min_score or 0.0, args.propagated_only) if mode == "2d"
+                        else te.sequence_3d(store, name.split(":", 1)[1], s)) for s in r["scenes"]}  # fmt: skip
+            mot = te.export_mot(seqs, out / "mot" / name.replace(":", "_"), "autolabel", mode)
+            official = te.run_trackeval(mot, "autolabel")
+            r["official"] = official
+            if official:
+                lines.append(f"| ↳ TrackEval chính thức | | {official['HOTA']:.3f} | {official['DetA']:.3f} | "
+                             f"{official['AssA']:.3f} | {official['MOTA']:.3f} | {official['IDF1']:.3f} | {official['IDSW']} | | |")  # fmt: skip
+            else:
+                lines.append(f"| ↳ TrackEval chưa cài (pip install git+https://github.com/JonathonLuiten/TrackEval.git); đã ghi MOTChallenge ở {mot} |")
+    (out / "trackeval.json").write_text(json.dumps(results, indent=1, ensure_ascii=False), encoding="utf-8")
+    report = "\n".join(lines) + "\n"
+    (out / "trackeval.md").write_text(report, encoding="utf-8")
+    print(report)
+
+
 def cmd_profile(args) -> None:
     from src.services.nuscenes_data import NuScenesMini
     from src.services.profiling import print_profile, profile
@@ -302,6 +340,16 @@ def main() -> None:
     ep.add_argument("--detectors", nargs="*", help="Detector đã chạy cho workspace (mặc định theo config)")
     ep.add_argument("--out", default="eval/results")
     ep.set_defaults(func=cmd_eval_propagation)
+
+    tk = sub.add_parser("trackeval", help="HOTA / MOTA / IDF1 của nhãn lan truyền 2D và box 3D theo chuẩn TrackEval")
+    tk.add_argument("--mode", choices=["2d", "3d", "both"], default="both")
+    tk.add_argument("--model", nargs="*", help="Mô hình 3D (mặc định: mọi mô hình trong workspace)")
+    tk.add_argument("--scenes", nargs="*")
+    tk.add_argument("--min-score", type=float, help="Chỉ chấm box có score >= (2D mặc định 0, 3D 0.3)")
+    tk.add_argument("--propagated-only", action="store_true", help="2D: chỉ chấm frame nhận nhãn lan truyền")
+    tk.add_argument("--export-mot", action="store_true", help="Ghi MOTChallenge và chạy TrackEval chính thức nếu đã cài")
+    tk.add_argument("--out", default="eval/results/trackeval")
+    tk.set_defaults(func=cmd_trackeval)
 
     qr = sub.add_parser("qc-report", help="Checklist QC sẵn sàng phát hành (exit 1 nếu chưa READY)")
     qr.add_argument("--json", action="store_true", help="In toàn bộ báo cáo dạng JSON")

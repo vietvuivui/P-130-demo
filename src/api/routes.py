@@ -887,6 +887,70 @@ def corrections(
     return store.corrections(frame_id)[-limit:][::-1]
 
 
+# ---- Nhiều người dùng: ai đang mở frame nào, giữ / thả khoá (src/services/users.py) ----
+
+
+def _collab(store: WorkspaceStore):
+    from src.services.users import Collab
+
+    return Collab(store.root)
+
+
+@router.get("/presence")
+def presence(request: Request, store: WorkspaceStore = Depends(get_store)):
+    """Khoá đang giữ (ai mở frame nào), frame giao cho ai, và người đang đăng nhập."""
+    from src.api.auth_routes import current_user
+    from src.services.users import get_user_store
+
+    c = _collab(store)
+    us = get_user_store()
+    name = lambda uid: (us.get(uid).name if us.get(uid) else uid)  # noqa: E731
+    user = current_user(request)
+    return {
+        "me": user.public() if user else None,
+        "locks": {f: {**v, "name": name(v["user_id"])} for f, v in c.locks().items()},
+        "assignments": c.assignments(),
+        "users": {uid: name(uid) for uid in set(c.assignments().values())},
+    }
+
+
+@router.post("/frames/{frame_id}/lock")
+def lock_frame(frame_id: str, request: Request, force: bool = False, store: WorkspaceStore = Depends(get_store)):
+    """Giữ (hoặc gia hạn) khoá frame cho người đang đăng nhập; force=true để lấy lại khoá của người khác."""
+    from src.api.auth_routes import current_user
+    from src.services.users import AuthError
+
+    user = current_user(request)
+    if user is None:
+        return {"locked": False, "reason": "anonymous"}
+    _load(store, frame_id)
+    try:
+        v = _collab(store).acquire(frame_id, user.id, force=force)
+    except AuthError as e:
+        raise _error(e.status, e.code, str(e)) from e
+    return {"locked": True, **v}
+
+
+@router.delete("/frames/{frame_id}/lock")
+def unlock_frame(frame_id: str, request: Request, store: WorkspaceStore = Depends(get_store)):
+    from src.api.auth_routes import current_user
+
+    user = current_user(request)
+    if user is not None:
+        _collab(store).release(frame_id, user.id)
+    return {"locked": False}
+
+
+@router.get("/metrics/tracking")
+def metrics_tracking(store: WorkspaceStore = Depends(get_store)):
+    """HOTA / MOTA / IDF1 (chuẩn TrackEval) của nhãn 2D theo track_id so với nhãn gốc; chỉ scene có GT."""
+    from src.services import trackeval as te
+
+    r = te.evaluate_workspace(store, "2d")
+    o = r["overall"]
+    return {k: o.get(k) for k in ("HOTA", "DetA", "AssA", "MOTA", "IDF1", "IDSW", "FP", "FN", "frames", "num_gt_ids", "num_pred_ids")}
+
+
 @router.get("/metrics")
 def metrics(store: WorkspaceStore = Depends(get_store)):
     from src.services import productivity
