@@ -9,7 +9,7 @@
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=3d13">
+  <link rel="stylesheet" href="styles.css?v=3d13qc1">
 </head>
 
 <body class="dark-theme">
@@ -81,6 +81,7 @@
       <nav class="tabs" role="tablist">
         <button class="tab active" data-tab="review" role="tab">Review</button>
         <button class="tab" data-tab="log" role="tab">Log</button>
+        <button class="tab" data-tab="qc" role="tab">QC</button>
         <button class="tab" data-tab="metrics" role="tab">Metrics</button>
         <button class="tab" data-tab="settings" role="tab" title="Chỉnh cách gán nhãn / lan truyền, áp dụng lại, đánh giá trước / sau">⚙ Cài đặt</button>
       </nav>
@@ -271,6 +272,10 @@
       <!-- Objects Scroll Container -->
       <div class="review-scroll objects-scroll" id="review-scroll">
         <div class="risk-summary" id="risk-summary"></div>
+        <section class="group group-qc hidden" id="qc-section">
+          <h3><span class="qc-mark">QC</span>Nhãn cuối <small>sửa hoặc xác nhận trước khi approve</small> <span class="count" id="count-qc">0</span></h3>
+          <div id="list-qc"></div>
+        </section>
 
         <!-- High Risk -->
         <section id="sweep-panel" class="group group-sweep hidden" aria-live="polite"></section>
@@ -520,6 +525,66 @@
     </div>
   </main>
 
+  <!-- ===== QC ===== -->
+  <main id="tab-qc" class="tab-panel hidden">
+    <div class="page">
+      <div class="page-head">
+        <h2>Kiểm soát chất lượng</h2>
+        <button id="qc-refresh" class="btn btn-ghost">Tải lại</button>
+      </div>
+
+      <section class="card qc-ready" id="qc-ready">
+        <div class="qc-ready-head">
+          <h3>Sẵn sàng phát hành</h3>
+          <span id="qc-status" class="release-pill">—</span>
+        </div>
+        <p class="muted">Checklist chạy trên các frame đã approve. Frame còn lỗi QC chưa xử lý sẽ bị bỏ khi xuất; bật "Chỉ xuất khi READY" ở tab Metrics &amp; Export để chặn xuất khi còn mục chưa đạt.</p>
+        <ul id="qc-checks" class="qc-checks"></ul>
+      </section>
+
+      <div class="two-col">
+        <section class="card">
+          <h3>Audit ngẫu nhiên</h3>
+          <p class="muted">Object duyệt theo lô không ai xem riêng. Lấy mẫu ngẫu nhiên để người xem lại từng cái, ước lượng tỉ lệ lỗi còn lọt (khoảng tin cậy Wilson 95%). Mẫu sai thì frame được mở lại để sửa.</p>
+          <div class="qc-actions">
+            <button id="audit-sample-object" class="btn btn-ghost btn-sm">＋ Mẫu object duyệt theo lô</button>
+            <button id="audit-sample-frame" class="btn btn-ghost btn-sm">＋ Mẫu frame (kiểm vật bị sót)</button>
+          </div>
+          <table class="data-table qc-audit-table" id="audit-table"></table>
+          <div id="audit-viewer" class="audit-viewer hidden">
+            <div class="audit-head"><strong id="audit-title"></strong><span class="muted" id="audit-progress"></span></div>
+            <p class="audit-question" id="audit-question"></p>
+            <canvas id="audit-canvas" width="640" height="360"></canvas>
+            <div class="qc-actions">
+              <button id="audit-ok" class="btn btn-good btn-sm">✓ Đúng <kbd>Y</kbd></button>
+              <button id="audit-error" class="btn btn-del btn-sm">✗ Sai <kbd>X</kbd></button>
+              <input id="audit-note" type="text" maxlength="300" placeholder="ghi chú khi sai (tuỳ chọn)">
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h3>Quick Check file nhãn</h3>
+          <p class="muted">Kiểm nhanh file nhãn từ ngoài (người gán thuê ngoài, tool khác, bản export cũ) theo config hiện tại, không ghi gì vào workspace. Nhận COCO <code>.json</code>, <code>labels.jsonl</code> của export, hoặc <code>{"frames": [...]}</code>. Frame có trong workspace được đối chiếu thêm với LiDAR và detection đã lưu.</p>
+          <div class="qc-actions">
+            <input id="qc-file" type="file" accept=".json,.jsonl,application/json">
+            <button id="qc-run" class="btn btn-primary btn-sm">Kiểm tra</button>
+          </div>
+          <div id="qc-summary" class="qc-summary"></div>
+          <div class="qc-table-wrap"><table class="data-table" id="qc-table"></table></div>
+          <canvas id="qc-canvas" class="hidden" width="640" height="360"></canvas>
+          <p class="muted qc-legend hidden" id="qc-legend"><span class="sw sw-label"></span> nhãn trong file · <span class="sw sw-bad"></span> nhãn có lỗi · <span class="sw sw-sugg"></span> đề xuất (vật bị sót)</p>
+        </section>
+      </div>
+
+      <section class="card">
+        <h3>Lỗi còn mở trên frame đã approve</h3>
+        <p class="muted">Lỗi QC chưa sửa / chưa xác nhận, track đổi lớp giữa các frame, và object mà correction log không khớp nhãn đang lưu. Bấm một dòng để mở frame ở tab Review.</p>
+        <div class="qc-table-wrap"><table class="data-table" id="qc-open-table"></table></div>
+      </section>
+    </div>
+  </main>
+
   <!-- ===== Metrics & Export ===== -->
   <!-- ===== Cài đặt ===== -->
   <main id="tab-settings" class="tab-panel hidden">
@@ -572,7 +637,7 @@
       <div class="two-col">
         <section class="card">
           <h3>Tỉ lệ phải sửa theo nhóm risk</h3>
-          <p class="muted">Nếu triage đúng, nhóm high phải có tỉ lệ sửa cao hơn hẳn nhóm low.</p>
+          <p class="muted">Nếu triage đúng, nhóm high phải có tỉ lệ sửa cao hơn hẳn nhóm low. Nhóm low được duyệt theo lô nên tỉ lệ sửa ở đây ≈ 0 theo định nghĩa (không ai xem thì không ai sửa); tỉ lệ lỗi thật của nhóm này xem ở tab <strong>QC → Audit ngẫu nhiên</strong>.</p>
           <table class="data-table" id="level-table"></table>
         </section>
         <section class="card">
@@ -641,8 +706,11 @@
 
       <div class="page-head"><h2>Auto-labeled dataset</h2></div>
       <section class="card export-card">
-        <p>Chỉ frame đã <strong>Approve</strong> được xuất. Gồm <code>coco.json</code>, <code>labels.jsonl</code> (box, lớp, risk, issue, hành động của người), <code>corrections.jsonl</code>, <code>manifest.json</code>.</p>
-        <button id="btn-export" class="btn btn-primary">Xuất dataset</button>
+        <p>Chỉ frame đã <strong>Approve</strong> và nhãn cuối không còn lỗi QC mới được xuất. Gồm <code>coco.json</code>, <code>labels.jsonl</code> (box, lớp, risk, issue, hành động của người), <code>corrections.jsonl</code>, <code>qc_log.jsonl</code>, <code>qa_report.md</code> (checklist QC + audit), <code>manifest.json</code> (trạng thái READY, nguồn gốc nhãn, SHA256 từng file).</p>
+        <div class="export-actions">
+          <button id="btn-export" class="btn btn-primary">Xuất dataset</button>
+          <label class="toggle" title="Từ chối xuất nếu checklist ở tab QC chưa đạt hết"><input type="checkbox" id="export-ready"> Chỉ xuất khi READY</label>
+        </div>
         <div id="export-result"></div>
         <h4>Các lần xuất</h4>
         <ul id="export-list" class="export-list"></ul>
@@ -711,7 +779,7 @@
     }
   </script>
 
-  <script src="app.js?v=3d13"></script>
+  <script src="app.js?v=3d13qc1"></script>
   <script type="module" src="bev2d.js?v=3d13"></script>
   <script type="module" src="app3d.js?v=3d13"></script>
 </body>

@@ -61,10 +61,13 @@ out/
 .ai-log/*.jsonl
 .ai-log/archive/
 
-# nuScenes + model weights (lớn, không commit)
+# nuScenes + model weights (lớn, không commit; tải bằng python scripts/download_weights.py)
 v1.0-mini*/
 *.tgz
 *.pt
+weights/
+# Dataset tải về (archive.zip của Kaggle ~33 GB) và gói scene đóng bằng scripts/pack_nuscenes_subset.py
+*.zip
 
 # Text encoder YOLOE do ultralytics tự tải về thư mục chạy
 mobileclip*.ts

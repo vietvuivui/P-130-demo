@@ -15,8 +15,9 @@
 | 3. QA Agent | LangGraph: 3.1 confidence · 3.2 LiDAR support · 3.3 temporal (song song) → 3.4 issue → 3.5 risk | `src/agents/` |
 | 4. Review by exception | Low risk duyệt theo lô, high risk xem chi tiết: Keep / Delete / Change class / Sửa box / Add box | `src/web/`, `src/services/review.py` |
 | 5. Correction log | Mỗi thao tác ghi 1 dòng JSONL: dự đoán, risk, issue, hành động, kết quả cuối | `data/workspace/corrections.jsonl` |
-| 6. Dataset | Chỉ frame đã approve: COCO + JSONL + log + manifest | `src/services/exporter.py` |
+| 6. Dataset | Chỉ frame đã approve và sạch QC: COCO + JSONL + log + báo cáo QA + manifest (READY, SHA256) | `src/services/exporter.py` |
 | 7. Lan truyền video (chế độ 🎞 Video) | Approve một keyframe → nhãn của người được mang sang các keyframe sau (track qua mọi ảnh 12Hz / 10 fps), dừng trước frame người đã mở. Nguồn: scene nuScenes hoặc mp4 tải lên | `src/services/propagation.py`, `src/services/sequence.py`, `src/services/video.py` |
+| 8. QC | Kiểm lại nhãn cuối sau khi người sửa (chặn approve khi còn lỗi), audit ngẫu nhiên phần duyệt theo lô, checklist READY trước khi xuất, Quick Check file nhãn từ ngoài | `src/services/qc/` |
 
 **Issue code:** `LOW_CONFIDENCE`, `CLASS_CONFLICT`, `NO_LIDAR_SUPPORT`, `SIZE_DEPTH_MISMATCH`, `FLICKER`,
 `RECOVERED_BY_TRACK`, `BOX_TOO_LARGE`, `ASPECT_RATIO_ABNORMAL`; nhãn lan truyền thêm `PROP_LOW_CONF`,
@@ -114,11 +115,13 @@ nuScenes v1.0-mini giải nén vào `./v1.0-mini-001` (hoặc đặt `NUSCENES_D
 python -m venv .venv && .venv\Scripts\activate          # Linux/macOS: source .venv/bin/activate
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
 pip install -r requirements-ml.txt
+python scripts/download_weights.py   # YOLOE-26-L + text encoder MobileCLIP2 -> weights/ (kiểm SHA256)
 pip install git+https://github.com/ultralytics/CLIP.git  # tokenizer cho YOLOE / YOLO-World (lần đầu tự tải yoloe-26l-seg.pt + mobileclip2_b.ts)
 
-# 1-3. Auto-label + QA Agent (tải weights lần đầu; detection được cache, chạy lại rất nhanh)
+# 1-3. Auto-label + QA Agent (detection được cache theo model, chạy lại rất nhanh)
 python -m src.cli run --limit 40                 # 40 keyframe đầu
 python -m src.cli run                            # cả 404 keyframe
+python -m src.cli run --detectors yolo_world --overwrite   # đổi model (detection cũ vẫn trong cache)
 python -m src.cli run --detectors yoloe yolo26 --overwrite   # ensemble (YOLO-World: --detectors yolo_world)
 
 # Đánh giá so với GT (mAP + flag recall/precision) -> eval/results/autolabel2d_eval.md
@@ -194,6 +197,27 @@ Phím tắt: `↑/↓` chọn object · `K` keep · `D` delete · `C` đổi l�
 `A` approve low-risk · `Enter` approve frame · `N/P` frame kế/trước · `L` LiDAR · `G` GT; chế độ Video thêm
 `T` lan truyền · `Space` phát/dừng.
 
+## QC (kiểm soát chất lượng)
+
+QA Agent chỉ chấm box **detector** lúc pipeline chạy. QC lo phần còn lại: nhãn người sửa, phần duyệt theo lô, và
+file nhãn từ ngoài. Ba luồng:
+
+| Luồng | Khi nào | Làm gì |
+|---|---|---|
+| **QC nhãn cuối** | Sau mỗi thao tác của người, khi approve frame, khi xuất | Box người vẽ / đã sửa / đổi lớp được kiểm lại hình học + LiDAR (`NO_LIDAR_SUPPORT`, `SIZE_DEPTH_MISMATCH`, `ASPECT_RATIO_ABNORMAL`, `BOX_TOO_LARGE`); cả frame được kiểm box trùng (`DUPLICATE_BOX`), box khác lớp chồng khít (`OVERLAP_CROSS_CLASS`), box hỏng / ra ngoài ảnh / lớp lạ (error). Còn lỗi thì **không approve được**: sửa (có nút áp đề xuất), hoặc xác nhận cảnh báo "đã kiểm, giữ nguyên" kèm lý do. Sửa box sau khi xác nhận thì cảnh báo hiện lại |
+| **Audit ngẫu nhiên** | Tab QC | Object duyệt theo lô không ai xem riêng, nên tỉ lệ sửa nhóm low trong Metrics luôn ≈ 0. Audit lấy mẫu ngẫu nhiên (seed lưu lại) cho người xem từng cái, ước lượng tỉ lệ lỗi còn lọt bằng khoảng Wilson 95%; mẫu frame để ước lượng vật bị sót. Mẫu sai → frame mở lại, object quay về chờ duyệt (`AUDIT_FAILED`) |
+| **Quick Check** | Tab QC, `POST /qc/quick-check`, `python -m src.cli quick-check` | Kiểm nhanh file nhãn (COCO `.json`, `labels.jsonl`, `{"frames": [...]}`) của người gán thuê ngoài / tool khác / bản export cũ, **không ghi gì**. Frame có trong workspace được đối chiếu thêm LiDAR và detection đã lưu: `POSSIBLY_MISSING` (detector thấy ổn định mà file không có, kèm box đề xuất), `MODEL_DISAGREES` |
+
+**Checklist READY** (tab QC, `GET /qc/report`, `python -m src.cli qc-report`): có frame đã approve · nhãn cuối
+không còn lỗi QC mở · mỗi track giữ một lớp · correction log khớp nhãn đang lưu · audit object và audit frame đạt.
+Frame còn lỗi QC bị bỏ khi xuất; tick *Chỉ xuất khi READY* để chặn xuất khi checklist chưa đạt. Bản export có thêm
+`qa_report.md`, `qc_log.jsonl` (mọi xác nhận / kết quả audit), và `manifest.json` ghi trạng thái READY, nguồn gốc nhãn
+(model / track / human / propagated, số object duyệt theo lô), SHA256 từng file, băm config và commit.
+
+Đo trên 79 keyframe nuScenes thật trong workspace: QC trên output detector chưa sửa báo **0** lỗi (không làm ồn luồng
+review); Quick Check GT nuScenes (nhãn đúng, 1140 box) báo nhầm ~2% nhãn (`NO_LIDAR_SUPPORT` 1.0%,
+`SIZE_DEPTH_MISMATCH` 0.5%), chạy ~4 ms/frame; Quick Check bản export của chính hệ thống: 0 lỗi mở.
+Ngưỡng nằm ở mục `qc:` trong [configs/autolabel.yaml](configs/autolabel.yaml).
 ## Phần 3D
 
 Mô hình 3D đã huấn luyện sẵn trên nuScenes (MMDetection3D: PointPillars, SSN, CenterPoint, FCOS3D, PGD, BEVFusion)
@@ -305,12 +329,17 @@ lần chạy, không cần sửa `.env`.
 | GET | `/api/v1/videos` | Video: scene nuScenes + mp4 đã tải lên (tiến độ, số frame đã duyệt / lan truyền) |
 | GET | `/api/v1/videos/{id}` | Timeline của một video: danh sách frame kèm thời điểm và trạng thái |
 | POST | `/api/v1/videos/upload` | Tải lên mp4 (multipart `file`); cắt frame ngay, auto-label chạy nền |
+| POST | `/api/v1/export?require_ready=` | Xuất dataset các frame đã approve và sạch QC (COCO có `segmentation` từ mask sơ bộ; `require_ready=true`: từ chối khi chưa READY) |
+| GET | `/api/v1/frames/{id}/qc` | QC nhãn cuối của frame (finding + số lỗi còn mở) |
+| POST | `/api/v1/frames/{id}/qc/ack` | Xác nhận "đã kiểm, giữ nguyên" một cảnh báo QC (`key`, `fingerprint`, `note`) |
+| GET | `/api/v1/qc/report` | Checklist READY + lỗi còn mở, track đổi lớp, lệch log, audit |
+| POST | `/api/v1/qc/quick-check` | Kiểm nhanh file nhãn (multipart `file`), không ghi gì |
+| GET / POST | `/api/v1/qc/audit`, `/qc/audit/sample`, `/qc/audit/{id}` | Mẫu audit, lấy mẫu mới (`kind`, `size`, `seed`), ghi kết quả (`ok` / `error`) |
 | POST | `/api/v1/frames/{id}/reject` | Reviewer trả lại frame, bắt buộc có lý do (`reason`) |
 | POST | `/api/v1/frames/{id}/undo`, `/redo`; GET `/history` | Hoàn tác / làm lại thao tác trên frame (Ctrl+Z / Ctrl+Y) |
 | GET/PUT/DELETE | `/api/v1/settings` | Cài đặt chỉnh trên UI của workspace / dự án (`{"values": {"qa.temporal.rescore": "mean", ...}}`) |
 | POST/GET | `/api/v1/relabel`, `/api/v1/eval-temporal` | Chạy nền: áp dụng lại cài đặt cho frame chưa mở; so sánh trước / sau optical flow (GET trả tiến độ và kết quả gần nhất) |
 | GET | `/api/v1/report.csv?kind=frames\|summary` | Báo cáo CSV: từng frame / số liệu tổng hợp (gồm năng suất) |
-| POST | `/api/v1/export` | Xuất dataset các frame đã approve (COCO có `segmentation` từ mask sơ bộ) |
 | GET | `/api/v1/3d/models`, `/3d/frames?model=` | Mô hình 3D có frame; hàng đợi frame 3D |
 | GET | `/api/v1/3d/frames/{m}/{f}` (+ `/points`, `/gt`, `/image/{camera}`) | Frame 3D, point cloud float32 xyzi, GT, ảnh |
 | POST | `/api/v1/3d/frames/{m}/{f}/actions`, `/approve-low-risk`, `/approve`, `/reopen` | Duyệt box 3D: `KEEP` / `DELETE` / `CHANGE_CLASS` / `EDIT_BOX` / `ADD_BOX` |
@@ -388,9 +417,11 @@ src/
     propagation.py         lan truyền: tracker 12Hz, c_prop, ghi vào keyframe đích
     sequence.py            lan truyền cả scene + thí nghiệm keyframe hoàn hảo
     review.py              thao tác review, M4, metrics
+    qc/                    QC: checks (nhãn cuối), quick_check, audit (Wilson), report (checklist READY, qa_report.md)
     store.py exporter.py evaluation.py
   api/routes.py            REST API
   web/                     UI review (HTML/JS/CSS)
+  cli.py                   python -m src.cli run | evaluate | detect-sweeps | propagate | eval-propagation | qc-report | quick-check
     verify3d.py label3d.py review3d.py eval3d.py   phần 3D: kiểm chứng bằng camera, tạo frame, duyệt, đánh giá
     bev.py                 ảnh BEV bằng homography mặt đường: 1 camera (chế độ Ảnh/Video), ghép 6 camera (3D)
   api/routes3d.py          REST API phần 3D

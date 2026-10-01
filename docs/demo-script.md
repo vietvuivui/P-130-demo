@@ -6,7 +6,7 @@ Hai cách chạy, cùng một UI:
 |---|---|---|
 | Cần gì | `pip install -r requirements.txt` | GPU + nuScenes (v1.0-mini, hoặc trainval rút gọn bằng `scripts/pack_nuscenes_subset.py`) |
 | Lệnh | `python -m src.demo` (hoặc `make demo`) | `python -m src.cli run --scenes scene-0061 scene-0103` rồi `uvicorn src.main:app` |
-| Dữ liệu | video tổng hợp 16 s, detector theo màu | CAM_FRONT + LiDAR thật, YOLOE-26 |
+| Dữ liệu | video tổng hợp 16 s, detector theo màu | CAM_FRONT + LiDAR thật, YOLOE-26-L |
 | Workspace | `data/demo/workspace` (riêng) | `data/workspace` |
 
 Trình diễn tổng cộng khoảng 5 phút (giới hạn video demo của BTC). Thời lượng từng đoạn ghi trong ngoặc.

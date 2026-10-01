@@ -4,7 +4,7 @@
 -r requirements.txt
 torch>=2.3
 torchvision>=0.18
-ultralytics>=8.4        # YOLO-World, YOLO26, YOLOE-26
+ultralytics>=8.4        # YOLOE-26 (mặc định), YOLO26, YOLO-World. Weights: python scripts/download_weights.py
 transformers>=4.51      # Grounding DINO, Florence-2
 timm                    # Florence-2
 einops                  # Florence-2

@@ -1,8 +1,9 @@
 """Gộp box từ nhiều model (và box trùng lặp của cùng model) thành một object.
 
 Kiểu Weighted Boxes Fusion rút gọn: gom cụm không phân biệt lớp theo IoU,
-score của mỗi lớp = tổng score cao nhất của từng model / số model, nên object
-chỉ một model thấy tự nhiên bị giảm score.
+score của mỗi lớp = tổng score cao nhất của từng model / số model nhận được lớp đó,
+nên object chỉ một model thấy tự nhiên bị giảm score. Model không thể sinh lớp đó
+(vd. YOLO26 COCO không có traffic_cone) không bị tính là phiếu chống.
 """
 
 from __future__ import annotations
@@ -13,8 +14,15 @@ from src.models.schemas import Detection
 from src.services.geometry import iou
 
 
-def fuse_detections(per_model: dict[str, list[Detection]], iou_thr: float) -> list[Detection]:
-    n_models = max(1, len(per_model))
+def fuse_detections(
+    per_model: dict[str, list[Detection]], iou_thr: float, coverage: dict[str, set[str] | None] | None = None
+) -> list[Detection]:
+    """coverage: model -> tập lớp model đó sinh được (None hoặc không có trong dict = mọi lớp)."""
+    coverage = coverage or {}
+
+    def n_voters(label: str) -> int:
+        return max(1, sum(1 for m in per_model if coverage.get(m) is None or label in coverage[m]))
+
     items = [(m, d) for m, dets in per_model.items() for d in dets]
     items.sort(key=lambda x: -x[1].score)
 
@@ -34,7 +42,7 @@ def fuse_detections(per_model: dict[str, list[Detection]], iou_thr: float) -> li
         for model, det in cluster:
             by_model = best.setdefault(det.label, {})
             by_model[model] = max(by_model.get(model, 0.0), det.score)
-        label_scores = {label: sum(ms.values()) / n_models for label, ms in best.items()}
+        label_scores = {label: sum(ms.values()) / n_voters(label) for label, ms in best.items()}
         label = max(label_scores, key=label_scores.get)
 
         members = [d for _, d in cluster if d.label == label]
