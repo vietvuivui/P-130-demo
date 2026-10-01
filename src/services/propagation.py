@@ -37,6 +37,7 @@ from src.models.schemas import (
     QAResult,
     ReviewState,
 )
+from src.services import botsort
 from src.services.geometry import box_area, clip_box, iou, iou_matrix
 from src.services.nuscenes_data import TimelineImage
 
@@ -84,6 +85,7 @@ class Track:
     obs_vel: np.ndarray = field(default_factory=lambda: np.zeros(4))
     obs_centers: list = field(default_factory=list)  # [(t, cx, cy)]
     recovered: int = 0  # số lần ghép lại được nhờ OCR
+    feat: np.ndarray | None = None  # BoT-SORT: đặc trưng ngoại hình (EMA)
 
     def stop(self, reason: str) -> None:
         self.alive = False
@@ -168,21 +170,36 @@ class Tracker:
     """Theo dõi các track qua từng ảnh camera (keyframe hoặc sweep)."""
 
     def __init__(self, tracks: list[Track], cfg: PropagationCfg, width: int, height: int, motion=None,
-                 start_path: str | None = None):  # fmt: skip
+                 start_path: str | None = None, appearance=None, gmc=None, predictor=None):  # fmt: skip
         """motion: FlowProvider (src/services/flow.py) để dự đoán box theo optical flow thay vì vận tốc không đổi,
-        theo cfg.flow ("missing": chỉ ở ảnh chưa có detection; "always": mọi ảnh). start_path: ảnh của keyframe gốc."""
+        theo cfg.flow ("missing": chỉ ở ảnh chưa có detection; "always": mọi ảnh). start_path: ảnh của keyframe gốc.
+        appearance / gmc: Appearance / GlobalMotion (src/services/botsort.py) khi cfg.association == "botsort".
+        predictor: Dam4SamPredictor (src/services/dam4sam.py) khi cfg.flow == "dam4sam": box dự đoán theo mask SAM 2.1."""
         self.tracks = tracks
         self.cfg = cfg
         self.width = width
         self.height = height
         self.images_without_detections = 0
         self.images_with_flow = 0
-        self.motion = motion if cfg.flow != "off" else None
+        self.images_with_gmc = 0
+        self.motion = motion if cfg.flow not in ("off", "dam4sam") else None
+        self.predictor = predictor if cfg.flow == "dam4sam" else None
+        self.images_with_sam = 0
+        self.appearance = appearance if cfg.association == "botsort" else None
+        self.gmc = gmc if cfg.association == "botsort" and cfg.botsort_gmc else None
         self.prev_path = start_path
         self._now = 0
+        self._det_feats: list = []
         for t in tracks:  # box người chốt ở keyframe là quan sát đầu tiên (cho OCR)
             if t.last_obs_box is None:
                 t.last_obs_box, t.last_obs_t = t.box.copy(), t.last_t
+        if self.appearance is not None and start_path:
+            for t, f in zip(tracks, self.appearance.features(start_path, [t.box for t in tracks]), strict=True):
+                if t.feat is None:
+                    t.feat = f
+        if self.predictor is not None and start_path:
+            for t in tracks:
+                self.predictor.start(t.track_id, start_path, t.box.tolist())
 
     @property
     def alive(self) -> list[Track]:
@@ -195,19 +212,37 @@ class Tracker:
             return
         cfg = self.cfg
         field = None
+        prev_for_gmc = self.prev_path
         if self.motion is not None and self.prev_path and image.path and (cfg.flow == "always" or detections is None):
             field = self.motion.between(self.prev_path, image.path)
         self.prev_path = image.path or self.prev_path
         if field is not None:
             self.images_with_flow += 1
+        affine = None
+        if field is None and self.gmc is not None and prev_for_gmc and image.path:
+            affine = self.gmc.between(prev_for_gmc, image.path)  # BoT-SORT GMC: bù chuyển động camera cho box dự đoán
+            if affine is not None:
+                self.images_with_gmc += 1
         preds = []
+        sam_hit = False
         for t in tracks:
-            if field is not None:
+            sam_box = self.predictor.predict(t.track_id, image.path) if self.predictor is not None and image.path else None
+            if sam_box is not None:
+                preds.append(np.asarray(sam_box, dtype=np.float64))
+                sam_hit = True
+            elif field is not None:
                 preds.append(np.asarray(field.warp_box(t.box), dtype=np.float64))
             else:
                 dt = max(0.0, (image.timestamp - t.last_t) / 1e6)
-                preds.append(t.box + t.vel * dt)
+                p = t.box + t.vel * dt
+                preds.append(np.asarray(affine.warp_box(p), dtype=np.float64) if affine is not None else p)
         pred = np.array(preds)
+        if sam_hit:
+            self.images_with_sam += 1
+        if self.appearance is not None and detections:
+            self._det_feats = self.appearance.features(image.path, [d.bbox for d in detections])
+        else:
+            self._det_feats = []
 
         self._now = image.timestamp
         if detections is None:
@@ -245,6 +280,8 @@ class Tracker:
                                                    (det_box[1] + det_box[3]) / 2)])[-(cfg.oc_delta + 1):]  # fmt: skip
                 t.box = new_box
                 t.misses = 0
+                if self._det_feats:
+                    t.feat = botsort.update_feature(t.feat, self._det_feats[j], cfg.botsort_alpha)
                 if t.matched_steps == 0:
                     t.first_det_label = det.label
                 t.matched_steps += 1
@@ -264,6 +301,8 @@ class Tracker:
             if image.is_keyframe:
                 t.hops += 1
             self._check_stop(t)
+            if not t.alive and self.predictor is not None:
+                self.predictor.stop(t.track_id)
 
     def _match(
         self, tracks: list[Track], pred: np.ndarray, detections: list[Detection]
@@ -275,7 +314,7 @@ class Tracker:
         """
         cfg = self.cfg
         pairs: dict[int, tuple[int, float]] = {}
-        if cfg.association == "byte":  # ByteTrack: box rõ trước, box score thấp chỉ để giữ track còn thiếu
+        if cfg.association in ("byte", "botsort"):  # ByteTrack: box rõ trước, box score thấp chỉ để giữ track còn thiếu
             high = [j for j, d in enumerate(detections) if d.score >= cfg.byte_high_score]
             low = [j for j, d in enumerate(detections) if d.score < cfg.byte_high_score]
             stages = [(high, cfg.match_iou), (low, max(cfg.match_iou, cfg.byte_low_iou))]
@@ -292,7 +331,11 @@ class Tracker:
                     continue
                 bonus = self._momentum([tracks[i] for i in idx], [detections[j] for j in free]) \
                     if cfg.oc_momentum > 0 else None  # fmt: skip
-                found = _greedy_match(pred[idx], [detections[j].bbox for j in free], thr, bonus)
+                if cfg.association == "botsort" and self._det_feats:
+                    found = self._match_botsort([tracks[i] for i in idx], pred[idx], [detections[j].bbox for j in free],
+                                                [self._det_feats[j] for j in free], thr)  # fmt: skip
+                else:
+                    found = _greedy_match(pred[idx], [detections[j].bbox for j in free], thr, bonus)
                 for a, (b, v) in found.items():
                     pairs[idx[a]] = (free[b], v)
                 used = {free[b] for b, _ in found.values()}
@@ -326,6 +369,26 @@ class Tracker:
                     used.add(b)
                     tracks[i].recovered += 1
         return pairs
+
+    def _match_botsort(self, tracks: list[Track], pred: np.ndarray, boxes: list[list[float]], feats: list,
+                       thr: float) -> dict[int, tuple[int, float]]:  # fmt: skip
+        """Ghép theo chi phí BoT-SORT = min(1 - IoU, khoảng cách ngoại hình) (greedy, chi phí tăng dần).
+        Nhận cặp khi IoU >= thr, hoặc khi hai box gần nhau (1 - IoU <= proximity) và ngoại hình đủ giống
+        (<= appearance): nhờ vậy track vẫn bám được vật khi box dự đoán lệch nhiều (xe lắc, vật đổi hướng) mà IoU
+        chưa đủ, và không nhảy sang vật khác màu nằm cạnh."""
+        cfg = self.cfg
+        m = iou_matrix(pred, np.array(boxes))
+        app = botsort.cosine_distance([t.feat for t in tracks], feats)
+        cost = botsort.fuse_cost(m, app, cfg.botsort_proximity, cfg.botsort_appearance)
+        ok = (m >= thr) | ((1.0 - m <= cfg.botsort_proximity) & (app <= cfg.botsort_appearance))
+        rows, cols = np.where(ok)
+        out: dict[int, tuple[int, float]] = {}
+        used: set[int] = set()
+        for i, j in sorted(zip(rows.tolist(), cols.tolist(), strict=True), key=lambda ij: cost[ij]):
+            if i not in out and j not in used:
+                out[i] = (j, float(m[i, j]))
+                used.add(j)
+        return out
 
     def _momentum(self, tracks: list[Track], dets: list[Detection]) -> np.ndarray:
         """OCM: oc_momentum x cos góc giữa hướng đi đã quan sát (tâm quan sát cách oc_delta lần -> quan sát cuối) và

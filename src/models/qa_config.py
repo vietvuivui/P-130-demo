@@ -174,14 +174,24 @@ class PropagationCfg(BaseModel):
     # Track không khớp detection ở chính keyframe đích (đang "trôi" theo vận tốc) có được ghi ra không
     emit_coasting: bool = False
     # Optical flow cho tracker lan truyền: off (dự đoán theo vận tốc) | missing (chỉ ảnh chưa có detection) | always
-    flow: Literal["off", "missing", "always"] = "always"
+    # dam4sam: thay flow bằng DAM4SAM (SAM 2.1, cần GPU; src/services/dam4sam.py): mỗi vật được phân đoạn ở từng ảnh,
+    # box dự đoán = hộp bao mask; detection vẫn dùng để ghép / dừng track như thường
+    flow: Literal["off", "missing", "always", "dam4sam"] = "always"
     flow_scale: float = 0.5
+    dam4sam_model: str = "sam21pp-L"
     # Ghép track với detection: single = một lượt với mọi box ≥ score_threshold (như trước) | byte = hai lượt kiểu
     # ByteTrack (Zhang et al. 2022): box score ≥ byte_high_score trước, box score thấp chỉ cho track còn thiếu (IoU chặt
     # hơn byte_low_iou), để box score thấp nằm gần không "cướp" track của vật có box rõ
-    association: Literal["single", "byte"] = "byte"
+    association: Literal["single", "byte", "botsort"] = "byte"
     byte_high_score: float = 0.3
     byte_low_iou: float = 0.5
+    # BoT-SORT (Aharon et al. 2022, src/services/botsort.py) = ByteTrack + bù chuyển động camera (GMC, chỉ dùng khi
+    # không có optical flow) + ngoại hình: chi phí = min(1 - IoU, khoảng cách ngoại hình), ngoại hình chỉ tính khi hai
+    # box gần nhau (1 - IoU <= botsort_proximity) và đủ giống (<= botsort_appearance); đặc trưng track cập nhật EMA
+    botsort_gmc: bool = True
+    botsort_proximity: float = 0.5
+    botsort_appearance: float = 0.3
+    botsort_alpha: float = 0.9
     # OC-SORT (Cao et al., CVPR 2023) — chỉ dựa vào quan sát thật (detection đã khớp), không vào box dự đoán lúc bị che:
     # - oc_recover (OCR): sau các lượt ghép, track đang mất ghép thêm với detection còn thừa theo box quan sát cuối
     #   (và box quan sát cuối dời theo vận tốc quan sát); cho track sống tới oc_max_lost ảnh thay vì max_coast_images

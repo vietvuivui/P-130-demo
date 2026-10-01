@@ -34,6 +34,8 @@ PROP_MODES = {
     "missing": ("missing", "single"),
     "always": ("always", "single"),
     "always+byte": ("always", "byte"),
+    "always+botsort": ("always", "botsort"),
+    "off+botsort": ("off", "botsort"),  # BoT-SORT thuần: GMC thay flow + ngoại hình
 }
 
 

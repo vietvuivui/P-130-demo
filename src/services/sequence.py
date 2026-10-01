@@ -51,6 +51,26 @@ def _motion(source, cfg) -> FlowProvider | None:
     return FlowProvider(image_file, cfg.flow_scale)
 
 
+def _dam4sam(source, cfg) -> dict:
+    """Dam4SamPredictor khi propagation.flow == dam4sam (src/services/dam4sam.py; cần GPU + repo DAM4SAM)."""
+    image_file = getattr(source, "image_file", None)
+    if cfg.flow != "dam4sam" or image_file is None:
+        return {}
+    from src.services.dam4sam import Dam4SamPredictor
+
+    return {"predictor": Dam4SamPredictor(image_file, cfg.dam4sam_model)}
+
+
+def _botsort(source, cfg) -> dict:
+    """Appearance + GMC cho tracker khi propagation.association == botsort (src/services/botsort.py)."""
+    image_file = getattr(source, "image_file", None)
+    if cfg.association != "botsort" or image_file is None:
+        return {}
+    from src.services.botsort import Appearance, GlobalMotion
+
+    return {"appearance": Appearance(image_file, cfg.flow_scale), "gmc": GlobalMotion(image_file, cfg.flow_scale)}
+
+
 class NuScenesSequenceSource:
     """Timeline từ bảng nuScenes, detection từ cache của DetectorEnsemble (không chạy model)."""
 
@@ -162,8 +182,9 @@ def propagate_from(
     frame_of_sample = {f.sample_token: f.frame_id for f in scene_frames}
     overrides = sweep_overrides(scene_frames)
     tracker = Tracker(
-        tracks, cfg, keyframe.image.width, keyframe.image.height, _motion(source, cfg), keyframe.image.path
-    )
+        tracks, cfg, keyframe.image.width, keyframe.image.height, _motion(source, cfg), keyframe.image.path,
+        **_botsort(source, cfg), **_dam4sam(source, cfg),
+    )  # fmt: skip
     at = now_iso()
     hops = 0
     for image in images:
@@ -282,7 +303,8 @@ def evaluate_propagation(
         n_scenes += 1
         n_tracks += len(tracks)
         frame_of_sample = {f.sample_token: f for f in scene_frames}
-        tracker = Tracker(tracks, cfg, first.image.width, first.image.height, _motion(source, cfg), first.image.path)
+        tracker = Tracker(tracks, cfg, first.image.width, first.image.height, _motion(source, cfg), first.image.path,
+                          **_botsort(source, cfg), **_dam4sam(source, cfg))  # fmt: skip
         hops = 0
         for image in _timeline_after(source, first):
             tracker.step(image, source.detections(image.sd_token))
