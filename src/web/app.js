@@ -1000,7 +1000,7 @@ function objectCard(o) {
         <span class="card-shape">HÌNH CHỮ NHẬT</span>
       </div>
       <div class="card-header-right">
-        <select data-class class="card-select">${classOptions(finalLabel(o))}</select>
+        <select data-class class="card-select" ${locked ? 'disabled' : ''} title="Chọn lớp khác để đổi lớp ngay (bàn phím: C → chọn → Enter)">${classOptions(finalLabel(o))}</select>
         <button class="card-more-btn" title="Thao tác"><i class="ri-more-2-fill"></i></button>
       </div>
     </div>
@@ -1010,6 +1010,7 @@ function objectCard(o) {
       <button class="card-icon-action-btn" title="Ẩn/Hiện"><i class="ri-eye-line"></i></button>
       <button class="card-icon-action-btn" title="Ghim"><i class="ri-pushpin-line"></i></button>
       ${o.qa ? `<span class="risk-badge ${lv}" style="margin-left: auto;">${LEVEL_NAME[lv]} ${fx(o.qa.risk)}</span>` : ''}
+      ${qcFor(o.object_id).length ? `<span class="qc-mark sm" style="margin-left: 6px;" title="Nhãn cuối còn lỗi QC">QC</span>` : ''}
     </div>
     <details class="card-details" ${o.object_id === S.selected ? 'open' : ''}>
       <summary class="card-details-sum"><i class="ri-arrow-right-s-line"></i> CHI TIẾT ĐỐI TƯỢNG</summary>
@@ -2104,6 +2105,20 @@ document.querySelector('.review-panel').addEventListener('keydown', (e) => {
   const card = e.target.closest('[data-oid]');
   act({ action: 'CHANGE_CLASS', object_id: card.dataset.oid, label: e.target.value });
 });
+
+// Đổi lớp bằng chuột: thẻ object kiểu mới không còn nút "Đổi lớp", chọn trong dropdown là áp dụng ngay.
+// Bàn phím vẫn theo luồng cũ (C -> mũi tên -> Enter) nên chỉ nhận change đến từ chuột.
+(() => {
+  const panel = document.querySelector('.review-panel');
+  let byPointer = false;
+  panel.addEventListener('pointerdown', (e) => { if (e.target.closest('.obj-card [data-class]')) byPointer = true; });
+  panel.addEventListener('keydown', (e) => { if (e.target.matches('.obj-card [data-class]')) byPointer = false; });
+  panel.addEventListener('change', (e) => {
+    if (!byPointer || !e.target.matches('.obj-card [data-class]')) return;
+    byPointer = false;
+    act({ action: 'CHANGE_CLASS', object_id: e.target.closest('[data-oid]').dataset.oid, label: e.target.value });
+  });
+})();
 
 $('queue-list').addEventListener('click', (e) => {
   const li = e.target.closest('[data-id]');

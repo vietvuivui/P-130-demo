@@ -42,14 +42,15 @@ STEP_LABEL = {
     "ingest": "Nhận dữ liệu",
     "label2d": "Gán nhãn 2D + QA",
     "predict3d": "Dự đoán 3D (ensemble)",
+    "fuse2d": "Gộp box 3D vào nhãn 2D",
     "verify3d": "Kiểm chứng 3D bằng camera",
 }
 STEPS = {
     "video": ["ingest", "label2d"],
     "images": ["ingest", "label2d"],
-    "nuscenes": ["ingest", "label2d", "predict3d", "verify3d"],
-    "kitti": ["ingest", "label2d", "predict3d", "verify3d"],
-    "lidar_cam": ["ingest", "label2d", "predict3d", "verify3d"],
+    "nuscenes": ["ingest", "label2d", "predict3d", "fuse2d", "verify3d"],
+    "kitti": ["ingest", "label2d", "predict3d", "fuse2d", "verify3d"],
+    "lidar_cam": ["ingest", "label2d", "predict3d", "fuse2d", "verify3d"],
 }
 MODEL3D = "ensemble"  # tên "mô hình" 3D của dự án trong workspace (frames3d/ensemble)
 
@@ -456,6 +457,30 @@ class ProjectManager:
         if code != 0 or not out.exists():
             raise RuntimeError("run3d.py predict lỗi:\n" + "\n".join(tail[-8:]))
         return ("done", warn) if warn else None
+
+    # ---- bước 3b: box 3D chiếu xuống ảnh, gộp vào nhãn 2D của các frame chưa ai duyệt (src/services/lidar2d.py)
+    def _do_fuse2d(self, p: Project, config: AutoLabelConfig):
+        if not config.detection.lidar3d.enabled:
+            return "Đã tắt (detection.lidar3d.enabled)"
+        preds_file = self.dir(p.id) / "work3d" / "preds.json"
+        if not preds_file.exists():
+            return "Không có dự đoán 3D: giữ nhãn 2D của detector ảnh"
+        from src.services.nuscenes_data import NuScenesMini
+        from src.services.pipeline import AutoLabelPipeline
+
+        preds = json.loads(preds_file.read_text())["results"]
+        root, version = self.dataset(p.id)
+        store = self.store(p.id)
+        pipe = AutoLabelPipeline(NuScenesMini(root, version), store, config, preds3d=preds)
+        keys = [k for k in pipe.data.keyframes()[: p.options.max_frames] if k[2] in preds]
+        prog, done = self._progress(p, "fuse2d"), 0
+        for n, (scene, index, token) in enumerate(keys, start=1):
+            # detection đã có trong cache từ bước nhãn 2D; frame người đã duyệt / đã nhận nhãn lan truyền giữ nguyên
+            done += pipe.process(scene, index, token, overwrite=True, keep_propagated=True) is not None
+            prog(n, len(keys))
+        p.stats["fused2d"] = done
+        self.save(p)
+        return None if done else "Không có frame 2D nào còn ở trạng thái tự động"
 
     # ---- bước 4: kiểm chứng 3D bằng camera, tạo frame 3D cho UI
     def _do_verify3d(self, p: Project, config: AutoLabelConfig):

@@ -63,7 +63,8 @@ def test_kitti_project_without_3d_env_keeps_2d(manager, tmp_path):
     p = manager.run(manager.create("KITTI", [z]).id)
     assert p.kind == "kitti" and p.status == "ready", p.message
     st = {s.name: s.status for s in p.steps}
-    assert st == {"ingest": "done", "label2d": "done", "predict3d": "skipped", "verify3d": "skipped"}
+    assert st == {"ingest": "done", "label2d": "done", "predict3d": "skipped", "fuse2d": "skipped",
+                  "verify3d": "skipped"}  # fmt: skip
     assert "môi trường 3D" in next(s.message for s in p.steps if s.name == "predict3d")
     assert len(manager.store(p.id).list_frames()) == 2
     root, version = manager.dataset(p.id)
@@ -168,3 +169,42 @@ def test_models3d_names_are_validated(tmp_path, config):
     assert ProjectManager(tmp_path / "q", lambda: config, models3d=["centerpoint_pillar"]).models3d == [
         "centerpoint_pillar"
     ]
+
+
+def test_fuse2d_adds_projected_3d_boxes_to_auto_frames(manager, tmp_path):
+    write_kitti(tmp_path / "k")
+    z = tmp_path / "kitti.zip"
+    with zipfile.ZipFile(z, "w") as zf:
+        for f in (tmp_path / "k").rglob("*"):
+            zf.write(f, f.relative_to(tmp_path / "k"))
+    p = manager.run(manager.create("KITTI", [z]).id)
+    store = manager.store(p.id)
+    from src.services.nuscenes_data import NuScenesMini
+
+    root, version = manager.dataset(p.id)
+    data = NuScenesMini(root, version)
+    keys = data.keyframes()
+    first = store.load_frame(f"{keys[0][0]}_{keys[0][1]:03d}")
+    first.status = "in_review"  # người đã bắt đầu duyệt: không được ghi đè
+    store.save_frame(first)
+    preds = {}
+    for scene, idx, tok in keys:
+        cam_sd = data.camera_frame(tok, "CAM_FRONT", [], scene, idx).image.sd_token
+        center = np.linalg.inv(data.cam_from_global(cam_sd)) @ np.array([0.0, 0.0, 15.0, 1.0])  # 15 m trước camera
+        preds[tok] = [{"sample_token": tok, "translation": center[:3].tolist(), "size": [1.0, 1.0, 1.0],
+                       "rotation": [1, 0, 0, 0], "detection_name": "pedestrian", "detection_score": 0.7}]  # fmt: skip
+    work = manager.dir(p.id) / "work3d"
+    work.mkdir(exist_ok=True)
+    (work / "preds.json").write_text(json.dumps({"results": preds}))
+    p = manager.get(p.id)
+    next(s for s in p.steps if s.name == "fuse2d").status = "pending"
+    manager.save(p)
+    p = manager.run(p.id)
+    assert next(s for s in p.steps if s.name == "fuse2d").status == "done" and p.stats["fused2d"] == len(keys) - 1
+    frames = {f.frame_id: f for f in store.list_frames()}
+    kept = frames[first.frame_id]
+    assert kept.status == "in_review" and not any("lidar3d" in o.models for o in kept.objects)
+    for fid, f in frames.items():
+        if fid != first.frame_id:
+            assert "lidar3d" in f.detectors
+            assert any(o.label == "pedestrian" and o.models.get("lidar3d") == 0.7 for o in f.objects)
