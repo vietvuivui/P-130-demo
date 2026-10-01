@@ -39,11 +39,14 @@ Quy tắc:
   ByteTrack + OC-SORT, có và không optical flow (`eval/results/tracker_test20.json`). ByteTrack vẫn tốt nhất (điểm 2180).
 - Kết quả `eval2d` của detector fine-tune lưu vào `eval/results/det2d_finetune.json`.
 - PRD: lịch sử tối ưu thêm dòng 17–18, bảng detector 2D, kết quả đo.
+- **Gate G2:** README thêm bảng biến môi trường và ví dụ gọi API kèm output thật; `.env.example` chỉ giữ biến dự án
+  dùng; `docs/eval-evidence.md` gồm 11 test case thủ công với output thực tế (1 lỗi đã biết: kiểm tra temporal với vật ở
+  gần chạy nhanh qua ảnh); sơ đồ kiến trúc cập nhật + `docs/architecture.png`.
 
 **File chính:** `eval/results/bang-so-sanh.md`, `eval/results/det2d_finetune.json`, `eval/results/tracker_test20.json`,
-`PRD-AutoLabel3D.md`.
+`PRD-AutoLabel3D.md`, `README.md`, `.env.example`, `docs/eval-evidence.md`, `docs/architecture_diagram.md`.
 
-**Ảnh hưởng tới người khác:** Không (chỉ tài liệu và số liệu).
+**Ảnh hưởng tới người khác:** `.env.example` bỏ các biến template không dùng (OpenAI, database, Chroma); còn lại chỉ tài liệu và số liệu.
 
 **Cách kiểm tra:** mở `eval/results/bang-so-sanh.md`.
 
