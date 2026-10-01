@@ -6,8 +6,8 @@ const PROJECT = new URLSearchParams(location.search).get('project');
 const API = PROJECT ? `/p/${encodeURIComponent(PROJECT)}/api/v1` : '/api/v1';
 const LEVELS = ['high', 'medium', 'low'];
 const LEVEL_NAME = { low: 'Low', medium: 'Medium', high: 'High' };
-const RISK_COLOR = { low: '#0ca30c', medium: '#fab219', high: '#d03b3b' };
-const HUMAN_COLOR = '#3987e5';
+const RISK_COLOR = { low: '#10b981', medium: '#f59e0b', high: '#ef4444' };
+const HUMAN_COLOR = '#2563eb';
 const QC_COLOR = '#c026d3';
 const STATUS_TEXT = { auto: 'Chưa mở', editing: 'Đang sửa', approved: 'Đã duyệt', rejected: 'Bị trả lại' };
 
@@ -990,27 +990,44 @@ function objectCard(o) {
   const status = !done
     ? ''
     : isAutoDeleted(o)
-      ? `<span class="done-tag deleted" title="Người đã xoá object này ở ${esc(pr?.keyframe_id)}. Bấm Keep nếu đây là object thật.">✗ Tự xoá theo ${esc(frameRef(pr?.keyframe_id))}</span>`
+      ? `<span class="done-tag deleted" title="Người đã xoá object này ở ${esc(pr?.keyframe_id)}. Bấm Keep nếu đây là object thật.">✗ Tự xoá</span>`
       : `<span class="done-tag ${o.review.status}">${o.review.status === 'deleted' ? '✗ Đã xoá' : `✓ ${o.review.action}${o.review.final_label !== o.label ? ' → ' + esc(o.review.final_label) : ''}`}</span>`;
+
   return `<div class="obj-card ${lv} ${o.object_id === S.selected ? 'selected' : ''}" data-oid="${esc(o.object_id)}">
-    <div class="oc-body">
-      <canvas class="oc-crop" width="192" height="144" data-crop="${esc(o.object_id)}"></canvas>
-      <div class="oc-info">
-        <div class="oc-title"><span>${esc(finalLabel(o))} <span class="oid">#${esc(o.object_id)}${srcNote}</span></span>
-          ${o.qa ? `<span class="risk-badge ${lv}">${LEVEL_NAME[lv]} ${fx(o.qa.risk)}</span>` : ''}</div>
-        <div class="oc-stats">${facts.join(' · ')}</div>
-        ${status}
-        ${issues.length ? `<ul class="issues">${issues.map((i) => `<li title="${esc(S.cfg.issue_help[i.code] || '')}"><span class="issue-code">${esc(i.code)}</span> <span class="issue-msg">${esc(i.message)}</span></li>`).join('')}</ul>` : ''}
-        ${qcFor(o.object_id).length ? `<div class="oc-qc"><span class="qc-mark sm">QC</span>${qcFor(o.object_id).map((x) => `<span class="issue-code qc" title="${esc(x.message)}">${esc(x.code)}</span>`).join(' ')}</div>` : ''}
+    <div class="card-header-bar">
+      <div class="card-header-left">
+        <span class="card-num">#${esc(o.object_id)}</span>
+        <span class="card-shape">HÌNH CHỮ NHẬT</span>
+      </div>
+      <div class="card-header-right">
+        <select data-class class="card-select">${classOptions(finalLabel(o))}</select>
+        <button class="card-more-btn" title="Thao tác"><i class="ri-more-2-fill"></i></button>
       </div>
     </div>
-    ${locked ? '' : `<div class="oc-actions">
-      <button class="btn btn-sm btn-keep" data-act="KEEP">✓ Keep</button>
-      <button class="btn btn-sm btn-del" data-act="DELETE">🗑 Delete</button>
-      <select data-class>${classOptions(finalLabel(o))}</select>
-      <button class="btn btn-sm btn-class" data-act="CHANGE_CLASS">Đổi lớp</button>
-      <button class="btn btn-sm btn-edit" data-act="EDIT">✎ Sửa box</button>
-    </div>`}
+    <div class="card-icon-actions">
+      <button class="card-icon-action-btn" title="Khóa"><i class="ri-lock-line"></i></button>
+      <button class="card-icon-action-btn" title="Người phụ trách"><i class="ri-user-line"></i></button>
+      <button class="card-icon-action-btn" title="Ẩn/Hiện"><i class="ri-eye-line"></i></button>
+      <button class="card-icon-action-btn" title="Ghim"><i class="ri-pushpin-line"></i></button>
+      ${o.qa ? `<span class="risk-badge ${lv}" style="margin-left: auto;">${LEVEL_NAME[lv]} ${fx(o.qa.risk)}</span>` : ''}
+    </div>
+    <details class="card-details" ${o.object_id === S.selected ? 'open' : ''}>
+      <summary class="card-details-sum"><i class="ri-arrow-right-s-line"></i> CHI TIẾT ĐỐI TƯỢNG</summary>
+      <div class="oc-body">
+        <canvas class="oc-crop" width="192" height="144" data-crop="${esc(o.object_id)}"></canvas>
+        <div class="oc-info">
+          <div class="oc-stats">${facts.join(' · ')}${srcNote}</div>
+          ${status}
+          ${issues.length ? `<ul class="issues">${issues.map((i) => `<li title="${esc(S.cfg.issue_help[i.code] || '')}"><span class="issue-code">${esc(i.code)}</span> <span class="issue-msg">${esc(i.message)}</span></li>`).join('')}</ul>` : ''}
+          ${qcFor(o.object_id).length ? `<div class="oc-qc"><span class="qc-mark sm">QC</span>${qcFor(o.object_id).map((x) => `<span class="issue-code qc" title="${esc(x.message)}">${esc(x.code)}</span>`).join(' ')}</div>` : ''}
+        </div>
+      </div>
+      ${locked ? '' : `<div class="oc-actions">
+        <button class="btn btn-sm btn-keep" data-act="KEEP">✓ Giữ</button>
+        <button class="btn btn-sm btn-del" data-act="DELETE">🗑 Xóa</button>
+        <button class="btn btn-sm btn-edit" data-act="EDIT">✎ Sửa box</button>
+      </div>`}
+    </details>
   </div>`;
 }
 
@@ -1023,8 +1040,9 @@ function compactRow(o) {
     : `<span class="muted">risk ${fx(o.qa?.risk)}</span>`;
   const qcTag = qcFor(o.object_id).length ? '<span class="qc-mark sm" title="Nhãn cuối còn lỗi QC">QC</span>' : '';
   return `<div class="low-row ${o.object_id === S.selected ? 'selected' : ''}" data-oid="${esc(o.object_id)}">
-    <span><span class="dot ${levelOf(o)}"></span> #${esc(o.object_id)} ${esc(finalLabel(o))} <span class="muted">${scoreText(o)}</span>${qcTag}</span>${tag}</div>`;
+    <span><span class="dot ${levelOf(o)}"></span> #${esc(o.object_id)} HỘP <strong style="margin-left:4px;">${esc(finalLabel(o))}</strong> <span class="muted">${scoreText(o)}</span>${qcTag}</span>${tag}</div>`;
 }
+
 
 function renderPanel() {
   const f = S.frame;
