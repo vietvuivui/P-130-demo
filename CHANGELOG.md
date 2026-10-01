@@ -175,6 +175,26 @@ train lại detector) và cho sửa nhãn ở các sweep t−2…t+2:
 
 - Nhóm quyết định có bật `flow + mean` (đổi chất lượng lấy công duyệt) hay không.
 - Đo lại trên GPU với nhiều scene hơn.
+## 2026-10-01 · Danh · nhánh `danh`
+
+**Làm gì:** Khắc phục xung đột sau khi merge nhánh `main` vào nhánh `danh`. Tái thiết kế và đồng bộ toàn diện giao diện Trang Dự án (`projects.html`) và Trang Workspace (`index.html`) theo hệ thống thiết kế chung. Khôi phục toàn bộ pipeline progress, terminal logs, modal tạo dự án kéo thả đa file; sửa triệt để lỗi cuộn và vỡ bố cục trên trang workstation; hoàn thiện drawer hàng đợi frame (`.queue-drawer`); đồng bộ thanh media player controls, scrubber, input frame và liên kết ngữ cảnh dự án (`project=...`) xuyên suốt giữa các trang `projects.html`, `frames.html`, `index.html` và `export.html`.
+
+**File chính:**
+- Sửa: `src/web/projects.html` (chuyển đổi layout raw 2 cột sang header AutoLabel chuẩn, thanh công cụ tìm kiếm/sắp xếp/lọc, card dự án chuyên nghiệp hiển thị pipeline 4 bước và terminal logs, modal kéo thả tải file), `src/web/projects.js` (tìm kiếm realtime, bộ lọc trạng thái, sắp xếp linh hoạt, kết nối modal và rendering pipeline trực quan), `src/web/styles.css` (chuẩn hóa tokens font Inter, primary #1677ff, sửa lỗi chiều cao workstation calc(100vh - 48px) và loại bỏ xung đột cuộn tab-panel, định nghĩa hoàn chỉnh CSS cho .queue-drawer, topbar chuẩn 48px sáng màu), `src/web/index.html` (tích hợp topbar điều hướng chung, media player controls, công cụ mở/tắt queue drawer, gắn kết nối các nút play/save/scrubber/frame input), `src/web/ui-flow.css` (bổ sung toàn bộ style cho project cards, pipeline steps, action buttons, alert banner, drag-and-drop modal), `src/web/ui-flow.js` (kết nối endpoint frame theo dự án `/p/{project_id}/api/v1/frames`, bảo lưu query param dự án khi mở workspace hoặc xuất dữ liệu).
+
+**Ảnh hưởng tới người khác:** Không làm thay đổi schema hay endpoint API backend. Toàn bộ logic backend của nhánh `main` (ingest, label2d, predict3d, verify3d, export nuScenes/KITTI/COCO) được giữ nguyên vẹn 100%.
+
+**Cách kiểm tra:**
+- `ruff check src tests` → All checks passed.
+- `python -m pytest tests/test_api/` → 23 passed (100%).
+- `node -c src/web/*.js` → Không có lỗi cú pháp.
+- Mở server `python -m src.demo --reset` hoặc `uvicorn src.main:app`:
+  - Truy cập `http://localhost:8000/ui/projects.html`: hiển thị header chuẩn, bộ lọc, tìm kiếm, card dự án có pipeline 4 bước, nút "+ Tạo dự án mới" mở modal kéo thả file.
+  - Truy cập `http://localhost:8000/ui/index.html`: topbar chuẩn 48px, các nút điều hướng trang, thanh tua player và scrubber hoạt động mượt mà, layout workstation không bị cuộn kép, nút queue trên toolbar bật/tắt drawer hàng đợi chuẩn xác.
+  - Kiểm tra luồng chuyển tiếp: `projects.html` ➔ `frames.html?project=...` ➔ `index.html?frame=...&project=...` giữ đúng ngữ cảnh dự án.
+
+**Còn dở / việc tiếp:**
+- Merge lại với toàn bộ hệ thống để chỉnh sửa tối ưu nốt
 
 ---
 

@@ -7,31 +7,26 @@
   <title>AutoLabel 3D — Workspace Gán nhãn</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet"
-    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=3d13ui2qc">
+  <link rel="stylesheet" href="ui-flow.css">
+  <link rel="stylesheet" href="styles.css?v=3d8">
 </head>
 
-<body class="dark-theme">
+<body class="workspace-page">
 
-  <!-- Top Navigation Bar -->
+  <!-- Top Navigation Bar (Unified with AutoLabel Suite) -->
   <header class="topbar">
     <div class="topbar-left">
-      <!-- Menu Dropdown Button -->
-      <div class="menu-dropdown-wrap">
-        <button class="menu-btn" id="menuBtn">
-          <i class="ri-menu-line"></i>
-          <span>Menu</span>
-        </button>
-        <div class="menu-dropdown" id="menuDropdown">
-          <a href="projects.html"><i class="ri-folder-2-line"></i> Dự án</a>
-          <a href="frames.html"><i class="ri-list-check-2"></i> Tasks &amp; Frames</a>
-          <a href="export.html"><i class="ri-download-cloud-2-line"></i> Xuất dữ liệu</a>
-          <div class="dropdown-divider"></div>
-          <a href="javascript:void(0)" onclick="toggleQueuePanel()"><i class="ri-side-bar-line"></i> Hàng đợi Frame</a>
-          <a href="login.html" style="color: #ff4d4f;"><i class="ri-logout-box-r-line"></i> Đăng xuất</a>
-        </div>
-      </div>
+      <a href="projects.html" class="logo" style="margin-right: 6px;">
+        <i class="ri-box-3-fill logo-icon"></i>
+        <span>AutoLabel</span>
+      </a>
+      <nav class="nav topbar-nav">
+        <a href="projects.html" class="nav-item">Dự án</a>
+        <a href="frames.html" class="nav-item">Tasks &amp; Frames</a>
+        <a href="export.html" class="nav-item">Xuất dữ liệu</a>
+      </nav>
 
       <a id="project-link" class="project-link hidden" href="/ui/projects.html" title="Về danh sách dự án">← Dự án <b id="project-name"></b></a>
 
@@ -86,11 +81,11 @@
         <button class="tab" data-tab="settings" role="tab" title="Chỉnh cách gán nhãn / lan truyền, áp dụng lại, đánh giá trước / sau">⚙ Cài đặt</button>
       </nav>
 
-      <!-- Reviewer input -->
-      <label class="reviewer-tag" title="Người duyệt hiện tại">
-        <i class="ri-user-line"></i>
-        <input id="reviewer" type="text" maxlength="40" value="Huy">
-      </label>
+      <!-- Reviewer Profile -->
+      <div class="user-profile topbar-user-profile" title="Người duyệt hiện tại">
+        <i class="ri-user-line avatar-icon"></i>
+        <input id="reviewer" type="text" maxlength="40" value="Huy" class="reviewer-inline-input" title="Đổi tên người duyệt">
+      </div>
     </div>
   </header>
 
@@ -122,14 +117,20 @@
       <button class="tool-btn" id="tool-fit" title="Thu phóng vừa khung nhìn (Ctrl+0)">
         <i class="ri-aspect-ratio-line"></i>
       </button>
+      <div class="tool-divider"></div>
+      <button class="tool-btn" id="tool-queue" title="Danh sách Frame (Hàng đợi)" onclick="toggleQueuePanel()">
+        <i class="ri-list-check-2"></i>
+      </button>
     </aside>
 
     <!-- Collapsible Queue Drawer for Frames / Videos -->
-    <aside class="queue-drawer" id="queue-panel">
+    <aside class="queue queue-drawer" id="queue-panel">
       <div class="queue-drawer-header">
         <div class="flex justify-between align-center">
-          <strong class="text-sm font-semibold">Danh sách Frame</strong>
-          <button class="btn-icon-xs" onclick="toggleQueuePanel()"><i class="ri-close-line"></i></button>
+          <strong class="text-sm font-semibold" style="display: flex; align-items: center; gap: 6px;">
+            <i class="ri-list-check-2" style="color: var(--primary);"></i> Hàng đợi Frame
+          </strong>
+          <button class="btn-icon-xs" onclick="toggleQueuePanel()" title="Thu gọn danh sách"><i class="ri-close-line"></i></button>
         </div>
         <div class="mt-2 flex gap-1">
           <select id="queue-sort" class="form-select-sm" title="Sắp xếp danh sách">
@@ -780,9 +781,100 @@
     }
   </script>
 
-  <script src="app.js?v=3d13ui2qc"></script>
-  <script type="module" src="bev2d.js?v=3d13ui2qc"></script>
-  <script type="module" src="app3d.js?v=3d13ui2qc"></script>
+  <script src="app.js?v=3d7"></script>
+  <script type="module" src="bev2d.js?v=3d7"></script>
+  <script type="module" src="app3d.js?v=3d7"></script>
+
+  <script>
+    // Topbar player play/pause toggle
+    const btnNavPlay = document.getElementById('btn-nav-play');
+    if (btnNavPlay) {
+      btnNavPlay.addEventListener('click', () => {
+        const btnPlay = document.getElementById('btn-play');
+        if (btnPlay) {
+          btnPlay.click();
+          setTimeout(() => {
+            const icon = btnNavPlay.querySelector('i');
+            if (icon) {
+              const isPlaying = btnPlay.textContent.includes('Dừng');
+              icon.className = isPlaying ? 'ri-pause-fill' : 'ri-play-fill';
+            }
+          }, 50);
+        }
+      });
+    }
+
+    // Topbar quick save/approve
+    const btnSaveFrame = document.getElementById('btn-save-frame');
+    if (btnSaveFrame) {
+      btnSaveFrame.addEventListener('click', () => {
+        const btnApprove = document.getElementById('btn-approve-frame') || document.getElementById('btn3d-approve');
+        if (btnApprove) btnApprove.click();
+      });
+    }
+
+    // Scrub slider & frame input synchronization
+    const scrubber = document.getElementById('frameScrubber');
+    const frameInput = document.getElementById('frameNumInput');
+    setInterval(() => {
+      try {
+        const frames = (typeof S !== 'undefined' && S.video?.frames) ? S.video.frames : (typeof S !== 'undefined' && S.queue) ? S.queue : [];
+        if (frames.length > 0 && typeof S !== 'undefined' && S.frame) {
+          const idx = frames.findIndex(f => f.frame_id === S.frame.frame_id);
+          if (idx >= 0) {
+            if (scrubber && document.activeElement !== scrubber) {
+              scrubber.max = Math.max(0, frames.length - 1);
+              scrubber.value = idx;
+            }
+            if (frameInput && document.activeElement !== frameInput) {
+              frameInput.max = Math.max(0, frames.length - 1);
+              frameInput.value = idx;
+            }
+          }
+        }
+      } catch (e) {}
+    }, 400);
+
+    if (scrubber) {
+      scrubber.addEventListener('input', () => {
+        const targetIdx = parseInt(scrubber.value, 10);
+        if (!isNaN(targetIdx) && typeof S !== 'undefined') {
+          const frames = S.video?.frames ? S.video.frames : S.queue ? S.queue : [];
+          if (frames[targetIdx] && typeof openFrame === 'function') {
+            openFrame(frames[targetIdx].frame_id);
+          }
+        }
+      });
+    }
+
+    if (frameInput) {
+      frameInput.addEventListener('change', () => {
+        const targetIdx = parseInt(frameInput.value, 10);
+        if (!isNaN(targetIdx) && typeof S !== 'undefined') {
+          const frames = S.video?.frames ? S.video.frames : S.queue ? S.queue : [];
+          if (frames[targetIdx] && typeof openFrame === 'function') {
+            openFrame(frames[targetIdx].frame_id);
+          }
+        }
+      });
+    }
+
+    // Left toolbar tools wiring
+    const toolFit = document.getElementById('tool-fit');
+    if (toolFit) {
+      toolFit.addEventListener('click', () => {
+        const btnReset = document.getElementById('btn-zoom-reset') || document.getElementById('btn3d-reset');
+        if (btnReset) btnReset.click();
+      });
+    }
+    const toolRotate = document.getElementById('tool-rotate');
+    if (toolRotate) {
+      toolRotate.addEventListener('click', () => {
+        const btnReset = document.getElementById('btn-zoom-reset') || document.getElementById('btn3d-reset');
+        if (btnReset) btnReset.click();
+      });
+    }
+  </script>
 </body>
 
 </html>
