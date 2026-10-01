@@ -2274,3 +2274,7 @@ body.in-project .brand-sub { display: none; }
 
 /* Thanh công cụ trên ảnh: xuống dòng thay vì tràn ra ngoài (nút + Box bị cắt) */
 .toolbar-actions { flex-wrap: wrap; }
+
+/* Dải sweep t-2 … t+2 dưới ảnh: giữ chiều cao cố định, ảnh chính co lại để nhường chỗ */
+.workspace > .filmstrip-head, .workspace > .filmstrip { flex: none; }
+.workspace > .filmstrip .film canvas { max-height: 92px; object-fit: contain; }
