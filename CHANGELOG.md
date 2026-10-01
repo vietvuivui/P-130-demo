@@ -30,6 +30,34 @@ Quy tắc:
 
 ---
 
+## 2026-10-02 · Kiên · nhánh `kien-mentor`
+
+**Làm gì:** Theo góp ý mentor: (1) làm việc nhiều người kiểu CVAT / Google Docs — tài khoản + đăng nhập, mời vào dự án
+bằng link (chỗ cắm SMTP), vai trò owner / reviewer / annotator, chia frame cho từng người, khoá frame đang mở (người khác
+chỉ xem, có "lấy quyền sửa"), hàng đợi lọc "Của tôi"; (2) thẻ object 2D / 3D gọn kiểu CVAT (một dòng #id · lớp · rủi ro ·
+nút, lỗi QA thành chip rê chuột xem); (3) box 3D bị che ≥ 50% hoặc cắt khỏi ảnh ≥ 60% vẽ nét đứt trên camera; (4) BoT-SORT
+cho lan truyền 2D (`propagation.association: botsort`: ngoại hình + bù chuyển động camera); (5) DAM4SAM (SAM 2.1) làm
+nguồn dự đoán box cho tracker (`propagation.flow: dam4sam`, cần GPU + repo DAM4SAM); (6) TrackEval: HOTA / MOTA / IDF1 cho
+nhãn 2D theo track_id và box 3D, bộ đo trong repo khớp TrackEval chính thức, tab Metrics có bảng tracking. Kèm các sửa
+trước đó: phát video mượt 10 fps (GET /videos/{id}/playback), dải sweep t-2…t+2 hiện lại, bấm box trên ảnh camera → box 3D.
+
+**File chính:** `src/services/users.py`, `src/api/auth_routes.py`, `src/api/auth_middleware.py` (mới); `src/services/botsort.py`,
+`src/services/trackeval.py`, `src/services/dam4sam.py`, `tools2d/dam4sam.py` (mới); `src/services/propagation.py`,
+`src/services/sequence.py`, `src/services/verify3d.py`, `src/web/{app,app3d,projects}.js`, `src/web/login.html`.
+
+**Ảnh hưởng tới người khác:** `Verify3D` thêm `visible_by_cam`, `occlusion_by_cam` (mặc định rỗng); `Project` thêm `members`;
+`PropagationCfg` thêm `association: botsort`, `flow: dam4sam`, `botsort_*`, `dam4sam_model`; `.env` thêm `AUTH_REQUIRED`,
+`AUTH_OPEN_SIGNUP`, `USERS_FILE`, `PUBLIC_URL`, `SMTP_*` (mặc định tắt: chạy một người như cũ). API mới: `/api/v1/auth/*`,
+`/api/v1/projects/{id}/members|invites|assignments|split`, `/api/v1/invites/{token}`, `/frames/{id}/lock`, `/presence`,
+`/metrics/tracking`, `/videos/{id}/playback`. Khi đã đăng nhập, POST sửa frame mà người khác đang giữ khoá → 409 FRAME_LOCKED.
+
+**Cách kiểm tra:** `pytest` (211 pass), `ruff check src tests`; `python -m src.cli trackeval --export-mot`;
+`scripts\tasks.ps1 evaltemporal` (có thêm cấu hình always+botsort, off+botsort); `scripts\tasks.ps1 dam4sam` (GPU);
+UI: đăng ký ở /ui/login.html → trang Dự án → Thành viên → tạo link mời → mở link ở trình duyệt khác → Chia việc.
+
+**Còn dở / việc tiếp:** chạy BoT-SORT / DAM4SAM / TrackEval trên tập test (GPU) để có số; ngưỡng ngoại hình BoT-SORT
+(`botsort_appearance`) mới chọn tay, cần dò trên dev; gửi mail cần SMTP; chưa có đổi mật khẩu / quên mật khẩu.
+
 ## 2026-10-01 (2) · Kiên · nhánh `kien`
 
 **Làm gì:**

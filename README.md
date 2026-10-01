@@ -46,6 +46,13 @@ bước: [docs/demo-script.md](docs/demo-script.md). `python -m src.demo --reset
 uvicorn src.main:app --port 8000      # mở http://localhost:8000 → trang Dự án
 ```
 
+**Làm việc nhiều người** (kiểu CVAT / Google Docs, `src/services/users.py`): đăng ký ở `/ui/login.html` (người đầu tiên là
+admin); ở thẻ dự án bấm **Thành viên** → nhập email, chọn vai trò → **Tạo link mời** (gửi mail nếu có `SMTP_*`, không thì
+copy link gửi tay); người được mời mở link, tạo tài khoản là vào dự án; **Chia việc** chia đều frame chưa duyệt cho các
+thành viên đã tick. Trong trang gán nhãn: chip **Của tôi** lọc frame được giao, tên người duyệt lấy theo tài khoản, ai đang
+mở frame nào hiện 🔒 ở hàng đợi; frame người khác đang mở chỉ xem được (có "Lấy quyền sửa"). Vai trò: owner mời / chia việc,
+reviewer duyệt / trả lại / chia việc, annotator gán nhãn. Bật `AUTH_REQUIRED=1` để bắt buộc đăng nhập.
+
 Mỗi dự án có một thư mục riêng `data/projects/<id>/`, gồm:
 
 - file tải lên;
@@ -303,6 +310,10 @@ vẫn chạy được bản demo.
 | `AUTOLABEL_CONFIG` | `./configs/autolabel.yaml` | Mô hình, ngưỡng, trọng số QA Agent, lan truyền |
 | `REVIEWER_NAME` | `annotator` | Tên ghi vào correction log |
 | `MM3D_PYTHON` | (tự tìm `.venv-mm3d`) | Python của môi trường MMDetection3D cho bước 3D |
+| `AUTH_REQUIRED` | `false` | `true`: phải đăng nhập mới dùng API / UI (tài khoản ở `USERS_FILE`, mặc định `./data/users.json`) |
+| `AUTH_OPEN_SIGNUP` | `false` | Cho tự đăng ký sau người đầu tiên (mặc định chỉ vào qua link mời) |
+| `PUBLIC_URL` | (lấy từ request) | Gốc của link mời gửi cho người khác, vd `http://192.168.1.10:8000` |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | — | Gửi mail mời; chưa có thì UI hiện link để gửi tay |
 | `APP_HOST`, `APP_PORT`, `APP_ENV`, `LOG_LEVEL`, `CORS_ORIGINS` | `0.0.0.0`, `8000`, `development`, `INFO`, `http://localhost:3000` | Web server |
 | `AI_LOG_SERVER`, `AI_LOG_API_KEY`, `AI_LOG_DIR` | — | Hook ghi log AI khi commit / push (giảng viên cấp key) |
 | `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT`, `LANGCHAIN_TRACING_V2` | — | Tuỳ chọn: trace QA Agent lên LangSmith |

@@ -7,6 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from src.api.auth_middleware import auth_middleware
+from src.api.auth_routes import auth_router
 from src.api.projects_routes import projects_router
 from src.api.routes import resume_videos, router
 from src.api.routes3d import router3d
@@ -57,6 +59,8 @@ app.add_middleware(
 app.include_router(router, prefix="/api/v1")
 app.include_router(router3d, prefix="/api/v1")
 app.include_router(projects_router, prefix="/api/v1")
+app.include_router(auth_router, prefix="/api/v1")
+app.middleware("http")(auth_middleware)
 # Cùng API duyệt, gắn theo dự án: /p/<id>/api/v1/frames ... (UI mở bằng /ui/?project=<id>)
 app.include_router(router, prefix="/p/{project_id}/api/v1", include_in_schema=False)
 app.include_router(router3d, prefix="/p/{project_id}/api/v1", include_in_schema=False)
