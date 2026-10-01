@@ -7,7 +7,8 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 RiskLevel = Literal["low", "medium", "high"]
-IssueGroup = Literal["detection", "lidar", "temporal", "geometric"]
+# qc: issue do bước QC gắn thêm sau khi người đã duyệt (vd. audit ngẫu nhiên phát hiện sai)
+IssueGroup = Literal["detection", "lidar", "temporal", "geometric", "qc"]
 HumanAction = Literal["KEEP", "DELETE", "CHANGE_CLASS", "EDIT_BOX", "ADD_BOX", "BATCH_APPROVE", "PROPAGATED_DELETE"]
 ObjectSource = Literal["model", "track", "human", "propagated"]
 
@@ -24,6 +25,8 @@ class Detection(BaseModel):
     alternatives: dict[str, float] = Field(default_factory=dict)
     # Mask segmentation sơ bộ (model -seg): đa giác [x1, y1, x2, y2, ...] theo pixel, FR-04
     mask: list[float] | None = None
+    # Score gốc của detector khi `score` đã được tính lại theo các sweep lân cận (temporal_fusion.py)
+    det_score: float | None = None
 
 
 class QAIssue(BaseModel):
@@ -80,6 +83,8 @@ class LabelObject(BaseModel):
     propagation: PropagationInfo | None = None
     models: dict[str, float] = Field(default_factory=dict)
     alternatives: dict[str, float] = Field(default_factory=dict)
+    # Score gốc của detector khi `score` đã được tính lại theo các sweep lân cận
+    det_score: float | None = None
     # Mask sơ bộ từ detector (đa giác phẳng [x1, y1, ...]); bỏ khi người sửa box (không còn khớp), FR-04
     mask: list[float] | None = None
     # Box của cùng object ở các sweep lân cận, key là offset ("-2", "-1", "1", "2")
@@ -96,9 +101,64 @@ class ImageInfo(BaseModel):
     height: int = 900
 
 
+class SweepBox(BaseModel):
+    """Một box ở sweep khi người sửa tự do (FR-05 mở rộng): chỉ dùng cho QA / score của keyframe, không xuất ra."""
+
+    box_id: str
+    bbox: list[float] = Field(..., min_length=4, max_length=4)
+    label: str
+    score: float
+    source: Literal["model", "human"] = "model"
+    review: ReviewState = Field(default_factory=ReviewState)
+
+
 class SweepInfo(ImageInfo):
     offset: int
+    # Detection máy sinh (giữ nguyên, không sửa)
     detections: list[Detection] = Field(default_factory=list)
+    # Bản người đã sửa: tạo từ detections ở lần sửa đầu tiên; None = chưa ai sửa sweep này
+    boxes: list[SweepBox] | None = None
+
+
+class SweepActionRequest(BaseModel):
+    action: Literal["KEEP", "DELETE", "CHANGE_CLASS", "EDIT_BOX", "ADD_BOX", "RESTORE"]
+    box_id: str | None = None
+    bbox: list[float] | None = Field(None, min_length=4, max_length=4)
+    label: str | None = None
+    reviewer: str | None = None
+
+
+QCSeverity = Literal["error", "warning"]
+
+
+class QCFinding(BaseModel):
+    """Một lỗi QC trên nhãn cuối (sau khi người sửa) hoặc trên file nhãn kiểm nhanh.
+
+    error: nhãn hỏng, phải sửa. warning: đáng ngờ, sửa hoặc xác nhận "đã kiểm, giữ nguyên" (ack).
+    """
+
+    code: str
+    severity: QCSeverity
+    message: str
+    frame_id: str
+    object_id: str | None = None
+    # Object thứ hai của cặp (box trùng, chồng khác lớp)
+    other_object_id: str | None = None
+    # Đề xuất sửa: {"action": "DELETE" | "EDIT_BOX" | "ADD_BOX" | "CHANGE_CLASS", "object_id"?, "bbox"?, "label"?}
+    suggestion: dict | None = None
+    # key: định danh finding trong frame; fingerprint: băm trạng thái cuối của object liên quan.
+    # Ack chỉ còn hiệu lực khi cả hai khớp: sửa box sau khi ack thì phải kiểm lại
+    key: str
+    fingerprint: str
+    acked: bool = False
+
+
+class QCAck(BaseModel):
+    key: str
+    fingerprint: str
+    reviewer: str
+    at: str
+    note: str = ""
 
 
 class FrameRecord(BaseModel):
@@ -127,11 +187,16 @@ class FrameRecord(BaseModel):
     # Thời gian auto-label (detect + QA) của frame và phiên chạy, để đo throughput inference (FR-27)
     autolabel_s: float | None = None
     autolabel_run: str | None = None
+    # Giây theo từng bước (detect, lidar, flow, qa / detect_6cam, points, verify), src/services/timing.py
+    autolabel_timing: dict[str, float] | None = None
     # Lan truyền: frame gốc và lúc lan truyền. prelabel giữ bản pre-label trước lần lan truyền
     # đầu tiên, để lan truyền lại (từ keyframe khác) luôn bắt đầu từ cùng một điểm.
     propagated_from: str | None = None
     propagated_at: str | None = None
     prelabel: list[LabelObject] | None = None
+    # QC: xác nhận của người cho warning QC, và finding do audit ngẫu nhiên gắn vào (vd. frame còn vật bị sót)
+    qc_acks: list[QCAck] = Field(default_factory=list)
+    qc_manual: list[QCFinding] = Field(default_factory=list)
 
 
 class FrameSummary(BaseModel):
@@ -254,3 +319,88 @@ class ExportResponse(BaseModel):
     n_frames: int
     n_objects: int
     files: list[str]
+    # READY / NOT_READY theo checklist QC lúc xuất (chi tiết trong manifest.json và qa_report.md)
+    release_status: str | None = None
+    # Frame đã approve nhưng nhãn cuối còn lỗi QC chưa xử lý -> không xuất
+    frames_skipped_qc: list[str] = Field(default_factory=list)
+
+
+# ---- QC ----
+
+
+class FrameQCResponse(BaseModel):
+    frame_id: str
+    findings: list[QCFinding] = Field(default_factory=list)
+    # Số finding chưa sửa / chưa ack (chặn approve khi > 0)
+    open: int = 0
+
+
+class QCAckRequest(BaseModel):
+    key: str
+    fingerprint: str
+    note: str = Field(default="", max_length=300)
+    reviewer: str | None = None
+
+
+class AuditItem(BaseModel):
+    """Một mẫu audit: object đã duyệt theo lô (kind=object) hoặc frame đã approve (kind=frame, kiểm vật bị sót)."""
+
+    audit_id: str
+    kind: Literal["object", "frame"]
+    frame_id: str
+    object_id: str | None = None
+    seed: int
+    created_at: str
+    # Nhãn lúc lấy mẫu (object) để người audit thấy đúng thứ đã được duyệt
+    label: str | None = None
+    bbox: list[float] | None = None
+    result: Literal["ok", "error"] | None = None
+    note: str = ""
+    reviewer: str | None = None
+    at: str | None = None
+
+
+class AuditSampleRequest(BaseModel):
+    kind: Literal["object", "frame"] = "object"
+    # None = theo config (object_sample_size / frame_sample_size)
+    size: int | None = Field(default=None, ge=1, le=1000)
+    seed: int | None = None
+
+
+class AuditResultRequest(BaseModel):
+    result: Literal["ok", "error"]
+    note: str = Field(default="", max_length=300)
+    reviewer: str | None = None
+
+
+class QuickCheckLabel(BaseModel):
+    object_id: str
+    label: str
+    bbox: list[float]
+
+
+class QuickCheckFrame(BaseModel):
+    frame_id: str | None = None
+    file_name: str | None = None
+    in_workspace: bool = False
+    width: int | None = None
+    height: int | None = None
+    labels: list[QuickCheckLabel] = Field(default_factory=list)
+    findings: list[QCFinding] = Field(default_factory=list)
+
+
+class QuickCheckResponse(BaseModel):
+    file_name: str
+    format: str
+    n_frames: int
+    n_labels: int
+    n_errors: int
+    n_warnings: int
+    # Cảnh báo file ghi là người đã xem và giữ nguyên (qc_acknowledged, issue của nhãn KEEP): không tính là lỗi mở
+    n_acked: int = 0
+    # Chỉ đếm finding còn mở
+    by_code: dict[str, int] = Field(default_factory=dict)
+    frames: list[QuickCheckFrame] = Field(default_factory=list)
+    elapsed_ms: float
+    # Lỗi đọc file không gắn được vào frame/nhãn nào (dòng JSON hỏng, ...)
+    parse_errors: list[str] = Field(default_factory=list)

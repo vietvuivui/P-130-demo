@@ -1,0 +1,1278 @@
+{
+ "dev": {
+  "ensemble/ego_only": {
+   "starts": 24,
+   "tracks_started": 942,
+   "outputs": 3980,
+   "correct": 3650,
+   "id_switch": 182,
+   "wrong": 148,
+   "lost": 2470,
+   "present": 6205,
+   "model_sees": 4643,
+   "correct_rate": 0.9171,
+   "coverage": 0.5882,
+   "mean_center_err_m": 0.181,
+   "per_hop": {
+    "1": {
+     "outputs": 568,
+     "wrong": 18,
+     "correct": 531,
+     "present": 813,
+     "lost": 275,
+     "model_sees": 602,
+     "id_switch": 19
+    },
+    "2": {
+     "outputs": 537,
+     "correct": 495,
+     "wrong": 20,
+     "present": 774,
+     "model_sees": 575,
+     "lost": 266,
+     "id_switch": 22
+    },
+    "3": {
+     "outputs": 480,
+     "correct": 451,
+     "present": 750,
+     "model_sees": 566,
+     "lost": 292,
+     "wrong": 17,
+     "id_switch": 12
+    },
+    "4": {
+     "outputs": 440,
+     "correct": 403,
+     "present": 681,
+     "model_sees": 510,
+     "lost": 268,
+     "wrong": 16,
+     "id_switch": 21
+    },
+    "5": {
+     "outputs": 404,
+     "correct": 375,
+     "wrong": 12,
+     "present": 626,
+     "model_sees": 486,
+     "lost": 244,
+     "id_switch": 17
+    },
+    "6": {
+     "outputs": 376,
+     "correct": 341,
+     "wrong": 16,
+     "id_switch": 19,
+     "present": 597,
+     "model_sees": 457,
+     "lost": 246
+    },
+    "7": {
+     "outputs": 337,
+     "wrong": 14,
+     "correct": 301,
+     "id_switch": 22,
+     "present": 550,
+     "lost": 238,
+     "model_sees": 407
+    },
+    "8": {
+     "outputs": 305,
+     "wrong": 16,
+     "correct": 276,
+     "id_switch": 13,
+     "present": 532,
+     "lost": 247,
+     "model_sees": 384
+    },
+    "9": {
+     "outputs": 280,
+     "correct": 248,
+     "present": 469,
+     "model_sees": 345,
+     "lost": 214,
+     "wrong": 13,
+     "id_switch": 19
+    },
+    "10": {
+     "present": 413,
+     "lost": 180,
+     "outputs": 253,
+     "correct": 229,
+     "id_switch": 18,
+     "model_sees": 311,
+     "wrong": 6
+    }
+   }
+  },
+  "ensemble/velocity": {
+   "starts": 24,
+   "tracks_started": 942,
+   "outputs": 4343,
+   "correct": 4049,
+   "id_switch": 143,
+   "wrong": 151,
+   "lost": 2115,
+   "present": 6205,
+   "model_sees": 4643,
+   "correct_rate": 0.9323,
+   "coverage": 0.6525,
+   "mean_center_err_m": 0.181,
+   "per_hop": {
+    "1": {
+     "outputs": 610,
+     "wrong": 20,
+     "correct": 574,
+     "present": 813,
+     "lost": 235,
+     "model_sees": 602,
+     "id_switch": 16
+    },
+    "2": {
+     "outputs": 575,
+     "correct": 542,
+     "wrong": 18,
+     "present": 774,
+     "model_sees": 575,
+     "lost": 227,
+     "id_switch": 15
+    },
+    "3": {
+     "outputs": 530,
+     "correct": 503,
+     "present": 750,
+     "model_sees": 566,
+     "lost": 242,
+     "wrong": 18,
+     "id_switch": 9
+    },
+    "4": {
+     "outputs": 484,
+     "correct": 451,
+     "present": 681,
+     "model_sees": 510,
+     "lost": 226,
+     "wrong": 16,
+     "id_switch": 17
+    },
+    "5": {
+     "outputs": 441,
+     "correct": 414,
+     "wrong": 13,
+     "present": 626,
+     "model_sees": 486,
+     "lost": 210,
+     "id_switch": 14
+    },
+    "6": {
+     "outputs": 415,
+     "correct": 383,
+     "wrong": 18,
+     "id_switch": 14,
+     "present": 597,
+     "model_sees": 457,
+     "lost": 209
+    },
+    "7": {
+     "outputs": 370,
+     "wrong": 13,
+     "correct": 340,
+     "id_switch": 17,
+     "present": 550,
+     "lost": 205,
+     "model_sees": 407
+    },
+    "8": {
+     "outputs": 336,
+     "wrong": 14,
+     "correct": 312,
+     "id_switch": 10,
+     "present": 532,
+     "lost": 216,
+     "model_sees": 384
+    },
+    "9": {
+     "outputs": 306,
+     "correct": 278,
+     "present": 469,
+     "model_sees": 345,
+     "lost": 187,
+     "wrong": 12,
+     "id_switch": 16
+    },
+    "10": {
+     "present": 413,
+     "lost": 158,
+     "outputs": 276,
+     "correct": 252,
+     "id_switch": 15,
+     "model_sees": 311,
+     "wrong": 9
+    }
+   }
+  },
+  "ensemble/velocity_tuned": {
+   "starts": 24,
+   "tracks_started": 942,
+   "outputs": 4311,
+   "correct": 4074,
+   "id_switch": 106,
+   "wrong": 131,
+   "lost": 2135,
+   "present": 6212,
+   "model_sees": 4648,
+   "correct_rate": 0.945,
+   "coverage": 0.6558,
+   "mean_center_err_m": 0.174,
+   "per_hop": {
+    "1": {
+     "outputs": 590,
+     "wrong": 17,
+     "correct": 561,
+     "present": 813,
+     "lost": 252,
+     "model_sees": 602,
+     "id_switch": 12
+    },
+    "2": {
+     "outputs": 553,
+     "correct": 529,
+     "wrong": 14,
+     "present": 774,
+     "model_sees": 575,
+     "lost": 245,
+     "id_switch": 10
+    },
+    "3": {
+     "outputs": 536,
+     "correct": 513,
+     "present": 750,
+     "model_sees": 566,
+     "lost": 236,
+     "wrong": 17,
+     "id_switch": 6
+    },
+    "4": {
+     "outputs": 488,
+     "correct": 460,
+     "present": 681,
+     "model_sees": 510,
+     "lost": 220,
+     "wrong": 15,
+     "id_switch": 13
+    },
+    "5": {
+     "outputs": 445,
+     "correct": 419,
+     "wrong": 13,
+     "present": 626,
+     "model_sees": 486,
+     "lost": 207,
+     "id_switch": 13
+    },
+    "6": {
+     "outputs": 413,
+     "correct": 388,
+     "wrong": 13,
+     "id_switch": 12,
+     "present": 597,
+     "model_sees": 457,
+     "lost": 209
+    },
+    "7": {
+     "outputs": 366,
+     "wrong": 11,
+     "correct": 343,
+     "present": 550,
+     "lost": 207,
+     "model_sees": 407,
+     "id_switch": 12
+    },
+    "8": {
+     "outputs": 338,
+     "wrong": 13,
+     "correct": 320,
+     "present": 532,
+     "lost": 212,
+     "model_sees": 384,
+     "id_switch": 5
+    },
+    "9": {
+     "outputs": 307,
+     "correct": 284,
+     "present": 469,
+     "model_sees": 345,
+     "lost": 184,
+     "wrong": 11,
+     "id_switch": 12
+    },
+    "10": {
+     "present": 420,
+     "lost": 163,
+     "outputs": 275,
+     "correct": 257,
+     "model_sees": 316,
+     "id_switch": 11,
+     "wrong": 7
+    }
+   }
+  },
+  "centerpoint_voxel/ego_only": {
+   "starts": 24,
+   "tracks_started": 942,
+   "outputs": 4422,
+   "correct": 3960,
+   "id_switch": 251,
+   "wrong": 211,
+   "lost": 2135,
+   "present": 6188,
+   "model_sees": 4778,
+   "correct_rate": 0.8955,
+   "coverage": 0.6399,
+   "mean_center_err_m": 0.195,
+   "per_hop": {
+    "1": {
+     "outputs": 628,
+     "wrong": 23,
+     "correct": 581,
+     "present": 813,
+     "lost": 225,
+     "model_sees": 628,
+     "id_switch": 24
+    },
+    "2": {
+     "outputs": 596,
+     "correct": 535,
+     "wrong": 33,
+     "present": 774,
+     "model_sees": 596,
+     "lost": 227,
+     "id_switch": 28
+    },
+    "3": {
+     "outputs": 536,
+     "correct": 490,
+     "present": 750,
+     "model_sees": 582,
+     "lost": 251,
+     "wrong": 23,
+     "id_switch": 23
+    },
+    "4": {
+     "outputs": 488,
+     "correct": 438,
+     "present": 681,
+     "model_sees": 530,
+     "lost": 235,
+     "wrong": 24,
+     "id_switch": 26
+    },
+    "5": {
+     "outputs": 452,
+     "correct": 409,
+     "wrong": 18,
+     "present": 626,
+     "model_sees": 502,
+     "lost": 208,
+     "id_switch": 25
+    },
+    "6": {
+     "outputs": 418,
+     "correct": 371,
+     "wrong": 18,
+     "id_switch": 29,
+     "present": 597,
+     "model_sees": 469,
+     "lost": 213
+    },
+    "7": {
+     "outputs": 381,
+     "wrong": 26,
+     "correct": 327,
+     "id_switch": 28,
+     "present": 550,
+     "lost": 212,
+     "model_sees": 415
+    },
+    "8": {
+     "outputs": 339,
+     "correct": 298,
+     "id_switch": 22,
+     "wrong": 19,
+     "present": 522,
+     "lost": 215,
+     "model_sees": 391
+    },
+    "9": {
+     "outputs": 304,
+     "wrong": 16,
+     "present": 462,
+     "lost": 191,
+     "correct": 262,
+     "model_sees": 343,
+     "id_switch": 26
+    },
+    "10": {
+     "outputs": 280,
+     "correct": 249,
+     "present": 413,
+     "lost": 158,
+     "model_sees": 322,
+     "id_switch": 20,
+     "wrong": 11
+    }
+   }
+  },
+  "centerpoint_voxel/velocity": {
+   "starts": 24,
+   "tracks_started": 942,
+   "outputs": 4769,
+   "correct": 4365,
+   "id_switch": 208,
+   "wrong": 196,
+   "lost": 1792,
+   "present": 6188,
+   "model_sees": 4778,
+   "correct_rate": 0.9153,
+   "coverage": 0.7054,
+   "mean_center_err_m": 0.189,
+   "per_hop": {
+    "1": {
+     "outputs": 665,
+     "wrong": 20,
+     "correct": 625,
+     "present": 813,
+     "lost": 186,
+     "model_sees": 628,
+     "id_switch": 20
+    },
+    "2": {
+     "outputs": 634,
+     "correct": 585,
+     "wrong": 29,
+     "present": 774,
+     "model_sees": 596,
+     "lost": 187,
+     "id_switch": 20
+    },
+    "3": {
+     "outputs": 581,
+     "correct": 541,
+     "present": 750,
+     "model_sees": 582,
+     "lost": 207,
+     "wrong": 24,
+     "id_switch": 16
+    },
+    "4": {
+     "outputs": 530,
+     "correct": 487,
+     "present": 681,
+     "model_sees": 530,
+     "lost": 193,
+     "wrong": 21,
+     "id_switch": 22
+    },
+    "5": {
+     "outputs": 487,
+     "correct": 447,
+     "wrong": 18,
+     "present": 626,
+     "model_sees": 502,
+     "lost": 175,
+     "id_switch": 22
+    },
+    "6": {
+     "outputs": 456,
+     "correct": 416,
+     "wrong": 15,
+     "id_switch": 25,
+     "present": 597,
+     "model_sees": 469,
+     "lost": 177
+    },
+    "7": {
+     "outputs": 412,
+     "wrong": 21,
+     "correct": 365,
+     "id_switch": 26,
+     "present": 550,
+     "lost": 181,
+     "model_sees": 415
+    },
+    "8": {
+     "outputs": 372,
+     "correct": 335,
+     "id_switch": 19,
+     "wrong": 18,
+     "present": 522,
+     "lost": 182,
+     "model_sees": 391
+    },
+    "9": {
+     "outputs": 331,
+     "wrong": 16,
+     "present": 462,
+     "lost": 165,
+     "correct": 293,
+     "id_switch": 22,
+     "model_sees": 343
+    },
+    "10": {
+     "outputs": 301,
+     "correct": 271,
+     "present": 413,
+     "lost": 139,
+     "model_sees": 322,
+     "id_switch": 16,
+     "wrong": 14
+    }
+   }
+  },
+  "centerpoint_voxel/velocity_tuned": {
+   "starts": 24,
+   "tracks_started": 942,
+   "outputs": 4597,
+   "correct": 4250,
+   "id_switch": 175,
+   "wrong": 172,
+   "lost": 1955,
+   "present": 6212,
+   "model_sees": 4793,
+   "correct_rate": 0.9245,
+   "coverage": 0.6842,
+   "mean_center_err_m": 0.173,
+   "per_hop": {
+    "1": {
+     "outputs": 643,
+     "wrong": 17,
+     "correct": 608,
+     "present": 813,
+     "lost": 205,
+     "model_sees": 628,
+     "id_switch": 18
+    },
+    "2": {
+     "outputs": 610,
+     "correct": 566,
+     "wrong": 26,
+     "present": 774,
+     "model_sees": 596,
+     "lost": 207,
+     "id_switch": 18
+    },
+    "3": {
+     "outputs": 566,
+     "correct": 531,
+     "present": 750,
+     "model_sees": 582,
+     "lost": 218,
+     "wrong": 21,
+     "id_switch": 14
+    },
+    "4": {
+     "outputs": 519,
+     "correct": 476,
+     "present": 681,
+     "model_sees": 530,
+     "lost": 204,
+     "wrong": 21,
+     "id_switch": 22
+    },
+    "5": {
+     "outputs": 475,
+     "correct": 442,
+     "wrong": 16,
+     "present": 626,
+     "model_sees": 502,
+     "lost": 183,
+     "id_switch": 17
+    },
+    "6": {
+     "outputs": 439,
+     "correct": 405,
+     "wrong": 14,
+     "present": 597,
+     "model_sees": 469,
+     "lost": 192,
+     "id_switch": 20
+    },
+    "7": {
+     "outputs": 394,
+     "wrong": 18,
+     "correct": 355,
+     "present": 550,
+     "lost": 194,
+     "model_sees": 415,
+     "id_switch": 21
+    },
+    "8": {
+     "outputs": 355,
+     "wrong": 19,
+     "correct": 323,
+     "present": 532,
+     "lost": 208,
+     "model_sees": 396,
+     "id_switch": 13
+    },
+    "9": {
+     "outputs": 310,
+     "wrong": 11,
+     "present": 469,
+     "lost": 187,
+     "correct": 281,
+     "model_sees": 348,
+     "id_switch": 18
+    },
+    "10": {
+     "outputs": 286,
+     "correct": 263,
+     "present": 420,
+     "lost": 157,
+     "model_sees": 327,
+     "id_switch": 14,
+     "wrong": 9
+    }
+   }
+  }
+ },
+ "heldout": {
+  "ensemble/ego_only": {
+   "starts": 32,
+   "tracks_started": 780,
+   "outputs": 3283,
+   "correct": 3031,
+   "id_switch": 98,
+   "wrong": 154,
+   "lost": 2302,
+   "present": 5391,
+   "model_sees": 3828,
+   "correct_rate": 0.9232,
+   "coverage": 0.5622,
+   "mean_center_err_m": 0.223,
+   "per_hop": {
+    "1": {
+     "outputs": 449,
+     "correct": 433,
+     "wrong": 10,
+     "present": 691,
+     "model_sees": 484,
+     "lost": 255,
+     "id_switch": 6
+    },
+    "2": {
+     "outputs": 429,
+     "correct": 400,
+     "wrong": 22,
+     "present": 660,
+     "model_sees": 463,
+     "lost": 253,
+     "id_switch": 7
+    },
+    "3": {
+     "outputs": 402,
+     "correct": 372,
+     "wrong": 20,
+     "present": 639,
+     "model_sees": 450,
+     "lost": 260,
+     "id_switch": 10
+    },
+    "4": {
+     "outputs": 366,
+     "correct": 329,
+     "wrong": 23,
+     "present": 584,
+     "model_sees": 414,
+     "lost": 247,
+     "id_switch": 14
+    },
+    "5": {
+     "outputs": 314,
+     "correct": 288,
+     "wrong": 15,
+     "present": 518,
+     "model_sees": 374,
+     "lost": 224,
+     "id_switch": 11
+    },
+    "6": {
+     "outputs": 303,
+     "correct": 281,
+     "wrong": 9,
+     "present": 509,
+     "model_sees": 363,
+     "lost": 222,
+     "id_switch": 13
+    },
+    "7": {
+     "outputs": 283,
+     "correct": 260,
+     "wrong": 16,
+     "present": 490,
+     "model_sees": 344,
+     "lost": 227,
+     "id_switch": 7
+    },
+    "8": {
+     "outputs": 276,
+     "correct": 250,
+     "wrong": 16,
+     "present": 483,
+     "model_sees": 342,
+     "lost": 227,
+     "id_switch": 10
+    },
+    "9": {
+     "outputs": 247,
+     "correct": 225,
+     "wrong": 13,
+     "id_switch": 9,
+     "present": 439,
+     "model_sees": 321,
+     "lost": 207
+    },
+    "10": {
+     "outputs": 214,
+     "correct": 193,
+     "wrong": 10,
+     "id_switch": 11,
+     "present": 378,
+     "model_sees": 273,
+     "lost": 180
+    }
+   }
+  },
+  "ensemble/velocity": {
+   "starts": 32,
+   "tracks_started": 780,
+   "outputs": 3706,
+   "correct": 3475,
+   "id_switch": 67,
+   "wrong": 164,
+   "lost": 1877,
+   "present": 5391,
+   "model_sees": 3828,
+   "correct_rate": 0.9377,
+   "coverage": 0.6446,
+   "mean_center_err_m": 0.198,
+   "per_hop": {
+    "1": {
+     "outputs": 489,
+     "correct": 470,
+     "wrong": 12,
+     "present": 691,
+     "model_sees": 484,
+     "lost": 217,
+     "id_switch": 7
+    },
+    "2": {
+     "outputs": 475,
+     "correct": 449,
+     "wrong": 21,
+     "present": 660,
+     "model_sees": 463,
+     "lost": 205,
+     "id_switch": 5
+    },
+    "3": {
+     "outputs": 455,
+     "correct": 427,
+     "wrong": 21,
+     "present": 639,
+     "model_sees": 450,
+     "lost": 206,
+     "id_switch": 7
+    },
+    "4": {
+     "outputs": 417,
+     "correct": 383,
+     "wrong": 23,
+     "present": 584,
+     "model_sees": 414,
+     "lost": 196,
+     "id_switch": 11
+    },
+    "5": {
+     "outputs": 359,
+     "correct": 336,
+     "wrong": 17,
+     "present": 518,
+     "model_sees": 374,
+     "lost": 178,
+     "id_switch": 6
+    },
+    "6": {
+     "outputs": 347,
+     "correct": 326,
+     "wrong": 11,
+     "present": 509,
+     "model_sees": 363,
+     "lost": 179,
+     "id_switch": 10
+    },
+    "7": {
+     "outputs": 326,
+     "correct": 304,
+     "wrong": 15,
+     "present": 490,
+     "model_sees": 344,
+     "lost": 184,
+     "id_switch": 7
+    },
+    "8": {
+     "outputs": 319,
+     "correct": 296,
+     "wrong": 18,
+     "present": 483,
+     "model_sees": 342,
+     "lost": 183,
+     "id_switch": 5
+    },
+    "9": {
+     "outputs": 281,
+     "correct": 262,
+     "wrong": 14,
+     "present": 439,
+     "model_sees": 321,
+     "lost": 174,
+     "id_switch": 5
+    },
+    "10": {
+     "outputs": 238,
+     "correct": 222,
+     "wrong": 12,
+     "id_switch": 4,
+     "present": 378,
+     "model_sees": 273,
+     "lost": 155
+    }
+   }
+  },
+  "ensemble/velocity_tuned": {
+   "starts": 32,
+   "tracks_started": 780,
+   "outputs": 3514,
+   "correct": 3339,
+   "id_switch": 36,
+   "wrong": 139,
+   "lost": 2040,
+   "present": 5395,
+   "model_sees": 3829,
+   "correct_rate": 0.9502,
+   "coverage": 0.6189,
+   "mean_center_err_m": 0.186,
+   "per_hop": {
+    "1": {
+     "outputs": 472,
+     "correct": 459,
+     "wrong": 8,
+     "present": 691,
+     "model_sees": 484,
+     "lost": 232,
+     "id_switch": 5
+    },
+    "2": {
+     "outputs": 452,
+     "correct": 432,
+     "wrong": 18,
+     "present": 660,
+     "model_sees": 463,
+     "lost": 226,
+     "id_switch": 2
+    },
+    "3": {
+     "outputs": 434,
+     "correct": 414,
+     "wrong": 17,
+     "present": 639,
+     "model_sees": 450,
+     "lost": 223,
+     "id_switch": 3
+    },
+    "4": {
+     "outputs": 395,
+     "correct": 369,
+     "wrong": 18,
+     "present": 584,
+     "model_sees": 414,
+     "lost": 212,
+     "id_switch": 8
+    },
+    "5": {
+     "outputs": 337,
+     "correct": 320,
+     "wrong": 15,
+     "present": 518,
+     "model_sees": 374,
+     "lost": 197,
+     "id_switch": 2
+    },
+    "6": {
+     "outputs": 327,
+     "correct": 310,
+     "wrong": 10,
+     "present": 509,
+     "model_sees": 363,
+     "lost": 197,
+     "id_switch": 7
+    },
+    "7": {
+     "outputs": 306,
+     "correct": 287,
+     "wrong": 16,
+     "present": 490,
+     "model_sees": 344,
+     "lost": 202,
+     "id_switch": 3
+    },
+    "8": {
+     "outputs": 301,
+     "correct": 283,
+     "wrong": 15,
+     "present": 483,
+     "model_sees": 342,
+     "lost": 198,
+     "id_switch": 3
+    },
+    "9": {
+     "outputs": 266,
+     "correct": 252,
+     "wrong": 12,
+     "present": 443,
+     "model_sees": 322,
+     "lost": 188,
+     "id_switch": 2
+    },
+    "10": {
+     "outputs": 224,
+     "correct": 213,
+     "wrong": 10,
+     "id_switch": 1,
+     "present": 378,
+     "model_sees": 273,
+     "lost": 165
+    }
+   }
+  },
+  "centerpoint_voxel/ego_only": {
+   "starts": 32,
+   "tracks_started": 780,
+   "outputs": 3350,
+   "correct": 3064,
+   "id_switch": 115,
+   "wrong": 171,
+   "lost": 2234,
+   "present": 5391,
+   "model_sees": 3947,
+   "correct_rate": 0.9146,
+   "coverage": 0.5684,
+   "mean_center_err_m": 0.25,
+   "per_hop": {
+    "1": {
+     "outputs": 488,
+     "correct": 461,
+     "wrong": 16,
+     "present": 691,
+     "model_sees": 494,
+     "lost": 222,
+     "id_switch": 11
+    },
+    "2": {
+     "outputs": 449,
+     "correct": 416,
+     "wrong": 25,
+     "present": 660,
+     "model_sees": 476,
+     "lost": 234,
+     "id_switch": 8
+    },
+    "3": {
+     "outputs": 421,
+     "correct": 388,
+     "wrong": 24,
+     "present": 639,
+     "model_sees": 466,
+     "lost": 239,
+     "id_switch": 9
+    },
+    "4": {
+     "outputs": 378,
+     "correct": 346,
+     "wrong": 21,
+     "present": 584,
+     "model_sees": 427,
+     "lost": 231,
+     "id_switch": 11
+    },
+    "5": {
+     "outputs": 321,
+     "correct": 292,
+     "wrong": 18,
+     "present": 518,
+     "model_sees": 386,
+     "lost": 220,
+     "id_switch": 11
+    },
+    "6": {
+     "outputs": 306,
+     "correct": 277,
+     "present": 509,
+     "model_sees": 374,
+     "lost": 222,
+     "id_switch": 16,
+     "wrong": 13
+    },
+    "7": {
+     "outputs": 280,
+     "correct": 254,
+     "wrong": 16,
+     "present": 490,
+     "model_sees": 360,
+     "lost": 229,
+     "id_switch": 10
+    },
+    "8": {
+     "outputs": 269,
+     "correct": 241,
+     "wrong": 17,
+     "present": 483,
+     "model_sees": 351,
+     "lost": 229,
+     "id_switch": 11
+    },
+    "9": {
+     "outputs": 239,
+     "correct": 212,
+     "id_switch": 15,
+     "wrong": 12,
+     "present": 439,
+     "model_sees": 331,
+     "lost": 216
+    },
+    "10": {
+     "outputs": 199,
+     "correct": 177,
+     "id_switch": 13,
+     "present": 378,
+     "model_sees": 282,
+     "lost": 192,
+     "wrong": 9
+    }
+   }
+  },
+  "centerpoint_voxel/velocity": {
+   "starts": 32,
+   "tracks_started": 780,
+   "outputs": 3793,
+   "correct": 3529,
+   "id_switch": 103,
+   "wrong": 161,
+   "lost": 1786,
+   "present": 5391,
+   "model_sees": 3947,
+   "correct_rate": 0.9304,
+   "coverage": 0.6546,
+   "mean_center_err_m": 0.214,
+   "per_hop": {
+    "1": {
+     "outputs": 519,
+     "correct": 492,
+     "wrong": 16,
+     "present": 691,
+     "model_sees": 494,
+     "lost": 192,
+     "id_switch": 11
+    },
+    "2": {
+     "outputs": 498,
+     "correct": 465,
+     "wrong": 23,
+     "present": 660,
+     "model_sees": 476,
+     "lost": 184,
+     "id_switch": 10
+    },
+    "3": {
+     "outputs": 478,
+     "correct": 441,
+     "wrong": 26,
+     "present": 639,
+     "model_sees": 466,
+     "lost": 184,
+     "id_switch": 11
+    },
+    "4": {
+     "outputs": 429,
+     "correct": 395,
+     "wrong": 21,
+     "present": 584,
+     "model_sees": 427,
+     "lost": 181,
+     "id_switch": 13
+    },
+    "5": {
+     "outputs": 368,
+     "correct": 341,
+     "wrong": 17,
+     "present": 518,
+     "model_sees": 386,
+     "lost": 171,
+     "id_switch": 10
+    },
+    "6": {
+     "outputs": 354,
+     "correct": 327,
+     "present": 509,
+     "model_sees": 374,
+     "lost": 173,
+     "wrong": 13,
+     "id_switch": 14
+    },
+    "7": {
+     "outputs": 324,
+     "correct": 302,
+     "wrong": 13,
+     "present": 490,
+     "model_sees": 360,
+     "lost": 183,
+     "id_switch": 9
+    },
+    "8": {
+     "outputs": 316,
+     "correct": 293,
+     "wrong": 15,
+     "present": 483,
+     "model_sees": 351,
+     "lost": 182,
+     "id_switch": 8
+    },
+    "9": {
+     "outputs": 276,
+     "correct": 259,
+     "wrong": 9,
+     "present": 439,
+     "model_sees": 331,
+     "lost": 176,
+     "id_switch": 8
+    },
+    "10": {
+     "outputs": 231,
+     "correct": 214,
+     "id_switch": 9,
+     "present": 378,
+     "model_sees": 282,
+     "lost": 160,
+     "wrong": 8
+    }
+   }
+  },
+  "centerpoint_voxel/velocity_tuned": {
+   "starts": 32,
+   "tracks_started": 780,
+   "outputs": 3393,
+   "correct": 3234,
+   "id_switch": 48,
+   "wrong": 111,
+   "lost": 2129,
+   "present": 5395,
+   "model_sees": 3948,
+   "correct_rate": 0.9531,
+   "coverage": 0.5994,
+   "mean_center_err_m": 0.195,
+   "per_hop": {
+    "1": {
+     "outputs": 479,
+     "correct": 462,
+     "present": 691,
+     "model_sees": 494,
+     "lost": 229,
+     "wrong": 10,
+     "id_switch": 7
+    },
+    "2": {
+     "outputs": 457,
+     "correct": 435,
+     "wrong": 18,
+     "present": 660,
+     "model_sees": 476,
+     "lost": 221,
+     "id_switch": 4
+    },
+    "3": {
+     "outputs": 437,
+     "correct": 416,
+     "present": 639,
+     "model_sees": 466,
+     "lost": 217,
+     "wrong": 15,
+     "id_switch": 6
+    },
+    "4": {
+     "outputs": 390,
+     "correct": 366,
+     "present": 584,
+     "model_sees": 427,
+     "lost": 213,
+     "wrong": 16,
+     "id_switch": 8
+    },
+    "5": {
+     "outputs": 321,
+     "correct": 308,
+     "present": 518,
+     "model_sees": 386,
+     "lost": 209,
+     "wrong": 11,
+     "id_switch": 2
+    },
+    "6": {
+     "outputs": 310,
+     "correct": 294,
+     "present": 509,
+     "model_sees": 374,
+     "lost": 212,
+     "wrong": 9,
+     "id_switch": 7
+    },
+    "7": {
+     "outputs": 285,
+     "correct": 270,
+     "wrong": 11,
+     "present": 490,
+     "model_sees": 360,
+     "lost": 217,
+     "id_switch": 4
+    },
+    "8": {
+     "outputs": 273,
+     "correct": 262,
+     "wrong": 9,
+     "present": 483,
+     "model_sees": 351,
+     "lost": 217,
+     "id_switch": 2
+    },
+    "9": {
+     "outputs": 239,
+     "correct": 229,
+     "wrong": 6,
+     "present": 443,
+     "model_sees": 332,
+     "lost": 211,
+     "id_switch": 4
+    },
+    "10": {
+     "outputs": 202,
+     "correct": 192,
+     "id_switch": 4,
+     "present": 378,
+     "model_sees": 282,
+     "lost": 183,
+     "wrong": 6
+    }
+   }
+  }
+ }
+}

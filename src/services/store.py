@@ -9,7 +9,7 @@ import threading
 import time
 from pathlib import Path
 
-from src.models.schemas import FrameRecord, VideoRecord
+from src.models.schemas import AuditItem, FrameRecord, VideoRecord
 from src.models.schemas3d import Frame3DRecord
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_\-]+$")
@@ -23,6 +23,10 @@ class WorkspaceStore:
         self.corrections_file = self.root / "corrections.jsonl"
         self.exports_dir = self.root / "exports"
         self.videos_dir = self.root / "videos"
+        # QC: mẫu audit ngẫu nhiên + nhật ký QC chỉ ghi thêm (ack warning, kết quả audit)
+        self.qc_dir = self.root / "qc"
+        self.audit_file = self.qc_dir / "audit.json"
+        self.qc_log_file = self.qc_dir / "qc_log.jsonl"
         self._lock = threading.Lock()
         self._cache: dict[str, tuple[tuple[int, int], FrameRecord]] = {}
 
@@ -201,8 +205,36 @@ class WorkspaceStore:
         self._write_json(self.history_path(kind, frame_id), history)
 
     def corrections(self, frame_id: str | None = None) -> list[dict]:
-        if not self.corrections_file.exists():
+        return self._read_jsonl(self.corrections_file, frame_id)
+
+    @staticmethod
+    def _read_jsonl(path: Path, frame_id: str | None = None) -> list[dict]:
+        if not path.exists():
             return []
-        with open(self.corrections_file, encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             entries = [json.loads(line) for line in f if line.strip()]
-        return [e for e in entries if frame_id is None or e["frame_id"] == frame_id]
+        return [e for e in entries if frame_id is None or e.get("frame_id") == frame_id]
+
+    # ---- QC ----
+
+    def load_audit(self) -> list[AuditItem]:
+        if not self.audit_file.exists():
+            return []
+        data = json.loads(self.audit_file.read_text(encoding="utf-8"))
+        return [AuditItem.model_validate(x) for x in data.get("items", [])]
+
+    def save_audit(self, items: list[AuditItem]) -> None:
+        with self._lock:
+            self._write_json(self.audit_file, {"items": [i.model_dump() for i in items]})
+
+    def append_qc_events(self, entries: list[dict]) -> None:
+        if not entries:
+            return
+        with self._lock:
+            self.qc_dir.mkdir(parents=True, exist_ok=True)
+            with open(self.qc_log_file, "a", encoding="utf-8") as f:
+                for e in entries:
+                    f.write(json.dumps(e, ensure_ascii=False) + "\n")
+
+    def qc_events(self, frame_id: str | None = None) -> list[dict]:
+        return self._read_jsonl(self.qc_log_file, frame_id)

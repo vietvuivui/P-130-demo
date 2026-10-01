@@ -30,6 +30,151 @@ Quy tắc:
 
 ---
 
+## 2026-10-01 (2) · Kiên · nhánh `kien`
+
+**Làm gì:**
+
+- **Bảng so sánh mọi phương pháp đã dùng** (2D, 3D; chỉ số quyết định, có / không dùng thì tăng / giảm bao nhiêu):
+  `eval/results/bang-so-sanh.md`. Đo thêm trên test 20 scene: lan truyền 2D không tracker / ByteTrack / OC-SORT /
+  ByteTrack + OC-SORT, có và không optical flow (`eval/results/tracker_test20.json`). ByteTrack vẫn tốt nhất (điểm 2180).
+- Kết quả `eval2d` của detector fine-tune lưu vào `eval/results/det2d_finetune.json`.
+- PRD: lịch sử tối ưu thêm dòng 17–18, bảng detector 2D, kết quả đo.
+- **Gate G2:** README thêm bảng biến môi trường và ví dụ gọi API kèm output thật; `.env.example` chỉ giữ biến dự án
+  dùng; `docs/eval-evidence.md` gồm 11 test case thủ công với output thực tế (1 lỗi đã biết: kiểm tra temporal với vật ở
+  gần chạy nhanh qua ảnh); sơ đồ kiến trúc cập nhật + `docs/architecture.png`.
+
+**File chính:** `eval/results/bang-so-sanh.md`, `eval/results/det2d_finetune.json`, `eval/results/tracker_test20.json`,
+`PRD-AutoLabel3D.md`, `README.md`, `.env.example`, `docs/eval-evidence.md`, `docs/architecture_diagram.md`.
+
+**Ảnh hưởng tới người khác:** `.env.example` bỏ các biến template không dùng (OpenAI, database, Chroma); còn lại chỉ tài liệu và số liệu.
+
+**Cách kiểm tra:** mở `eval/results/bang-so-sanh.md`.
+
+**Còn dở / việc tiếp:** chạy lại lan truyền 2D và QA với detector mới (`scripts\tasks.ps1 evaltemporal`).
+
+## 2026-10-01 · Kiên · nhánh `kien`
+
+**Làm gì:** Detector 2D mặc định đổi sang YOLOE-26L fine-tune trên nuImages (linear probe, 1280 px, 10 epoch trên RTX
+3090). Chấm trên nuScenes CAM_FRONT (`tools2d/eval2d.py`, ngưỡng 0.30, IoU 0.5):
+
+| | dev (119 ảnh) | held-out (957 ảnh) | P held-out | R held-out |
+|---|---|---|---|---|
+| zero-shot `yoloe-26l-seg.pt` | 0.392 | 0.312 | 0.499 | 0.523 |
+| linear probe nuImages | **0.429** | **0.366** | 0.484 | **0.581** |
+
+AP50 held-out tăng mạnh ở lớp yếu: barrier 0.13→0.33, bicycle 0.12→0.23, traffic_cone 0.39→0.50, motorcycle
+0.21→0.28, pedestrian 0.23→0.29; giảm nhẹ truck 0.52→0.47, bus 0.81→0.78; construction_vehicle / trailer vẫn ~0.
+
+**File chính:** `configs/autolabel.yaml` (`detection.yoloe.weights`), `weights/yoloe-26l-nuimages-lp-1280.pt` (commit
+trước, kèm `.sha256` và `results-lp-1280.csv`), `tools2d/train_pc.ps1` (sửa hàm `Data` trùng từ khoá PowerShell).
+
+**Ảnh hưởng tới người khác:** Config đổi detector mặc định. Trọng số mới là **tập lớp đóng 10 lớp nuScenes**: prompt chữ /
+lớp thêm mới không có tác dụng; cần open-vocab thì đặt lại `yoloe-26l-seg.pt`. Cần `git pull` để có file `.pt`
+(50.6 MB, nằm ngoài `.gitignore` nhờ `git add -f`). Cache detection cũ không bị dùng lại (khoá theo tên trọng số).
+
+**Cách kiểm tra:** `powershell -ExecutionPolicy Bypass -File scripts\tasks.ps1 eval2d -Weights weights\yoloe-26l-nuimages-lp-1280.pt`
+
+**Còn dở / việc tiếp:** Bản fine-tune toàn mạng (`full-1280`) đang train trên PC 3090; xong thì chấm lại cùng lệnh, giữ
+bản nào held-out cao hơn.
+
+## 2026-09-30 (2) · Kiên · nhánh `kien`
+
+**Làm gì:**
+
+- **Tab ⚙ Cài đặt** trên UI (mở cả từ thẻ dự án): chỉnh optical flow, cách ghép của tracker, tính lại score theo sweep,
+  ngưỡng giữ box, số keyframe lan truyền; lưu theo workspace / dự án. Nút **Áp dụng lại** và **Chạy đánh giá** (trước /
+  sau) chạy nền — không phải sửa config hay mở terminal.
+- **Tracker lan truyền 2D ghép hai lượt kiểu ByteTrack** (mặc định). Dev: box sai 224 → 203; held-out 4 scene: 329 → 300.
+- **Optical flow đo lại trên 20 scene held-out (795 keyframe, GPU):** nhãn lan truyền đúng 2910 → 3329 (+14%), đổi ID
+  265 → 97. Thử "tin box sweep score thấp" cho QA: lỗi lọt qua tăng, không bật.
+- **Lan truyền box 3D đã duyệt:** approve một keyframe 3D thì box sang các keyframe sau (bù chuyển động xe + vận tốc,
+  lớp / kích thước theo người, box người xoá tự xoá). UI 3D: ô "↦ Lan truyền", phím `T`. Held-out 4 scene: ~95% box
+  đúng vật, đổi ID 98 → 36.
+- **Đo thời gian từng bước** (2D, 3D, nạp model, làm mờ ảnh): bảng ở tab Metrics, lệnh `profile`. CPU: detect
+  17.7 s/frame; GPU laptop: 2D ~1 s, 3D ~4 s/frame.
+- `tasks.ps1 serve -Workspace` để demo; ẩn cảnh báo `'half' is deprecated`.
+- **Ảnh BEV dễ nhìn hơn** (3D và 2D): ghép mặt đường từ ±4 keyframe cùng scene theo ego pose, mỗi ô lấy từ lần camera
+  nhìn gần nhất — lấp vùng bị xe che, hết nhoè ở xa, 2D đặt vạch đường đúng chỗ hơn; bỏ vệt cốp / capô xe mình, dọn mảnh vụn.
+- **Mô hình 3D trên tập test** (24 scene, 957 keyframe, so với nhãn gốc): ensemble 4 LiDAR + track mAP 0.668 / NDS 0.713,
+  CenterPoint voxel 0.578 (`eval/results/det3d_heldout.md`).
+- **Thử ý tưởng VESPA** (box 3D từ box 2D + LiDAR, hướng theo chuyển động, cỡ theo lớp): không tăng mAP, không bật
+  (`eval/results/vespa.md`; `src/services/fill3d.py` giữ để thử tiếp).
+- **Thử OC-SORT** (OCR / ORU / OCM) cho tracker lan truyền 2D và 3D, đo trước / sau trên dev và test: 2D không lợi (tắt,
+  bật được ở tab Cài đặt); 3D bật phần giữ track qua che khuất `propagation3d.max_misses: 2 → 4` — test 24 scene nhãn đúng
+  +1.6%, đổi ID 470 → 543 (`eval/results/ocsort.md`).
+- PRD: trạng thái từng FR, mô hình đã thử, lịch sử 16 lần tối ưu, kết quả đo, giải thích công cụ; slide MVP + so sánh.
+
+**File chính:**
+
+- Mới: `src/services/ui_settings.py`, `jobs.py`, `relabel.py`, `temporal_eval.py`, `timing.py`, `profiling.py`,
+  `propagation3d.py`, `propagation3d_eval.py`, `fill3d.py`, `tools3d/eval_propagation3d.py`,
+  `eval/results/propagation3d.md`, `det3d_heldout.md`, `vespa.md`, `ocsort.md`, `tests/test_services/test_ocsort.py`.
+- Sửa: `propagation.py`, `pipeline.py`, `bev.py`, `routes.py`, `routes3d.py`, `projects.py`, `label3d.py`, `privacy.py`,
+  `cli.py`, `web/app.js`, `web/app3d.js`, `configs/autolabel.yaml`, `scripts/tasks.ps1`, `PRD-AutoLabel3D.md`.
+
+**Ảnh hưởng tới người khác:**
+
+- Schema: `FrameRecord.autolabel_timing`, `Frame3DRecord.autolabel_timing` / `propagated_from` / `propagated_at` /
+  `prelabel`; `Object3D.source` thêm `"propagated"`, `Object3D.propagation`.
+- Config: `propagation.association`, `byte_high_score`, `byte_low_iou`, `oc_*`; `qa.temporal.sweep_min_score`;
+  `propagation3d` (`max_misses` mặc định 4, `oc_*`).
+- `routes.get_config(request)` áp thêm `<workspace>/settings.json`; có thêm `get_base_config`. Bước gán nhãn của dự án
+  cũng dùng cài đặt này.
+- API mới: `/settings`, `/relabel`, `/eval-temporal`, `/timing`, `POST /3d/frames/{m}/{f}/propagate`.
+- `bev.bev_mosaic(..., neighbors=)`, `bev.bev_camera(..., neighbors=)`; `GET /3d/frames/{m}/{f}/bev?fuse=false` để lấy ảnh một frame như cũ.
+
+**Cách kiểm tra:**
+
+- `pytest` (152 pass), `ruff check src tests`.
+- UI: tab ⚙ Cài đặt → đổi một mục → Lưu → Áp dụng lại → Chạy đánh giá; chế độ 3D: approve có ô "↦ Lan truyền".
+- `scripts\tasks.ps1 profile`, `scripts\tasks.ps1 evalprop3d` (đủ 27 scene val).
+
+**Còn dở / việc tiếp:** Chạy `evalprop3d` trên 27 scene; nhóm quyết định có bật `rescore: mean` không.
+
+---
+
+## 2026-09-30 · Kiên · nhánh `kien`
+
+**Làm gì:** Đưa ý tưởng *Deep Feature Flow* (arXiv:1611.07715) vào sản phẩm ở mức box (optical flow OpenCV DIS, không
+train lại detector) và cho sửa nhãn ở các sweep t−2…t+2:
+
+- **Lan truyền nhãn dùng optical flow** (`propagation.flow: always`, mặc định bật). Held-out: +88 nhãn lan truyền
+  đúng (+11%), đổi ID 26 → 11, mất dấu −23%.
+- **QA temporal dùng flow + tính lại score theo sweep** (`qa.temporal.flow`, `qa.temporal.rescore`): có sẵn, **tắt
+  mặc định**. mAP không đổi; bật `flow + mean` bớt ~60% box phải xem tay nhưng lỗi còn lại sau duyệt +5–7%.
+- **Sửa tự do ở sweep** trên UI 2D: click ô t±1/t±2, keep / xoá / đổi lớp / sửa box / vẽ thêm / khôi phục, có
+  hoàn tác. Keyframe được tính lại ngay (FLICKER, RECOVERED_BY_TRACK, risk). Tracker lan truyền dùng bản đã sửa.
+  Box ở sweep không được xuất.
+- Bảng trước / sau (dev 119 + held-out 159 keyframe): `eval/results/temporal/report.md`.
+
+**File chính:**
+
+- Mới: `src/services/flow.py`, `src/services/temporal_fusion.py`, `src/services/sweep_review.py`,
+  `tools2d/eval_temporal.py`.
+- Sửa: `pipeline.py`, `agents/nodes/temporal.py`, `propagation.py`, `sequence.py`, `routes.py`, `web/app.js`.
+
+**Ảnh hưởng tới người khác:**
+
+- Schema:
+  - `Detection.det_score`, `LabelObject.det_score`;
+  - `SweepInfo.boxes` (list `SweepBox`, None = chưa sửa);
+  - `SweepActionRequest`.
+- API: `POST /frames/{id}/sweeps/{offset}/actions`.
+- Config: `qa.temporal.flow`, `flow_scale`, `rescore`; `propagation.flow`, `flow_scale`.
+- `evaluate_propagation(..., start_every=)`.
+- `WorkspaceSequenceSource(..., dataroot)`.
+- Báo cáo năng suất có cột "Box sweep đã sửa". Frame cũ vẫn đọc được.
+
+**Cách kiểm tra:**
+
+- `pytest` (129 pass), `ruff check src tests`.
+- UI: mở một frame, click ô t−1 ở dải dưới, xoá / vẽ box, xem keyframe đổi cờ.
+- `python tools2d/eval_temporal.py --dataroot <nuscenes> --workspace <ws đã run> --out <thư mục>`.
+
+**Còn dở / việc tiếp:**
+
+- Nhóm quyết định có bật `flow + mean` (đổi chất lượng lấy công duyệt) hay không.
+- Đo lại trên GPU với nhiều scene hơn.
 ## 2026-10-01 · Danh · nhánh `danh`
 
 **Làm gì:** Khắc phục xung đột sau khi merge nhánh `main` vào nhánh `danh`. Tái thiết kế và đồng bộ toàn diện giao diện Trang Dự án (`projects.html`) và Trang Workspace (`index.html`) theo hệ thống thiết kế chung. Khôi phục toàn bộ pipeline progress, terminal logs, modal tạo dự án kéo thả đa file; sửa triệt để lỗi cuộn và vỡ bố cục trên trang workstation; hoàn thiện drawer hàng đợi frame (`.queue-drawer`); đồng bộ thanh media player controls, scrubber, input frame và liên kết ngữ cảnh dự án (`project=...`) xuyên suốt giữa các trang `projects.html`, `frames.html`, `index.html` và `export.html`.
@@ -230,6 +375,85 @@ chọn); `Object3D` thêm `original_box`; log 3D thêm `source`, `final_box`; me
 **Cách kiểm tra:** `pytest` (97 passed); mở UI → 🧊 3D → `I` bật ảnh BEV, `B` vẽ box, `F` co khít, `Enter` lưu.
 
 **Còn dở / việc tiếp:** box người vẽ chưa qua QA Agent (coi là đã duyệt); chưa lan truyền box 3D sang keyframe sau.
+## 2026-09-29 (2) · Huy · nhánh `Huy`
+
+**Làm gì:** Đổi detector mặc định từ YOLO-World sang **YOLOE-26-L** (https://huggingface.co/openvision/yoloe26-l-seg,
+open-vocab, đủ 10 lớp bằng prompt). Thêm detector tuỳ chọn **YOLO26-L** (https://github.com/ultralytics/yolo26, COCO).
+Fusion nhiều model chỉ tính phiếu của model nhận được lớp đó. Thêm script tải weights có kiểm SHA256. Đo trên 79
+keyframe nuScenes: [eval/results/detector_comparison.md](eval/results/detector_comparison.md).
+
+**File chính:**
+- Mới: `src/services/detectors/yoloe26.py`, `src/services/detectors/yolo26.py`, `scripts/download_weights.py`,
+  `tests/test_services/test_detectors_yolo26.py`, `eval/results/detector_comparison.md`.
+- Sửa: `src/services/detectors/__init__.py` (`detector_classes`, `DetectorEnsemble.coverage`),
+  `src/services/detectors/fusion.py` (tham số `coverage`), `src/models/qa_config.py`, `configs/autolabel.yaml`,
+  `requirements-ml.txt`, `.gitignore` (`weights/`), README, ARCHITECTURE.
+
+**Ảnh hưởng tới người khác:**
+- **Config:** `detection.detectors` mặc định `[yoloe26]`; thêm mục `detection.yoloe26`, `detection.yolo26`.
+  Muốn dùng lại model cũ: `detectors: [yolo_world]` hoặc `--detectors yolo_world` (cache cũ vẫn dùng được).
+- **Weights mới** phải có trước khi `run`: `python scripts/download_weights.py` (≈ 330 MB vào `weights/`:
+  yoloe-26l-seg.pt, mobileclip2_b.ts; `--all` thêm yolo26l.pt). Cần `ultralytics>=8.4`. File Hugging Face của
+  openvision là cùng model đã fuse Conv+BN (đã kiểm pickle + so kết quả), script nhận nó làm nguồn dự phòng.
+- `fuse_detections(per_model, iou, coverage=None)`: không truyền `coverage` thì hành vi như cũ.
+- Workspace đang có vẫn là nhãn YOLO-World; frame "auto" gán nhãn lại bằng model mới:
+  `python -m src.cli run --scenes <scene...> --overwrite`. Notebook Kaggle vẫn đặt `DETECTORS = ["yolo_world"]`.
+
+**Cách kiểm tra:** `pytest` → 114 passed; `python scripts/download_weights.py --check`;
+`python -m src.cli run --scenes scene-0061 --overwrite` rồi `python -m src.cli evaluate`.
+
+**Còn dở / việc tiếp:**
+- YOLOE-26-L một mình: mAP@0.5 0.281 so với 0.320 của YOLO-World — mạnh hơn ở bus / barrier, yếu hơn ở traffic_cone
+  (0.151 so với 0.490), motorcycle, pedestrian.
+- Tỉ lệ lỗi lọt trong nhóm low 0.459 (YOLO-World 0.277): chỉnh lại ngưỡng risk cho điểm số của model mới trước khi
+  bật "Approve all low-risk".
+- Chưa thử `imgsz` 640 cho YOLOE-26-L (model train ở 640; 1280 giúp vật nhỏ nhưng chưa đo).
+
+## 2026-09-29 · Huy · nhánh `Huy`
+
+**Làm gì:** Thêm phần QC gồm ba luồng. (1) **QC nhãn cuối**: sau mỗi thao tác của người, box người vẽ / đã sửa /
+đổi lớp được kiểm lại hình học + LiDAR, cả frame được kiểm box trùng và box khác lớp chồng khít. Approve bị chặn khi
+còn lỗi: sửa (có nút áp đề xuất) hoặc xác nhận cảnh báo kèm lý do. (2) **Audit ngẫu nhiên** phần duyệt theo lô (object)
+và frame (vật bị sót), ước lượng tỉ lệ lỗi bằng khoảng Wilson 95%; mẫu sai thì frame mở lại. (3) **Quick Check** file
+nhãn ngoài (COCO / JSONL), không ghi gì. Checklist READY trước khi xuất; export bỏ frame còn lỗi QC, thêm
+`qa_report.md`, `qc_log.jsonl`, manifest có trạng thái READY + SHA256 từng file + commit.
+
+**File chính:**
+- Mới: `src/services/qc/` (`checks.py`, `quick_check.py`, `audit.py`, `report.py`),
+  `tests/test_services/test_qc_*.py`, `tests/test_api/test_qc_api.py`.
+- Sửa: `src/api/routes.py`, `src/services/exporter.py`, `src/services/store.py`, `src/models/schemas.py`,
+  `src/models/qa_config.py`, `configs/autolabel.yaml`, `src/cli.py`, `src/web/*` (tab QC, khối QC trong panel review).
+
+**Ảnh hưởng tới người khác:**
+- **Approve đổi hành vi:** `POST /frames/{id}/approve` trả 409 `QC_FINDINGS` (kèm danh sách `findings`) khi nhãn cuối
+  còn lỗi QC chưa xử lý. Tắt bằng `qc.gate_on_approve: false`. `review.approve_frame` (gọi thẳng service) không đổi.
+- **Export đổi hành vi:** frame đã approve mà còn lỗi QC không được xuất (liệt kê trong `frames_skipped_qc`).
+  `POST /export?require_ready=true` trả 409 `NOT_READY` khi checklist chưa đạt. File export thêm `qc_log.jsonl`,
+  `qa_report.md`; `labels.jsonl` / `coco.json` thêm `qc_acknowledged` cho từng object, `labels.jsonl` thêm
+  `width` / `height`.
+- API mới: `GET /frames/{id}/qc`, `POST /frames/{id}/qc/ack`, `GET /qc/report`, `POST /qc/quick-check`,
+  `GET /qc/audit`, `POST /qc/audit/sample`, `POST /qc/audit/{id}`. `/config` thêm mục `qc`.
+- Schema: `FrameRecord` thêm `qc_acks`, `qc_manual` (mặc định rỗng, frame cũ đọc được); `IssueGroup` thêm `"qc"`
+  (issue `AUDIT_FAILED`); `ExportResponse` thêm `release_status`, `frames_skipped_qc`; thêm `QCFinding`, `QCAck`,
+  `AuditItem`, `QuickCheck*`.
+- Config thêm mục `qc:` (ngưỡng box trùng, cặp lớp được phép chồng, Quick Check, cỡ mẫu + ngưỡng audit).
+- Workspace thêm `qc/audit.json`, `qc/qc_log.jsonl`.
+- 2 test cũ (`test_review_flow_and_export`, `test_export_only_approved`) được sửa theo hành vi mới: kịch bản đổi box
+  100×30 px thành `traffic_cone` nay bị QC bắt `ASPECT_RATIO_ABNORMAL`, test xác nhận cảnh báo rồi mới approve / xuất.
+
+**Cách kiểm tra:**
+- `pytest` → 110 passed (82 cũ + 28 mới); `ruff check src tests` sạch.
+- `python -m src.cli qc-report` (exit 1 nếu chưa READY); `python -m src.cli quick-check <file.json>` (exit 1 nếu có lỗi).
+- UI: sửa một box thành dẹt / vẽ trùng lên box có sẵn → khối "QC Nhãn cuối" hiện ở đầu panel, nút approve khoá;
+  tab QC → lấy mẫu audit, bấm `Y` / `X`; Quick Check một file `coco.json` đã xuất → 0 lỗi mở.
+- Đã chạy E2E trên bản sao workspace nuScenes thật (79 keyframe) bằng Edge headless: chặn approve → áp đề xuất →
+  xác nhận cảnh báo → audit → READY → xuất.
+
+**Còn dở / việc tiếp:**
+- Ngưỡng `POSSIBLY_MISSING` (score 0.5) chưa có số đo precision (thiếu GT "vật bị sót" thật); trên GT nuScenes báo
+  ~0.6 gợi ý / frame.
+- Audit chưa phân tầng theo lớp / scene; cỡ mẫu mặc định 50 object, 10 frame.
+- Quick Check chưa nhận KITTI `.txt` (dữ liệu dự án là nuScenes); thêm parser ở `quick_check.parse_labels` nếu cần.
 
 ## 2026-09-28 · Việt · nhánh `viet`
 

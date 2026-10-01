@@ -8,6 +8,7 @@ const LEVELS = ['high', 'medium', 'low'];
 const LEVEL_NAME = { low: 'Low', medium: 'Medium', high: 'High' };
 const RISK_COLOR = { low: '#10b981', medium: '#f59e0b', high: '#ef4444' };
 const HUMAN_COLOR = '#2563eb';
+const QC_COLOR = '#c026d3';
 const STATUS_TEXT = { auto: 'Chưa mở', editing: 'Đang sửa', approved: 'Đã duyệt', rejected: 'Bị trả lại' };
 
 const S = {
@@ -22,6 +23,7 @@ const S = {
   gt: null,
   selected: null,
   viewOffset: 0,
+  sweepSel: null, // box đang chọn khi xem một sweep (sửa tự do ở t-2 … t+2)
   showLidar: false,
   showGt: false,
   showLow: true,
@@ -44,6 +46,12 @@ const S = {
   dragging: false, // đang kéo thẻ frame từ timeline
   timelineStale: false,
   scrolledTo: null,
+  qc: null, // QC nhãn cuối của frame đang mở: { findings, open }
+  qcReport: null,
+  audit: null, // { items, summary }
+  auditCur: null,
+  auditImgs: {},
+  quick: null, // kết quả Quick Check gần nhất
 };
 
 const $ = (id) => document.getElementById(id);
@@ -67,7 +75,9 @@ async function api(path, opts = {}) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const d = data.detail;
-    throw new Error(d?.message || (typeof d === 'string' ? d : JSON.stringify(d)) || res.statusText);
+    const err = new Error(d?.message || (typeof d === 'string' ? d : JSON.stringify(d)) || res.statusText);
+    err.code = d?.code;
+    throw err;
   }
   return data;
 }
@@ -121,6 +131,91 @@ function orderedObjects() {
   return pending.concat(S.frame.objects.filter((o) => o.review.status !== 'pending'));
 }
 const getObj = (id) => S.frame?.objects.find((o) => o.object_id === id);
+
+// ---------- sweep t-2 … t+2: sửa tự do để QA / score của keyframe đúng hơn (không xuất ra) ----------
+const inSweep = () => !!S.frame && S.viewOffset !== 0;
+const curSweep = () => S.frame?.sweeps.find((s) => s.offset === S.viewOffset);
+function sweepBoxes(s) {
+  if (!s) return [];
+  return s.boxes || s.detections.map((d, i) => ({ box_id: String(i + 1), bbox: d.bbox, label: d.label, score: d.score, source: 'model', review: { status: 'pending' } }));
+}
+const getSweepBox = (id) => sweepBoxes(curSweep()).find((b) => b.box_id === id);
+const offName = (off) => `t${off > 0 ? '+' : '−'}${Math.abs(off)}`;
+/* Object keyframe nào đang được ghép với box sweep này (qua check temporal) */
+function linkedObject(b) {
+  const box = finalBox(b);
+  return S.frame.objects.find((o) => {
+    const t = o.track?.[String(S.viewOffset)];
+    return t && Math.abs(t[0] - box[0]) + Math.abs(t[1] - box[1]) + Math.abs(t[2] - box[2]) + Math.abs(t[3] - box[3]) < 2;
+  });
+}
+function hitSweep(x, y) {
+  let best = null;
+  let bestArea = Infinity;
+  for (const b of sweepBoxes(curSweep())) {
+    if (b.review.status === 'deleted' && b.box_id !== S.sweepSel) continue;
+    const [x1, y1, x2, y2] = finalBox(b);
+    if (x >= x1 && x <= x2 && y >= y1 && y <= y2 && (x2 - x1) * (y2 - y1) < bestArea) { best = b; bestArea = (x2 - x1) * (y2 - y1); }
+  }
+  return best;
+}
+function setView(off) {
+  if (S.mode !== 'view') cancelEdit();
+  S.viewOffset = off;
+  S.sweepSel = null;
+  draw();
+  renderPanel();
+  renderFilmstrip();
+}
+async function sweepAct(body) {
+  try {
+    const frame = await api(`/frames/${encodeURIComponent(S.frame.frame_id)}/sweeps/${S.viewOffset}/actions`, {
+      method: 'POST',
+      body: { ...body, reviewer: reviewer() },
+    });
+    S.frame = frame;
+    const boxes = sweepBoxes(curSweep());
+    if (body.action === 'ADD_BOX') S.sweepSel = boxes[boxes.length - 1]?.box_id || null;
+    else if (['KEEP', 'DELETE', 'CHANGE_CLASS'].includes(body.action)) {
+      const i = boxes.findIndex((b) => b.box_id === body.box_id);
+      const next = boxes.slice(i + 1).concat(boxes.slice(0, i)).find((b) => b.review.status === 'pending');
+      S.sweepSel = next ? next.box_id : body.box_id;
+    }
+    renderAll();
+    refreshLists();
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+function sweepPanel() {
+  const sw = curSweep();
+  const boxes = sweepBoxes(sw);
+  const locked = S.frame.status === 'approved';
+  const edited = boxes.filter((b) => b.review.status !== 'pending').length;
+  const rows = boxes.map((b) => {
+    const sel = b.box_id === S.sweepSel;
+    const o = linkedObject(b);
+    const st = b.review.status === 'deleted' ? '<span class="done-tag deleted">✗ xoá</span>'
+      : b.review.status === 'approved' ? `<span class="done-tag approved">✓ ${esc(b.review.action.toLowerCase().replace('_', ' '))}</span>`
+        : `<span class="muted">score ${fx(b.score)}</span>`;
+    const actions = !sel || locked ? '' : b.review.status === 'deleted'
+      ? '<div class="oc-actions"><button class="btn btn-sm" data-sact="RESTORE">↺ Khôi phục</button></div>'
+      : `<div class="oc-actions">
+          <button class="btn btn-sm btn-keep" data-sact="KEEP">✓ Keep</button>
+          <button class="btn btn-sm btn-del" data-sact="DELETE">🗑 Delete</button>
+          <select data-sclass>${classOptions(finalLabel(b))}</select>
+          <button class="btn btn-sm btn-class" data-sact="CHANGE_CLASS">Đổi lớp</button>
+          <button class="btn btn-sm btn-edit" data-sact="EDIT">✎ Sửa box</button>
+        </div>`;
+    return `<div class="sw-row ${sel ? 'selected' : ''} ${b.review.status}" data-sbid="${esc(b.box_id)}">
+      <div class="sw-line"><span>#${esc(b.box_id)} ${esc(finalLabel(b))}${b.source === 'human' ? ' <span class="muted">· người vẽ</span>' : ''}${o ? ` <span class="muted">↔ #${esc(o.object_id)} ở keyframe</span>` : ''}</span>${st}</div>${actions}</div>`;
+  }).join('');
+  return `<h3>Sweep ${offName(S.viewOffset)} <small>${boxes.length} box · đã sửa ${edited}</small>
+      <button class="btn btn-ghost btn-sm" data-sweep-back title="Quay về keyframe (Esc)">← Keyframe</button></h3>
+    <p class="muted sw-note">Box ở sweep không được xuất; sửa ở đây để cờ FLICKER / RECOVERED, score và lan truyền của keyframe đúng hơn. Keyframe được tính lại ngay sau mỗi thao tác.</p>
+    ${locked ? '' : '<button class="btn btn-sm wide" data-sweep-add>+ Vẽ box ở sweep này <kbd>B</kbd></button>'}
+    <div class="sw-list">${rows || '<p class="muted">Detector không thấy gì ở sweep này — vẽ thêm nếu có vật bị sót.</p>'}</div>`;
+}
 
 // ---------- hàng đợi ----------
 
@@ -176,13 +271,16 @@ async function openFrame(id, { preview = false } = {}) {
   S.lidar = S.gt = null;
   S.sweepImgs = {};
   S.viewOffset = 0;
+  S.sweepSel = null;
   S.mode = 'view';
   S.editBox = null;
   S.selected = orderedObjects()[0]?.object_id || null;
+  S.qc = null;
   if (frame.status !== 'approved' && !preview) S.timerStart = Date.now();
   $('empty-state').classList.add('hidden');
   renderAll();
   highlightTimeline();
+  if (!preview) loadFrameQC();
   const img = await loadImage(`${API}/frames/${encodeURIComponent(id)}/image`);
   if (S.frame?.frame_id !== id) return; // người dùng đã chuyển sang frame khác
   S.img = img;
@@ -420,26 +518,53 @@ function drawCanvas() {
   }
 
   if (S.viewOffset !== 0) {
-    // Xem một sweep: vẽ detection của sweep đó mờ + box track của object đang chọn
-    const sweep = f.sweeps.find((s) => s.offset === S.viewOffset);
-    for (const d of sweep?.detections || []) drawBox(d.bbox, '#94a3b8', { lw: 1, alpha: 0.7 });
-    const o = getObj(S.selected);
-    const tb = o?.track?.[String(S.viewOffset)];
-    if (tb) drawBox(tb, '#3987e5', { lw: 3, label: `#${o.object_id} ${o.label} @t${S.viewOffset > 0 ? '+' : ''}${S.viewOffset}` });
+    // Xem một sweep: box của sweep (sửa được); xám = máy sinh chưa xem, xanh dương = người đã xác nhận / vẽ
+    for (const b of sweepBoxes(f.sweeps.find((s) => s.offset === S.viewOffset))) {
+      const sel = b.box_id === S.sweepSel;
+      if (sel && S.mode === 'edit') continue;
+      if (b.review.status === 'deleted') {
+        if (sel) drawBox(finalBox(b), '#d03b3b', { lw: 1.5, dash: [4, 4], label: `#${b.box_id} đã xoá` });
+        continue;
+      }
+      const done = b.review.status === 'approved' || b.source === 'human';
+      drawBox(finalBox(b), done ? HUMAN_COLOR : '#94a3b8', {
+        lw: sel ? 3.5 : 1.6,
+        label: `#${b.box_id} ${finalLabel(b)}${done ? '' : ' ' + fx(b.score)}`,
+        alpha: sel || !S.sweepSel ? 1 : 0.8,
+      });
+    }
+    if (S.editBox) drawBox(S.editBox, '#7c5cd6', { lw: 3, dash: S.mode === 'add' ? [6, 4] : null });
+    if (S.editBox && S.mode === 'edit') {
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = '#7c5cd6';
+      ctx.lineWidth = 2 * k;
+      for (const [hx, hy] of handles(S.editBox)) {
+        ctx.fillRect(hx - 5 * k, hy - 5 * k, 10 * k, 10 * k);
+        ctx.strokeRect(hx - 5 * k, hy - 5 * k, 10 * k, 10 * k);
+      }
+    }
     return;
   }
 
+  const qcFlagged = new Set(qcOpen().flatMap((x) => [x.object_id, x.other_object_id]).filter(Boolean));
   let shown = 0, total = 0;
   for (const o of f.objects) {
     if (o.review.status === 'deleted') continue;
     total++;
     const lv = levelOf(o);
     const pending = o.review.status === 'pending';
-    if (pending && lv === 'low' && !S.showLow && o.object_id !== S.selected) continue;
-    if (belowScore(o) && o.object_id !== S.selected) continue;
+    if (pending && lv === 'low' && !S.showLow && o.object_id !== S.selected && !qcFlagged.has(o.object_id)) continue;
+    // Box đang có lỗi QC luôn hiện (phải sửa hoặc xác nhận trước khi approve), kể cả khi dưới ngưỡng score
+    if (belowScore(o) && o.object_id !== S.selected && !qcFlagged.has(o.object_id)) continue;
     shown++;
     const sel = o.object_id === S.selected;
     if (sel && S.mode === 'edit') continue;
+    if (qcFlagged.has(o.object_id)) {
+      // Viền ngoài nét đứt: nhãn cuối còn lỗi QC chưa xử lý
+      const [x1, y1, x2, y2] = finalBox(o);
+      const m = 5 * k;
+      drawBox([x1 - m, y1 - m, x2 + m, y2 + m], QC_COLOR, { lw: 1.6, dash: [5, 3] });
+    }
     const color = o.source === 'human' ? HUMAN_COLOR : RISK_COLOR[lv];
     if (S.showMask) drawMask(o, color, sel);
     // Nhãn đầy đủ chỉ cho box đang chọn / high / người vẽ; medium chỉ hiện #id để ảnh không bị che kín
@@ -497,7 +622,7 @@ function hitObject(x, y) {
 }
 
 canvas.addEventListener('mousedown', (e) => {
-  if (!S.frame || S.viewOffset !== 0) return;
+  if (!S.frame) return;
   const [x, y] = toImg(e);
   if (S.mode === 'add') {
     S.drag = { kind: 'draw', x0: x, y0: y };
@@ -512,8 +637,10 @@ canvas.addEventListener('mousedown', (e) => {
     if (x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3]) { S.drag = { kind: 'move', x0: x, y0: y, box: b.slice() }; return; }
     return;
   }
-  const o = hitObject(x, y);
-  if (o) select(o.object_id);
+  const o = inSweep() ? null : hitObject(x, y);
+  const sb = inSweep() ? hitSweep(x, y) : null;
+  if (sb) { S.sweepSel = sb.box_id; renderPanel(); draw(); }
+  else if (o) select(o.object_id);
   else if (S.zoom > 1) {
     // Kéo vùng trống để di chuyển ảnh khi đang phóng to
     const box = $('canvas-scroll');
@@ -578,6 +705,15 @@ window.addEventListener('mouseup', () => {
 });
 
 function startEdit() {
+  if (inSweep()) {
+    const b = getSweepBox(S.sweepSel);
+    if (!b || b.review.status === 'deleted' || S.frame.status === 'approved') return;
+    S.mode = 'edit';
+    S.editBox = finalBox(b).slice();
+    showEditBar('edit');
+    draw();
+    return;
+  }
   const o = getObj(S.selected);
   if (!o || S.frame.status === 'approved') return;
   S.mode = 'edit';
@@ -588,7 +724,6 @@ function startEdit() {
 
 function startAdd() {
   if (!S.frame || S.frame.status === 'approved') return;
-  S.viewOffset = 0;
   S.mode = 'add';
   S.editBox = null;
   canvas.classList.add('drawing');
@@ -621,6 +756,12 @@ function showEditBar(kind) {
 
 async function saveEdit() {
   const box = S.editBox.map((v) => Math.round(v * 10) / 10);
+  if (inSweep()) {
+    if (S.mode === 'add') await sweepAct({ action: 'ADD_BOX', bbox: box, label: $('add-class').value });
+    else if (S.mode === 'edit') await sweepAct({ action: 'EDIT_BOX', box_id: S.sweepSel, bbox: box });
+    cancelEdit();
+    return;
+  }
   if (S.mode === 'add') {
     await act({ action: 'ADD_BOX', bbox: box, label: $('add-class').value });
   } else if (S.mode === 'edit') {
@@ -646,6 +787,7 @@ async function act(body) {
     }
     renderAll();
     refreshLists();
+    loadFrameQC(); // nhãn cuối vừa đổi: kiểm lại ngay
   } catch (err) {
     toast(err.message, true);
   }
@@ -666,6 +808,7 @@ async function approveLow() {
     S.selected = orderedObjects().find((o) => o.review.status === 'pending')?.object_id || S.selected;
     renderAll();
     refreshLists();
+    loadFrameQC();
     toast('Đã duyệt nhóm rủi ro thấp');
   } catch (err) {
     toast(err.message, true);
@@ -697,6 +840,11 @@ async function approveFrame() {
     const next = S.queue.find((f) => f.status !== 'approved' && f.frame_id !== cur.frame_id);
     if (next) openFrame(next.frame_id); else renderAll();
   } catch (err) {
+    if (err.code === 'QC_FINDINGS') {
+      // Server chặn vì nhãn cuối còn lỗi QC: hiện danh sách lên đầu panel
+      await loadFrameQC();
+      $('review-scroll').scrollTop = 0;
+    }
     toast(err.message, true);
   }
 }
@@ -725,7 +873,86 @@ async function reopenFrame() {
   S.timerStart = Date.now();
   renderAll();
   refreshLists();
+  loadFrameQC();
 }
+
+// ---------- QC nhãn cuối (kiểm lại sau khi người sửa) ----------
+
+function qcOpen() { return (S.qc?.findings || []).filter((x) => !x.acked); }
+function qcFor(id) { return qcOpen().filter((x) => x.object_id === id || x.other_object_id === id); }
+
+async function loadFrameQC() {
+  const f = S.frame;
+  if (!f) return;
+  try {
+    const r = await api(`/frames/${encodeURIComponent(f.frame_id)}/qc`);
+    if (S.frame?.frame_id !== f.frame_id) return;
+    S.qc = r;
+  } catch (err) {
+    toast('QC: ' + err.message, true);
+    return;
+  }
+  renderPanel();
+  draw();
+}
+
+function suggestionText(s) {
+  if (!s) return '';
+  return {
+    DELETE: `Xoá #${s.object_id}`,
+    EDIT_BOX: 'Cắt box về biên ảnh',
+    ADD_BOX: `Thêm box ${s.label}`,
+    CHANGE_CLASS: `Đổi lớp → ${s.label}`,
+  }[s.action] || s.action;
+}
+
+function qcRow(x) {
+  const locked = S.frame?.status === 'approved';
+  const ref = (id) => `<button class="linklike qc-obj" data-qc-select="${esc(id)}">#${esc(id)}</button>`;
+  const who = x.object_id ? ref(x.object_id) + (x.other_object_id ? ` ↔ ${ref(x.other_object_id)}` : '') : '';
+  const apply = x.suggestion && !locked
+    ? `<button class="btn btn-sm btn-primary" data-qc-apply>${esc(suggestionText(x.suggestion))}</button>` : '';
+  const ack = x.severity === 'warning'
+    ? `<input type="text" class="qc-note" maxlength="300" placeholder="lý do giữ nguyên (tuỳ chọn)"><button class="btn btn-sm btn-ghost" data-qc-ack>Đã kiểm, giữ nguyên</button>`
+    : '<span class="muted">lỗi: phải sửa</span>';
+  return `<div class="qc-row ${x.severity}" data-qc-key="${esc(x.key)}">
+    <div class="qc-top"><span class="sev ${x.severity}">${x.severity === 'error' ? 'Lỗi' : 'Cảnh báo'}</span><span class="issue-code">${esc(x.code)}</span>${who}</div>
+    <div class="issue-msg" title="${esc(S.cfg.issue_help[x.code] || '')}">${esc(x.message)}</div>
+    <div class="qc-row-actions">${apply}${ack}</div>
+  </div>`;
+}
+
+async function ackQC(x, note) {
+  try {
+    S.qc = await api(`/frames/${encodeURIComponent(S.frame.frame_id)}/qc/ack`, {
+      method: 'POST',
+      body: { key: x.key, fingerprint: x.fingerprint, note, reviewer: reviewer() },
+    });
+    renderPanel();
+    draw();
+    toast(`Đã xác nhận ${x.code}${S.qc.open ? ` · còn ${S.qc.open} lỗi QC` : ' · frame sạch QC'}`);
+  } catch (err) {
+    toast(err.message, true);
+    loadFrameQC();
+  }
+}
+
+function applySuggestion(x) {
+  const s = x.suggestion;
+  const body = { action: s.action };
+  for (const k of ['object_id', 'bbox', 'label']) if (s[k] != null) body[k] = s[k];
+  return act(body);
+}
+
+$('list-qc').addEventListener('click', (e) => {
+  const sel = e.target.closest('[data-qc-select]');
+  if (sel) { select(sel.dataset.qcSelect); return; }
+  const row = e.target.closest('[data-qc-key]');
+  const x = row && qcOpen().find((f) => f.key === row.dataset.qcKey);
+  if (!x) return;
+  if (e.target.closest('[data-qc-ack]')) ackQC(x, row.querySelector('.qc-note')?.value.trim() || '');
+  else if (e.target.closest('[data-qc-apply]')) applySuggestion(x);
+});
 
 function select(id) {
   if (S.mode !== 'view') cancelEdit();
@@ -757,8 +984,8 @@ function objectCard(o) {
   if (isProp(o)) {
     facts.push(`c_prop ${fx(pr.prop_conf)}`);
     facts.push(pr.matched ? `detector: ${esc(pr.detector_label)} ${fx(pr.detector_score)}` : 'detector không thấy, box dự đoán');
-  } else if (o.source !== 'human') facts.push(`score ${fx(o.score)}`);
-  if (lid.available) facts.push(`${lid.n_points ?? 0} pts${lid.depth_m != null ? ` · ${fx(lid.depth_m, 1)}m` : ''}`);
+  } else if (o.source !== 'human') facts.push(o.det_score != null && Math.abs(o.det_score - o.score) >= 0.005 ? `score ${fx(o.score)} <span class="muted" title="Score tính lại theo các sweep lân cận (vật thấy ổn định được tăng, box chỉ loé lên bị hạ); số trong ngoặc là score gốc của detector">(detector ${fx(o.det_score)})</span>` : `score ${fx(o.score)}`);
+  if (lid.available) facts.push(`${lid.n_points ?? 0} điểm LiDAR${lid.depth_m != null ? ` · ${fx(lid.depth_m, 1)} m` : ''}${lid.est_height_m != null ? ` · cao ~${fx(lid.est_height_m, 1)} m` : ''}`);
   if (tmp.available) facts.push(`sweep ${tmp.support}/${tmp.available}`);
   const status = !done
     ? ''
@@ -773,7 +1000,7 @@ function objectCard(o) {
         <span class="card-shape">HÌNH CHỮ NHẬT</span>
       </div>
       <div class="card-header-right">
-        <select data-class class="card-select">${classOptions(finalLabel(o))}</select>
+        <select data-class class="card-select" ${locked ? 'disabled' : ''} title="Chọn lớp khác để đổi lớp ngay (bàn phím: C → chọn → Enter)">${classOptions(finalLabel(o))}</select>
         <button class="card-more-btn" title="Thao tác"><i class="ri-more-2-fill"></i></button>
       </div>
     </div>
@@ -783,15 +1010,17 @@ function objectCard(o) {
       <button class="card-icon-action-btn" title="Ẩn/Hiện"><i class="ri-eye-line"></i></button>
       <button class="card-icon-action-btn" title="Ghim"><i class="ri-pushpin-line"></i></button>
       ${o.qa ? `<span class="risk-badge ${lv}" style="margin-left: auto;">${LEVEL_NAME[lv]} ${fx(o.qa.risk)}</span>` : ''}
+      ${qcFor(o.object_id).length ? `<span class="qc-mark sm" style="margin-left: 6px;" title="Nhãn cuối còn lỗi QC">QC</span>` : ''}
     </div>
     <details class="card-details" ${o.object_id === S.selected ? 'open' : ''}>
       <summary class="card-details-sum"><i class="ri-arrow-right-s-line"></i> CHI TIẾT ĐỐI TƯỢNG</summary>
       <div class="oc-body">
         <canvas class="oc-crop" width="192" height="144" data-crop="${esc(o.object_id)}"></canvas>
         <div class="oc-info">
-          <div class="oc-stats">${facts.join(' · ')}</div>
+          <div class="oc-stats">${facts.join(' · ')}${srcNote}</div>
           ${status}
           ${issues.length ? `<ul class="issues">${issues.map((i) => `<li title="${esc(S.cfg.issue_help[i.code] || '')}"><span class="issue-code">${esc(i.code)}</span> <span class="issue-msg">${esc(i.message)}</span></li>`).join('')}</ul>` : ''}
+          ${qcFor(o.object_id).length ? `<div class="oc-qc"><span class="qc-mark sm">QC</span>${qcFor(o.object_id).map((x) => `<span class="issue-code qc" title="${esc(x.message)}">${esc(x.code)}</span>`).join(' ')}</div>` : ''}
         </div>
       </div>
       ${locked ? '' : `<div class="oc-actions">
@@ -810,8 +1039,9 @@ function compactRow(o) {
       ? '<span class="done-tag deleted">✗ tự xoá</span>'
       : `<span class="done-tag ${o.review.status}">${o.review.status === 'deleted' ? '✗ xoá' : '✓ ' + o.review.action.toLowerCase().replace('_', ' ')}</span>`
     : `<span class="muted">risk ${fx(o.qa?.risk)}</span>`;
+  const qcTag = qcFor(o.object_id).length ? '<span class="qc-mark sm" title="Nhãn cuối còn lỗi QC">QC</span>' : '';
   return `<div class="low-row ${o.object_id === S.selected ? 'selected' : ''}" data-oid="${esc(o.object_id)}">
-    <span><span class="dot ${levelOf(o)}"></span> #${esc(o.object_id)} HỘP <strong style="margin-left:4px;">${esc(finalLabel(o))}</strong> <span class="muted">${scoreText(o)}</span></span>${tag}</div>`;
+    <span><span class="dot ${levelOf(o)}"></span> #${esc(o.object_id)} HỘP <strong style="margin-left:4px;">${esc(finalLabel(o))}</strong> <span class="muted">${scoreText(o)}</span>${qcTag}</span>${tag}</div>`;
 }
 
 
@@ -843,6 +1073,11 @@ function renderPanel() {
   $('count-low').textContent = byLevel.low.length;
   $('count-done').textContent = done.length;
 
+  const qcList = f ? qcOpen() : [];
+  $('qc-section').classList.toggle('hidden', !qcList.length);
+  $('count-qc').textContent = qcList.length;
+  $('list-qc').innerHTML = qcList.map(qcRow).join('');
+
   const locked = f?.status === 'approved';
   const btnLow = $('btn-approve-low');
   btnLow.disabled = !f || locked || byLevel.low.length === 0;
@@ -855,14 +1090,21 @@ function renderPanel() {
   if (locked) {
     btn.disabled = false;
     btn.innerHTML = 'Mở lại để sửa';
+    btn.title = '';
     btn.onclick = reopenFrame;
   } else {
-    btn.disabled = !f || pending.length > 0;
-    btn.innerHTML = 'Approve frame <kbd>Enter</kbd>';
+    const qcBlock = S.cfg?.qc?.gate_on_approve && qcList.length > 0;
+    btn.disabled = !f || pending.length > 0 || qcBlock;
+    btn.innerHTML = qcBlock && !pending.length ? `Còn ${qcList.length} lỗi QC` : 'Approve frame <kbd>Enter</kbd>';
+    btn.title = qcBlock ? 'Sửa hoặc xác nhận các lỗi QC ở đầu panel trước khi approve' : '';
     btn.onclick = approveFrame;
   }
   $('btn-add').disabled = !f || locked;
   $('btn-propagate').disabled = !locked || S.viewMode !== 'video';
+  const sweepMode = inSweep();
+  $('review-scroll').classList.toggle('sweep-mode', sweepMode);
+  $('sweep-panel').classList.toggle('hidden', !sweepMode);
+  $('sweep-panel').innerHTML = sweepMode ? sweepPanel() : '';
   drawCrops();
 }
 
@@ -892,6 +1134,20 @@ function drawCrops() {
 }
 
 document.querySelector('.review-panel').addEventListener('click', (e) => {
+  if (e.target.closest('[data-sweep-back]')) { setView(0); return; }
+  if (e.target.closest('[data-sweep-add]')) { startAdd(); return; }
+  const row = e.target.closest('[data-sbid]');
+  if (row) {
+    if (e.target.closest('select')) return;
+    const id = row.dataset.sbid;
+    const sbtn = e.target.closest('[data-sact]');
+    if (!sbtn) { S.sweepSel = id; renderPanel(); draw(); return; }
+    const a = sbtn.dataset.sact;
+    if (a === 'EDIT') { S.sweepSel = id; startEdit(); return; }
+    if (a === 'CHANGE_CLASS') { sweepAct({ action: 'CHANGE_CLASS', box_id: id, label: row.querySelector('[data-sclass]').value }); return; }
+    sweepAct({ action: a, box_id: id });
+    return;
+  }
   const card = e.target.closest('[data-oid]');
   if (!card) return;
   const id = card.dataset.oid;
@@ -952,10 +1208,7 @@ $('filmstrip').addEventListener('click', (e) => {
   if (!film) return;
   const off = Number(film.dataset.off);
   if (off !== 0 && !S.sweepImgs[off]) return;
-  if (S.mode !== 'view') cancelEdit();
-  S.viewOffset = S.viewOffset === off ? 0 : off;
-  draw();
-  renderFilmstrip();
+  setView(S.viewOffset === off ? 0 : off);
 });
 
 // ---------- chế độ Ảnh / Video ----------
@@ -1261,18 +1514,19 @@ async function loadMetrics() {
   loadExports();
 }
 
+const EXPORT_FILES = ['coco.json', 'labels.jsonl', 'corrections.jsonl', 'qc_log.jsonl', 'qa_report.md', 'manifest.json'];
 // Năng suất người duyệt + throughput auto-label (FR-27); link CSV (FR-19). Dùng chung với app3d.js qua window.AL
 function renderProductivity(prod, p, csvBase) {
   $(p + 'csv-frames').href = csvBase + (csvBase.includes('?') ? '&' : '?') + 'kind=frames';
   $(p + 'csv-summary').href = csvBase + (csvBase.includes('?') ? '&' : '?') + 'kind=summary';
   const n = (v, d = 1) => (v == null ? '—' : Number(v).toFixed(d));
   const rows = prod?.reviewers || [];
-  $(p + 'prod-table').innerHTML = '<thead><tr><th>Người duyệt</th><th class="num">Frame duyệt</th><th class="num">Object đã xử lý</th><th class="num">Trả lại</th><th class="num">Hoàn tác</th><th class="num">Thời gian duyệt</th><th class="num">Frame/giờ</th><th>Phiên</th></tr></thead><tbody>' +
+  $(p + 'prod-table').innerHTML = '<thead><tr><th>Người duyệt</th><th class="num">Frame duyệt</th><th class="num">Object đã xử lý</th><th class="num">Box sweep đã sửa</th><th class="num">Trả lại</th><th class="num">Hoàn tác</th><th class="num">Thời gian duyệt</th><th class="num">Frame/giờ</th><th>Phiên</th></tr></thead><tbody>' +
     (rows.map((r) => `<tr><td>${esc(r.reviewer)}</td><td class="num">${r.frames_approved}</td><td class="num">${r.objects_handled}</td>
-      <td class="num">${r.frames_rejected}</td><td class="num">${r.undo_redo}</td><td class="num">${fmtTime(r.review_time_s)}</td>
+      <td class="num">${r.sweep_boxes_handled ?? 0}</td><td class="num">${r.frames_rejected}</td><td class="num">${r.undo_redo}</td><td class="num">${fmtTime(r.review_time_s)}</td>
       <td class="num"><b>${n(r.frames_per_hour)}</b></td>
       <td class="prod-sessions">${r.sessions.map((s) => `${esc(s.start.slice(0, 16).replace('T', ' '))}: ${s.frames} frame, ${n(s.frames_per_hour)}/giờ`).join('<br>') || '—'}</td></tr>`).join('') ||
-      '<tr><td colspan="8" class="muted">Chưa có frame nào được approve</td></tr>') + '</tbody>';
+      '<tr><td colspan="9" class="muted">Chưa có frame nào được approve</td></tr>') + '</tbody>';
   const inf = prod?.inference || [];
   $(p + 'infer-table').innerHTML = '<thead><tr><th>Phiên auto-label</th><th>Thiết bị</th><th class="num">Frame</th><th class="num">s / frame</th><th class="num">Frame/giờ</th></tr></thead><tbody>' +
     (inf.map((r) => `<tr><td><code>${esc(r.run)}</code></td><td>${esc(r.device || '—')}</td><td class="num">${r.frames}</td><td class="num">${n(r.s_per_frame, 2)}</td><td class="num"><b>${n(r.frames_per_hour, 0)}</b></td></tr>`).join('') ||
@@ -1281,19 +1535,282 @@ function renderProductivity(prod, p, csvBase) {
 
 async function loadExports() {
   const ids = await api('/exports');
-  $('export-list').innerHTML = ids.map((id) => `<li><strong>${esc(id)}</strong> — ${['coco.json', 'labels.jsonl', 'corrections.jsonl', 'manifest.json']
+  $('export-list').innerHTML = ids.map((id) => `<li><strong>${esc(id)}</strong> — ${EXPORT_FILES
     .map((f) => `<a href="${API}/exports/${encodeURIComponent(id)}/${f}">${f}</a>`).join('')}</li>`).join('') || '<li class="muted">Chưa xuất lần nào</li>';
 }
 
 async function doExport() {
   try {
-    const r = await api('/export', { method: 'POST' });
-    $('export-result').innerHTML = `✓ Đã xuất <strong>${r.n_frames}</strong> frame, <strong>${r.n_objects}</strong> object → <code>${esc(r.export_id)}</code>`;
+    const r = await api('/export' + ($('export-ready').checked ? '?require_ready=true' : ''), { method: 'POST' });
+    const skipped = r.frames_skipped_qc.length ? ` · bỏ ${r.frames_skipped_qc.length} frame còn lỗi QC` : '';
+    $('export-result').innerHTML = `✓ Đã xuất <strong>${r.n_frames}</strong> frame, <strong>${r.n_objects}</strong> object → <code>${esc(r.export_id)}</code> <span class="release-pill ${r.release_status === 'READY' ? 'ready' : 'not-ready'}">${esc(r.release_status)}</span>${skipped}`;
     loadExports();
   } catch (err) {
     $('export-result').innerHTML = `<span class="done-tag deleted">${esc(err.message)}</span>`;
   }
 }
+
+// ---------- tab QC: sẵn sàng phát hành, audit ngẫu nhiên, Quick Check ----------
+
+async function loadQC() {
+  const [rep, aud] = await Promise.all([api('/qc/report'), api('/qc/audit')]);
+  S.qcReport = rep;
+  S.audit = aud;
+  renderReadiness();
+  renderOpenFindings();
+  renderAudit();
+}
+
+function renderReadiness() {
+  const rep = S.qcReport;
+  const ready = rep.status === 'READY';
+  const pill = $('qc-status');
+  pill.className = 'release-pill ' + (ready ? 'ready' : 'not-ready');
+  pill.textContent = ready ? '✓ READY' : '✗ NOT READY';
+  const fr = rep.frames;
+  $('qc-checks').innerHTML = rep.checks.map((c) => `<li class="${c.ok ? 'ok' : 'fail'}">
+      <span class="ck">${c.ok ? '✓' : '✗'}</span><span class="ck-label">${esc(c.label)}</span><span class="ck-detail">${esc(c.detail)}</span></li>`).join('') +
+    `<li class="info"><span class="ck">i</span><span class="ck-label">Độ phủ</span><span class="ck-detail">${fr.approved}/${fr.total} frame đã approve (${pct(rep.coverage)}) · ${fr.editing} đang sửa · ${fr.auto} chưa mở</span></li>`;
+}
+
+function renderOpenFindings() {
+  const rep = S.qcReport;
+  const rows = [
+    ...rep.open_findings.map((x) => ({ frame: x.frame_id, obj: x.object_id, code: x.code, sev: x.severity, msg: x.message })),
+    ...rep.track_findings.map((t) => {
+      const [ref] = Object.values(t.classes)[0];
+      const [frame, obj] = ref.split('#');
+      return { frame, obj, code: t.code, sev: 'warning', msg: `track ${t.track_id}: ${t.message}` };
+    }),
+    ...rep.log_findings.map((e) => ({ frame: e.frame_id, obj: e.object_id, code: e.code, sev: 'error', msg: e.message })),
+  ];
+  $('qc-open-table').innerHTML = '<thead><tr><th>Frame</th><th>Object</th><th>Code</th><th>Mức</th><th>Mô tả</th></tr></thead><tbody>' +
+    (rows.map((r) => `<tr data-frame="${esc(r.frame)}" data-obj="${esc(r.obj || '')}">
+      <td>${esc(r.frame)}</td><td>${r.obj ? '#' + esc(r.obj) : '—'}</td><td><code>${esc(r.code)}</code></td>
+      <td><span class="sev ${r.sev}">${r.sev === 'error' ? 'Lỗi' : 'Cảnh báo'}</span></td><td class="wrap">${esc(r.msg)}</td></tr>`).join('') ||
+      '<tr><td colspan="5" class="muted">Không còn lỗi nào trên frame đã approve</td></tr>') + '</tbody>';
+}
+
+$('qc-open-table').addEventListener('click', async (e) => {
+  const tr = e.target.closest('tr[data-frame]');
+  if (!tr) return;
+  switchTab('review');
+  try {
+    await openFrame(tr.dataset.frame);
+    if (tr.dataset.obj) select(tr.dataset.obj);
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
+// ---- audit ----
+
+function auditRow(name, a) {
+  const ci = a.n ? `${pct(a.ci95[0])}–${pct(a.ci95[1])}` : '—';
+  return `<tr><td>${name}</td><td class="num">${a.population}</td><td class="num">${a.n}${a.pending ? ` <span class="muted">(+${a.pending} chờ)</span>` : ''}</td>
+    <td class="num">${a.errors}</td><td class="num">${pct(a.error_rate)}</td><td>${ci}</td>
+    <td title="${esc(a.note)}">${a.passed ? '<span class="done-tag approved">✓ đạt</span>' : '<span class="done-tag deleted">✗ chưa</span>'}</td></tr>`;
+}
+
+function renderAudit() {
+  const { items, summary } = S.audit;
+  $('audit-table').innerHTML = '<thead><tr><th>Loại</th><th class="num">Tổng thể</th><th class="num">Đã audit</th><th class="num">Sai</th><th class="num">Tỉ lệ</th><th>CI95</th><th>Đạt</th></tr></thead><tbody>' +
+    auditRow('Object duyệt theo lô', summary.object) + auditRow('Frame (vật bị sót)', summary.frame) + '</tbody>';
+  const pending = items.filter((i) => !i.result);
+  S.auditCur = pending[0] || null;
+  $('audit-viewer').classList.toggle('hidden', !S.auditCur);
+  if (S.auditCur) drawAuditItem(S.auditCur, pending.length).catch((e) => toast(e.message, true));
+}
+
+async function auditImage(frameId) {
+  if (!S.auditImgs[frameId]) S.auditImgs[frameId] = await loadImage(`${API}/frames/${encodeURIComponent(frameId)}/image`);
+  return S.auditImgs[frameId];
+}
+
+/* Vẽ box lên canvas phụ (audit / Quick Check): toạ độ ảnh -> canvas qua scale s và gốc (ox, oy) của vùng cắt */
+function strokeOn(c2, b, color, s, ox, oy, { label = null, dash = null, lw = 2 } = {}) {
+  c2.save();
+  c2.strokeStyle = color;
+  c2.lineWidth = lw;
+  if (dash) c2.setLineDash(dash);
+  const x = (b[0] - ox) * s;
+  const y = (b[1] - oy) * s;
+  c2.strokeRect(x, y, (b[2] - b[0]) * s, (b[3] - b[1]) * s);
+  if (label) {
+    c2.setLineDash([]);
+    c2.font = "600 11px 'Plus Jakarta Sans', sans-serif";
+    const w = c2.measureText(label).width + 8;
+    const ty = y - 15 >= 0 ? y - 15 : y;
+    c2.fillStyle = color;
+    c2.fillRect(x, ty, w, 15);
+    c2.fillStyle = '#fff';
+    c2.fillText(label, x + 4, ty + 11);
+  }
+  c2.restore();
+}
+
+async function drawAuditItem(item, nPending) {
+  const isObj = item.kind === 'object';
+  $('audit-title').textContent = `Mẫu ${item.audit_id} · ${item.frame_id}${isObj ? ` #${item.object_id}` : ''}`;
+  $('audit-progress').textContent = `${nPending} mẫu còn chờ`;
+  $('audit-question').textContent = isObj
+    ? `Box "${item.label}" này có đúng không? Đúng = đúng vật, đúng lớp, box ôm sát vật.`
+    : 'Frame này có vật nào thuộc taxonomy mà chưa được gán nhãn không? Đúng = không sót vật nào.';
+  const img = await auditImage(item.frame_id);
+  const cv = $('audit-canvas');
+  const c2 = cv.getContext('2d');
+  c2.fillStyle = '#0b1020';
+  c2.fillRect(0, 0, cv.width, cv.height);
+  if (isObj) {
+    // Cắt rộng quanh box để thấy cả ngữ cảnh
+    const [x1, y1, x2, y2] = item.bbox;
+    const pad = 0.8 * Math.max(x2 - x1, y2 - y1) + 30;
+    const sx = Math.max(0, x1 - pad);
+    const sy = Math.max(0, y1 - pad);
+    const sw = Math.min(img.naturalWidth, x2 + pad) - sx;
+    const sh = Math.min(img.naturalHeight, y2 + pad) - sy;
+    const s = Math.min(cv.width / sw, cv.height / sh);
+    const ox = sx - (cv.width / s - sw) / 2;
+    const oy = sy - (cv.height / s - sh) / 2;
+    c2.drawImage(img, sx, sy, sw, sh, (sx - ox) * s, (sy - oy) * s, sw * s, sh * s);
+    strokeOn(c2, item.bbox, HUMAN_COLOR, s, ox, oy, { label: item.label, lw: 2.5 });
+  } else {
+    const frame = await api(`/frames/${encodeURIComponent(item.frame_id)}`);
+    const s = Math.min(cv.width / img.naturalWidth, cv.height / img.naturalHeight);
+    const ox = -(cv.width / s - img.naturalWidth) / 2;
+    const oy = -(cv.height / s - img.naturalHeight) / 2;
+    c2.drawImage(img, -ox * s, -oy * s, img.naturalWidth * s, img.naturalHeight * s);
+    for (const o of frame.objects) {
+      if (o.review.status !== 'approved') continue;
+      strokeOn(c2, finalBox(o), HUMAN_COLOR, s, ox, oy, { label: finalLabel(o), lw: 1.5 });
+    }
+  }
+}
+
+async function auditSample(kind) {
+  try {
+    const before = S.audit?.items.length || 0;
+    S.audit = await api('/qc/audit/sample', { method: 'POST', body: { kind } });
+    toast(`Đã lấy ${S.audit.items.length - before} mẫu ${kind === 'object' ? 'object' : 'frame'}`);
+    renderAudit();
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
+async function auditResult(result) {
+  const item = S.auditCur;
+  if (!item) return;
+  try {
+    S.audit = await api(`/qc/audit/${encodeURIComponent(item.audit_id)}`, {
+      method: 'POST',
+      body: { result, note: $('audit-note').value.trim(), reviewer: reviewer() },
+    });
+    $('audit-note').value = '';
+    if (result === 'error') toast(`Đã mở lại ${item.frame_id} để sửa (${item.kind === 'object' ? 'object quay về chờ duyệt' : 'cần vẽ thêm box'})`);
+    renderAudit();
+    S.qcReport = await api('/qc/report');
+    renderReadiness();
+    renderOpenFindings();
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
+$('audit-sample-object').addEventListener('click', () => auditSample('object'));
+$('audit-sample-frame').addEventListener('click', () => auditSample('frame'));
+$('audit-ok').addEventListener('click', () => auditResult('ok'));
+$('audit-error').addEventListener('click', () => auditResult('error'));
+document.addEventListener('keydown', (e) => {
+  if ($('tab-qc').classList.contains('hidden') || !S.auditCur) return;
+  if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+  const k = e.key.toLowerCase();
+  if (k === 'y') { auditResult('ok'); e.preventDefault(); }
+  if (k === 'x') { auditResult('error'); e.preventDefault(); }
+});
+
+// ---- Quick Check ----
+
+async function runQuickCheck() {
+  const file = $('qc-file').files[0];
+  if (!file) { toast('Chọn file nhãn (.json / .jsonl) trước', true); return; }
+  const body = new FormData();
+  body.append('file', file);
+  $('qc-run').disabled = true;
+  try {
+    const res = await fetch(`${API}/qc/quick-check`, { method: 'POST', body });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail?.message || res.statusText);
+    S.quick = data;
+    renderQuick();
+  } catch (err) {
+    toast('Quick Check: ' + err.message, true);
+  } finally {
+    $('qc-run').disabled = false;
+  }
+}
+
+function renderQuick() {
+  const q = S.quick;
+  const tiles = [
+    ['Frame', q.n_frames], ['Nhãn', q.n_labels], ['Lỗi', q.n_errors], ['Cảnh báo', q.n_warnings], ['Thời gian', `${q.elapsed_ms} ms`],
+  ];
+  $('qc-summary').innerHTML = `<div class="mini-tiles">${tiles.map(([l, v]) => `<div class="mini-tile"><span>${l}</span><strong>${v}</strong></div>`).join('')}</div>
+    <p class="muted">${esc(q.file_name)} · định dạng ${esc(q.format)}${Object.keys(q.by_code).length ? ' · ' + Object.entries(q.by_code).map(([c, n]) => `<code>${esc(c)}</code> ${n}`).join(' · ') : ''}${q.n_acked ? ` · ${q.n_acked} cảnh báo file ghi là người đã xác nhận` : ''}</p>
+    ${q.parse_errors.length ? `<ul class="qc-parse-errors">${q.parse_errors.slice(0, 20).map((m) => `<li>${esc(m)}</li>`).join('')}</ul>` : ''}`;
+  const rows = [];
+  q.frames.forEach((fr, fi) => fr.findings.forEach((x, xi) => rows.push({ fr, fi, x, xi })));
+  rows.sort((a, b) => a.x.acked - b.x.acked); // lỗi còn mở lên trước
+  const level = (x) => (x.acked ? '<span class="done-tag approved">đã xác nhận</span>'
+    : `<span class="sev ${x.severity}">${x.severity === 'error' ? 'Lỗi' : 'Cảnh báo'}</span>`);
+  const clean = !q.n_errors && !q.n_warnings
+    ? `<tr><td colspan="6"><span class="done-tag approved">✓ ${q.n_labels} nhãn không còn lỗi QC mở</span></td></tr>` : '';
+  $('qc-table').innerHTML = '<thead><tr><th>Frame</th><th>Nhãn</th><th>Code</th><th>Mức</th><th>Mô tả</th><th>Đề xuất</th></tr></thead><tbody>' + clean +
+    rows.slice(0, 1000).map(({ fr, fi, x, xi }) => `<tr data-fi="${fi}" data-xi="${xi}" class="${x.acked ? 'acked' : ''}">
+      <td>${esc(fr.frame_id || fr.file_name || '—')}</td><td>${x.object_id ? '#' + esc(x.object_id) : '—'}</td><td><code>${esc(x.code)}</code></td>
+      <td>${level(x)}</td><td class="wrap">${esc(x.message)}</td>
+      <td>${esc(suggestionText(x.suggestion))}</td></tr>`).join('') + '</tbody>';
+  $('qc-canvas').classList.add('hidden');
+  $('qc-legend').classList.add('hidden');
+}
+
+async function previewQuick(fr, x) {
+  const cv = $('qc-canvas');
+  const c2 = cv.getContext('2d');
+  cv.classList.remove('hidden');
+  $('qc-legend').classList.remove('hidden');
+  let img = null;
+  if (fr.in_workspace) {
+    try { img = await auditImage(fr.frame_id); } catch { img = null; }
+  }
+  const allBoxes = fr.labels.map((l) => l.bbox).concat(fr.findings.filter((f) => f.suggestion?.bbox).map((f) => f.suggestion.bbox));
+  const W = img?.naturalWidth || fr.width || Math.max(1, ...allBoxes.map((b) => b[2]));
+  const H = img?.naturalHeight || fr.height || Math.max(1, ...allBoxes.map((b) => b[3]));
+  const s = Math.min(cv.width / W, cv.height / H);
+  const ox = -(cv.width / s - W) / 2;
+  const oy = -(cv.height / s - H) / 2;
+  c2.fillStyle = '#0b1020';
+  c2.fillRect(0, 0, cv.width, cv.height);
+  if (img) c2.drawImage(img, -ox * s, -oy * s, W * s, H * s);
+  const bad = new Set(fr.findings.filter((f) => !f.acked).flatMap((f) => [f.object_id, f.other_object_id]).filter(Boolean));
+  for (const l of fr.labels) {
+    const hit = l.object_id === x.object_id || l.object_id === x.other_object_id;
+    strokeOn(c2, l.bbox, bad.has(l.object_id) ? '#d03b3b' : HUMAN_COLOR, s, ox, oy, { label: hit ? `#${l.object_id} ${l.label}` : null, lw: hit ? 3 : 1.5 });
+  }
+  for (const f of fr.findings) {
+    if (f.suggestion?.bbox) strokeOn(c2, f.suggestion.bbox, '#0ca30c', s, ox, oy, { dash: [6, 4], lw: f === x ? 3 : 1.5, label: f === x ? suggestionText(f.suggestion) : null });
+  }
+}
+
+$('qc-run').addEventListener('click', runQuickCheck);
+$('qc-table').addEventListener('click', (e) => {
+  const tr = e.target.closest('tr[data-fi]');
+  if (!tr || !S.quick) return;
+  $('qc-table').querySelectorAll('tr').forEach((r) => r.classList.toggle('selected', r === tr));
+  const fr = S.quick.frames[Number(tr.dataset.fi)];
+  previewQuick(fr, fr.findings[Number(tr.dataset.xi)]).catch((err) => toast(err.message, true));
+});
+$('qc-refresh').addEventListener('click', () => loadQC().catch((e) => toast(e.message, true)));
 
 // ---------- điều hướng & phím tắt ----------
 
@@ -1305,15 +1822,182 @@ setInterval(() => { $('timer').textContent = fmtTime(elapsed()); }, 500);
 
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
-  ['review', 'log', 'metrics'].forEach((t) => $('tab-' + t).classList.toggle('hidden', t !== tab || (t === 'review' && S.viewMode === '3d')));
+  ['review', 'log', 'qc', 'metrics', 'settings'].forEach((t) => $('tab-' + t).classList.toggle('hidden', t !== tab || (t === 'review' && S.viewMode === '3d')));
   $('tab-review3d').classList.toggle('hidden', !(tab === 'review' && S.viewMode === '3d'));
   window.dispatchEvent(new CustomEvent('autolabel:tab', { detail: tab }));
+  if (tab === 'settings') { loadSettings().catch((e) => toast(e.message, true)); return; }
+  if (tab === 'metrics') loadTiming().catch((e) => toast(e.message, true));
   if (S.viewMode === '3d' && tab !== 'log') return;
   if (tab === 'log') loadLog().catch((e) => toast(e.message, true));
+  if (tab === 'qc') loadQC().catch((e) => toast(e.message, true));
   if (tab === 'metrics') loadMetrics().catch((e) => toast(e.message, true));
   if (tab === 'review') { fitCanvas(); draw(); }
 }
 document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+
+// ---------- ⚙ Cài đặt ----------
+
+const JOB_POLL = {};
+async function loadSettings() {
+  const r = await api('/settings');
+  S.settings = r.fields;
+  S.gtFrames = r.gt_frames;
+  $('settings-scope').textContent = PROJECT ? `Dự án: ${$('project-name').textContent || PROJECT}` : 'Workspace mặc định';
+  $('settings-form').innerHTML = r.fields.map(settingRow).join('');
+  $('settings-save').disabled = true;
+  $('eval-run').disabled = !r.gt_frames;
+  $('eval-run').title = r.gt_frames ? `${r.gt_frames} frame có GT` : 'Cần dữ liệu có nhãn gốc (nuScenes có sample_annotation)';
+  pollJob('relabel', true);
+  pollJob('eval', true);
+}
+function fmtSetting(f, v) {
+  if (f.kind === 'choice') return f.choices[v] || v;
+  if (f.kind === 'bool') return v ? 'bật' : 'tắt';
+  return String(v);
+}
+function settingRow(f) {
+  const id = 'set-' + f.path.replace(/\./g, '-');
+  let control;
+  if (f.kind === 'choice') {
+    control = `<select id="${id}" data-path="${esc(f.path)}">${Object.entries(f.choices).map(([k, lab]) => `<option value="${esc(k)}" ${k === f.value ? 'selected' : ''}>${esc(lab)}</option>`).join('')}</select>`;
+  } else if (f.kind === 'bool') {
+    control = `<label class="set-control"><input type="checkbox" id="${id}" data-path="${esc(f.path)}" ${f.value ? 'checked' : ''}> bật</label>`;
+  } else {
+    control = `<input type="number" id="${id}" data-path="${esc(f.path)}" value="${f.value}" min="${f.min}" max="${f.max}" step="${f.step || 1}">`;
+  }
+  const when = f.applies === 'now' ? 'áp dụng ngay' : 'áp cho frame auto-label mới — bấm Áp dụng lại cho frame cũ';
+  return `<div class="set-row">
+    <label for="${id}">${esc(f.label)}<span class="set-meta ${f.changed ? 'changed' : ''}">${f.changed ? `đã đổi · mặc định: ${esc(fmtSetting(f, f.default))}` : 'mặc định'}</span></label>
+    <div>${control}</div>
+    <div class="set-help">${esc(f.help)} <i>(${when})</i></div>
+  </div>`;
+}
+function settingValues() {
+  const out = {};
+  document.querySelectorAll('#settings-form [data-path]').forEach((el) => {
+    const f = S.settings.find((x) => x.path === el.dataset.path);
+    out[f.path] = f.kind === 'bool' ? el.checked : f.kind === 'choice' ? el.value : Number(el.value);
+  });
+  return out;
+}
+$('settings-form').addEventListener('input', () => { $('settings-save').disabled = false; });
+$('settings-form').addEventListener('submit', (e) => e.preventDefault());
+$('settings-save').addEventListener('click', async () => {
+  try {
+    const r = await api('/settings', { method: 'PUT', body: { values: settingValues() } });
+    S.settings = r.fields;
+    $('settings-form').innerHTML = r.fields.map(settingRow).join('');
+    $('settings-save').disabled = true;
+    const needs = r.fields.some((f) => f.applies === 'relabel' && f.changed);
+    toast(needs ? 'Đã lưu. Bấm "Áp dụng lại" để frame chưa mở dùng cài đặt mới.' : 'Đã lưu.');
+  } catch (err) { toast(err.message, true); }
+});
+$('settings-reset').addEventListener('click', async () => {
+  try {
+    const r = await api('/settings', { method: 'DELETE' });
+    S.settings = r.fields;
+    $('settings-form').innerHTML = r.fields.map(settingRow).join('');
+    $('settings-save').disabled = true;
+    toast('Đã về cài đặt mặc định.');
+  } catch (err) { toast(err.message, true); }
+});
+
+const JOB_URL = { relabel: '/relabel', eval: '/eval-temporal' };
+function renderJob(kind, job) {
+  const box = $(kind + '-status');
+  box.classList.toggle('error', job.state === 'error');
+  $(kind + '-run').disabled = job.state === 'running' || (kind === 'eval' && !S.gtFrames);
+  if (job.state === 'running') {
+    box.innerHTML = `<div class="progress"><div class="job-bar" style="width:${(job.progress || 0) * 100}%"></div></div><span>${esc(job.message || '')}</span>`;
+  } else if (job.state === 'error') {
+    box.textContent = 'Lỗi: ' + job.message;
+  } else if (job.state === 'done' && kind === 'relabel' && job.result) {
+    const k = job.result.skipped;
+    box.innerHTML = `✓ Đã áp dụng lại ${job.result.relabeled} frame. Bỏ qua: ${k.opened} đã mở / duyệt, ${k.propagated} có nhãn lan truyền, ${k.sweep_edited} có sweep đã sửa.`;
+  } else if (job.state === 'done' && kind === 'eval') {
+    box.textContent = '✓ Xong — xem bảng bên dưới.';
+  } else box.textContent = '';
+}
+async function pollJob(kind, once = false) {
+  clearTimeout(JOB_POLL[kind]);
+  try {
+    const r = await api(JOB_URL[kind]);
+    const job = kind === 'eval' ? r.job : r;
+    renderJob(kind, job);
+    if (kind === 'eval') renderEvalResult(r.last);
+    if (job.state === 'running' && !$('tab-settings').classList.contains('hidden')) JOB_POLL[kind] = setTimeout(() => pollJob(kind), 1500);
+    else if (job.state === 'done' && !once && kind === 'relabel') { refreshLists(); if (S.frame) openFrame(S.frame.frame_id, { preview: true }).catch(() => {}); }
+  } catch (err) { if (!once) toast(err.message, true); }
+}
+async function startJob(kind) {
+  try {
+    const job = await api(JOB_URL[kind], { method: 'POST', body: {} });
+    renderJob(kind, job);
+    JOB_POLL[kind] = setTimeout(() => pollJob(kind), 1000);
+  } catch (err) { toast(err.message, true); }
+}
+$('relabel-run').addEventListener('click', () => startJob('relabel'));
+$('eval-run').addEventListener('click', () => startJob('eval'));
+
+const VARIANT_NAME = {
+  base: 'Trước (không flow, score detector)', flow: 'So khớp sweep bằng flow', 'flow+mean': 'Flow + score trung bình 5 ảnh',
+  'flow+linked': 'Flow + score trung bình các lần thấy', mean: 'Score trung bình 5 ảnh (không flow)',
+};
+const PROP_NAME = { off: 'Đoán theo vận tốc (trước)', missing: 'Flow ở ảnh chưa detect', always: 'Flow ở mọi ảnh', 'always+byte': 'Flow ở mọi ảnh + ghép 2 lượt (ByteTrack)' };
+function renderEvalResult(last) {
+  if (!last) {
+    $('eval-result-note').textContent = 'Chưa chạy.';
+    $('eval2d-table').innerHTML = $('evalprop-table').innerHTML = '';
+    return;
+  }
+  const n = (v, d = 3) => (v == null ? '—' : Number(v).toFixed(d));
+  const frames = last.rows2d[0]?.frames ?? '—';
+  $('eval-result-note').innerHTML = `Chạy xong lúc ${esc(last.finished_at || '—')} trên ${frames} keyframe có GT. <b>Xem tay</b> = box rủi ro medium/high; <b>lọt qua</b> = box sai nằm trong nhóm low (duyệt theo lô không xem); <b>vẽ thêm</b> = vật có trong GT nhưng máy sót; <b>box sai</b> = phải xoá / sửa.`;
+  const base = last.rows2d.find((r) => r.name === 'base');
+  const delta = (v, b, lowerBetter) => {
+    if (!base || v == null || b == null || v === b) return '';
+    const good = lowerBetter ? v < b : v > b;
+    return ` <span class="${good ? 'delta-good' : 'delta-bad'}">(${v > b ? '+' : ''}${typeof v === 'number' && !Number.isInteger(v) ? (v - b).toFixed(3) : v - b})</span>`;
+  };
+  $('eval2d-table').innerHTML = '<thead><tr><th>Cách xử lý 2D</th><th class="num">mAP50</th><th class="num">F1</th><th class="num">Xem tay</th><th class="num">Lọt qua</th><th class="num">Vẽ thêm</th><th class="num">Box sai</th><th class="num">s / frame</th></tr></thead><tbody>' +
+    last.rows2d.map((r) => `<tr><td>${esc(VARIANT_NAME[r.name] || r.name)}</td><td class="num">${n(r.mAP50)}${delta(r.mAP50, base?.mAP50)}</td><td class="num">${n(r.f1)}</td>
+      <td class="num">${r.review}${delta(r.review, base?.review, true)}</td><td class="num">${r.slip}${delta(r.slip, base?.slip, true)}</td>
+      <td class="num">${r.fn}${delta(r.fn, base?.fn, true)}</td><td class="num">${r.fp}${delta(r.fp, base?.fp, true)}</td><td class="num">${n(r.s_per_frame, 2)}</td></tr>`).join('') + '</tbody>';
+  const off = last.propagation.find((r) => r.mode === 'off');
+  $('evalprop-table').innerHTML = '<thead><tr><th>Lan truyền nhãn</th><th class="num">Nhãn đúng</th><th class="num">Box ra</th><th class="num">Tỉ lệ đúng</th><th class="num">Đổi ID</th><th class="num">Mất dấu</th><th class="num">IoU TB</th><th class="num">Giây</th></tr></thead><tbody>' +
+    (last.propagation.map((r) => `<tr><td>${esc(PROP_NAME[r.mode] || r.mode)}</td><td class="num">${r.correct}${off && r !== off ? ` <span class="${r.correct >= off.correct ? 'delta-good' : 'delta-bad'}">(${r.correct - off.correct >= 0 ? '+' : ''}${r.correct - off.correct})</span>` : ''}</td>
+      <td class="num">${r.outputs}</td><td class="num">${n(r.correct_rate)}</td><td class="num">${r.id_switch}</td><td class="num">${r.lost}</td><td class="num">${n(r.mean_iou)}</td><td class="num">${n(r.seconds, 1)}</td></tr>`).join('') ||
+      '<tr><td colspan="8" class="muted">Không có scene nào đủ keyframe để thử lan truyền</td></tr>') + '</tbody>';
+}
+
+// ---------- thời gian từng bước ----------
+async function loadTiming() {
+  const t = await api('/timing');
+  const n = (v, d = 2) => (v == null ? '—' : Number(v).toFixed(d));
+  const rows = [];
+  const section = (title) => rows.push(`<tr class="timing-sec"><td colspan="5">${esc(title)}</td></tr>`);
+  if (t.steps.length) {
+    section('Các bước của dự án (tổng thời gian ÷ số frame)');
+    t.steps.forEach((s) => rows.push(`<tr><td>${esc(s.label)}</td><td class="num">${s.frames ?? '—'}</td><td class="num"><b>${n(s.s_per_frame)}</b></td><td class="num">${n(s.seconds, 0)}</td><td></td></tr>`));
+  }
+  if (t.rows2d.length) {
+    section(`Gán nhãn 2D — ${t.frames2d} frame, TB ${n(t.mean_total2d)} s/frame, ${n(t.model_images_per_frame, 1)} ảnh chạy model/frame (0 = dùng cache)`);
+    t.rows2d.forEach((r) => rows.push(`<tr><td>${esc(r.name)}</td><td class="num">${r.frames}</td><td class="num"><b>${n(r.mean_s)}</b></td><td class="num">${n(r.total_s, 1)}</td><td>${meterCell(r.share)}</td></tr>`));
+  }
+  Object.entries(t.rows3d).forEach(([model, v]) => {
+    section(`Kiểm chứng 3D (${model}) — ${v.frames} frame`);
+    v.rows.forEach((r) => rows.push(`<tr><td>${esc(r.name)}</td><td class="num">${r.frames}</td><td class="num"><b>${n(r.mean_s)}</b></td><td class="num">${n(r.total_s, 1)}</td><td>${meterCell(r.share)}</td></tr>`));
+  });
+  const srv = Object.entries(t.server);
+  if (srv.length) {
+    section('Việc của server từ lúc khởi động (không gắn với frame)');
+    srv.forEach(([, v]) => rows.push(`<tr><td>${esc(v.name)}</td><td class="num">${v.n} lần</td><td class="num"><b>${n(v.mean_s)}</b></td><td class="num">${n(v.total_s, 1)}</td><td class="muted">lâu nhất ${n(v.max_s)} s</td></tr>`));
+  }
+  $('timing-table').innerHTML = rows.length
+    ? '<thead><tr><th>Bước</th><th class="num">Số frame / lần</th><th class="num">Giây TB</th><th class="num">Tổng (s)</th><th>Phần trăm</th></tr></thead><tbody>' + rows.join('') + '</tbody>'
+    : '<tbody><tr><td class="muted">Chưa có số đo: frame auto-label trước bản này chưa ghi thời gian từng bước. Chạy lại (tab ⚙ Cài đặt → Áp dụng lại, hoặc tạo dự án mới).</td></tr></tbody>';
+}
+$('timing-refresh').addEventListener('click', () => loadTiming().catch((e) => toast(e.message, true)));
 
 function stepFrame(delta) {
   if (S.viewMode === 'video') { stepVideo(delta); return; }
@@ -1321,6 +2005,16 @@ function stepFrame(delta) {
   const i = S.queue.findIndex((f) => f.frame_id === S.frame?.frame_id);
   const next = S.queue[(i + delta + S.queue.length) % S.queue.length];
   if (next) openFrame(next.frame_id);
+}
+
+function stepSweepBox(delta) {
+  const boxes = sweepBoxes(curSweep());
+  if (!boxes.length) return;
+  const i = boxes.findIndex((b) => b.box_id === S.sweepSel);
+  S.sweepSel = boxes[(i + delta + boxes.length) % boxes.length].box_id;
+  renderPanel();
+  draw();
+  document.querySelector(`[data-sbid="${CSS.escape(S.sweepSel)}"]`)?.scrollIntoView({ block: 'nearest' });
 }
 
 function stepObject(delta) {
@@ -1333,7 +2027,12 @@ function stepObject(delta) {
 document.addEventListener('keydown', (e) => {
   if ($('tab-review').classList.contains('hidden')) return;
   const inField = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName);
-  if (e.key === 'Escape') { cancelEdit(); document.activeElement?.blur(); return; }
+  if (e.key === 'Escape') {
+    if (S.mode === 'view' && inSweep() && !inField) setView(0);
+    cancelEdit();
+    document.activeElement?.blur();
+    return;
+  }
   if (inField) {
     if (e.key === 'Enter' && document.activeElement.id === 'add-class') saveEdit();
     return;
@@ -1350,8 +2049,8 @@ document.addEventListener('keydown', (e) => {
 
   // Điều hướng: dùng được cả khi frame đã approve
   const nav = {
-    ArrowDown: () => stepObject(1),
-    ArrowUp: () => stepObject(-1),
+    ArrowDown: () => (inSweep() ? stepSweepBox(1) : stepObject(1)),
+    ArrowUp: () => (inSweep() ? stepSweepBox(-1) : stepObject(-1)),
     n: () => stepFrame(1),
     p: () => stepFrame(-1),
     l: () => $('show-lidar').click(),
@@ -1368,6 +2067,20 @@ document.addEventListener('keydown', (e) => {
   if (nav[key]) { nav[key](); e.preventDefault(); return; }
   if (S.frame.status === 'approved') return;
 
+  if (inSweep()) {
+    const sb = S.sweepSel;
+    const sweepKeys = {
+      k: () => sb && sweepAct({ action: 'KEEP', box_id: sb }),
+      d: () => sb && sweepAct({ action: 'DELETE', box_id: sb }),
+      Delete: () => sb && sweepAct({ action: 'DELETE', box_id: sb }),
+      c: () => sb && document.querySelector(`[data-sbid="${CSS.escape(sb)}"] [data-sclass]`)?.focus(),
+      e: startEdit,
+      b: startAdd,
+      Enter: () => S.mode !== 'view' && S.editBox && saveEdit(),
+    };
+    if (sweepKeys[key]) { sweepKeys[key](); e.preventDefault(); }
+    return;
+  }
   const sel = S.selected;
   const edit = {
     k: () => sel && act({ action: 'KEEP', object_id: sel }),
@@ -1384,10 +2097,28 @@ document.addEventListener('keydown', (e) => {
 
 // Đổi lớp bằng bàn phím: C -> chọn trong dropdown -> Enter
 document.querySelector('.review-panel').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.matches('[data-sclass]')) {
+    sweepAct({ action: 'CHANGE_CLASS', box_id: e.target.closest('[data-sbid]').dataset.sbid, label: e.target.value });
+    return;
+  }
   if (e.key !== 'Enter' || !e.target.matches('[data-class]')) return;
   const card = e.target.closest('[data-oid]');
   act({ action: 'CHANGE_CLASS', object_id: card.dataset.oid, label: e.target.value });
 });
+
+// Đổi lớp bằng chuột: thẻ object kiểu mới không còn nút "Đổi lớp", chọn trong dropdown là áp dụng ngay.
+// Bàn phím vẫn theo luồng cũ (C -> mũi tên -> Enter) nên chỉ nhận change đến từ chuột.
+(() => {
+  const panel = document.querySelector('.review-panel');
+  let byPointer = false;
+  panel.addEventListener('pointerdown', (e) => { if (e.target.closest('.obj-card [data-class]')) byPointer = true; });
+  panel.addEventListener('keydown', (e) => { if (e.target.matches('.obj-card [data-class]')) byPointer = false; });
+  panel.addEventListener('change', (e) => {
+    if (!byPointer || !e.target.matches('.obj-card [data-class]')) return;
+    byPointer = false;
+    act({ action: 'CHANGE_CLASS', object_id: e.target.closest('[data-oid]').dataset.oid, label: e.target.value });
+  });
+})();
 
 $('queue-list').addEventListener('click', (e) => {
   const li = e.target.closest('[data-id]');
@@ -1460,6 +2191,7 @@ async function initProject() {
     const urlMode = new URLSearchParams(location.search).get('mode');
     const saved = modes.includes(urlMode) ? urlMode : storageGet('viewMode', modes[0]);
     await setMode(modes.includes(saved) ? saved : modes[0]);
+    if (new URLSearchParams(location.search).get('tab') === 'settings') switchTab('settings');
   } catch (err) {
     toast('Không tải được dữ liệu: ' + err.message, true);
   }

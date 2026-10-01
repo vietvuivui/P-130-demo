@@ -1,0 +1,422 @@
+{
+ "pointpillars": {
+  "dev": {
+   "mAP": 0.394,
+   "NDS": 0.503,
+   "ap": {
+    "car": 0.853,
+    "truck": 0.342,
+    "bus": 0.192,
+    "trailer": 0.0,
+    "construction_vehicle": 0.33,
+    "pedestrian": 0.839,
+    "motorcycle": 0.133,
+    "bicycle": 0.114,
+    "traffic_cone": 0.606,
+    "barrier": 0.531
+   },
+   "ATE": 0.454,
+   "ASE": 0.34,
+   "AOE": 0.499,
+   "AVE": 0.452
+  },
+  "heldout": {
+   "mAP": 0.4729,
+   "NDS": 0.559,
+   "ap": {
+    "car": 0.826,
+    "truck": 0.357,
+    "bus": 0.538,
+    "trailer": 0.629,
+    "construction_vehicle": 0.202,
+    "pedestrian": 0.771,
+    "motorcycle": 0.124,
+    "bicycle": 0.308,
+    "traffic_cone": 0.573,
+    "barrier": 0.401
+   },
+   "ATE": 0.389,
+   "ASE": 0.265,
+   "AOE": 0.559,
+   "AVE": 0.299
+  }
+ },
+ "ssn": {
+  "dev": {
+   "mAP": 0.4507,
+   "NDS": 0.5096,
+   "ap": {
+    "car": 0.861,
+    "truck": 0.503,
+    "bus": 0.343,
+    "trailer": 0.0,
+    "construction_vehicle": 0.665,
+    "pedestrian": 0.728,
+    "motorcycle": 0.171,
+    "bicycle": 0.148,
+    "traffic_cone": 0.527,
+    "barrier": 0.559
+   },
+   "ATE": 0.423,
+   "ASE": 0.347,
+   "AOE": 0.708,
+   "AVE": 0.485
+  },
+  "heldout": {
+   "mAP": 0.4409,
+   "NDS": 0.5683,
+   "ap": {
+    "car": 0.821,
+    "truck": 0.434,
+    "bus": 0.68,
+    "trailer": 0.386,
+    "construction_vehicle": 0.249,
+    "pedestrian": 0.711,
+    "motorcycle": 0.085,
+    "bicycle": 0.248,
+    "traffic_cone": 0.408,
+    "barrier": 0.386
+   },
+   "ATE": 0.325,
+   "ASE": 0.26,
+   "AOE": 0.346,
+   "AVE": 0.332
+  }
+ },
+ "centerpoint_pillar": {
+  "dev": {
+   "mAP": 0.431,
+   "NDS": 0.522,
+   "ap": {
+    "car": 0.884,
+    "truck": 0.471,
+    "bus": 0.388,
+    "trailer": 0.0,
+    "construction_vehicle": 0.326,
+    "pedestrian": 0.879,
+    "motorcycle": 0.129,
+    "bicycle": 0.232,
+    "traffic_cone": 0.767,
+    "barrier": 0.234
+   },
+   "ATE": 0.373,
+   "ASE": 0.332,
+   "AOE": 0.467,
+   "AVE": 0.59
+  },
+  "heldout": {
+   "mAP": 0.5284,
+   "NDS": 0.6096,
+   "ap": {
+    "car": 0.851,
+    "truck": 0.516,
+    "bus": 0.682,
+    "trailer": 0.508,
+    "construction_vehicle": 0.278,
+    "pedestrian": 0.84,
+    "motorcycle": 0.269,
+    "bicycle": 0.24,
+    "traffic_cone": 0.686,
+    "barrier": 0.414
+   },
+   "ATE": 0.292,
+   "ASE": 0.258,
+   "AOE": 0.369,
+   "AVE": 0.36
+  }
+ },
+ "centerpoint_voxel": {
+  "dev": {
+   "mAP": 0.5371,
+   "NDS": 0.5596,
+   "ap": {
+    "car": 0.881,
+    "truck": 0.521,
+    "bus": 0.383,
+    "trailer": 0.0,
+    "construction_vehicle": 0.31,
+    "pedestrian": 0.882,
+    "motorcycle": 0.449,
+    "bicycle": 0.707,
+    "traffic_cone": 0.841,
+    "barrier": 0.396
+   },
+   "ATE": 0.367,
+   "ASE": 0.331,
+   "AOE": 0.602,
+   "AVE": 0.617
+  },
+  "heldout": {
+   "mAP": 0.5775,
+   "NDS": 0.6555,
+   "ap": {
+    "car": 0.858,
+    "truck": 0.501,
+    "bus": 0.707,
+    "trailer": 0.319,
+    "construction_vehicle": 0.318,
+    "pedestrian": 0.882,
+    "motorcycle": 0.496,
+    "bicycle": 0.435,
+    "traffic_cone": 0.803,
+    "barrier": 0.458
+   },
+   "ATE": 0.257,
+   "ASE": 0.237,
+   "AOE": 0.286,
+   "AVE": 0.368
+  }
+ },
+ "fcos3d": {
+  "dev": {
+   "mAP": 0.2808,
+   "NDS": 0.3295,
+   "ap": {
+    "car": 0.497,
+    "truck": 0.19,
+    "bus": 0.177,
+    "trailer": 0.0,
+    "construction_vehicle": 0.141,
+    "pedestrian": 0.434,
+    "motorcycle": 0.218,
+    "bicycle": 0.311,
+    "traffic_cone": 0.689,
+    "barrier": 0.151
+   },
+   "ATE": 0.761,
+   "ASE": 0.347,
+   "AOE": 0.754,
+   "AVE": 1.615
+  },
+  "heldout": {
+   "mAP": 0.3361,
+   "NDS": 0.4213,
+   "ap": {
+    "car": 0.486,
+    "truck": 0.244,
+    "bus": 0.444,
+    "trailer": 0.119,
+    "construction_vehicle": 0.165,
+    "pedestrian": 0.439,
+    "motorcycle": 0.268,
+    "bicycle": 0.256,
+    "traffic_cone": 0.631,
+    "barrier": 0.31
+   },
+   "ATE": 0.682,
+   "ASE": 0.231,
+   "AOE": 0.451,
+   "AVE": 1.725
+  }
+ },
+ "pgd": {
+  "dev": {
+   "mAP": 0.323,
+   "NDS": 0.3552,
+   "ap": {
+    "car": 0.533,
+    "truck": 0.269,
+    "bus": 0.234,
+    "trailer": 0.0,
+    "construction_vehicle": 0.205,
+    "pedestrian": 0.425,
+    "motorcycle": 0.308,
+    "bicycle": 0.391,
+    "traffic_cone": 0.726,
+    "barrier": 0.139
+   },
+   "ATE": 0.746,
+   "ASE": 0.356,
+   "AOE": 0.692,
+   "AVE": 1.562
+  },
+  "heldout": {
+   "mAP": 0.3987,
+   "NDS": 0.458,
+   "ap": {
+    "car": 0.535,
+    "truck": 0.298,
+    "bus": 0.439,
+    "trailer": 0.376,
+    "construction_vehicle": 0.215,
+    "pedestrian": 0.46,
+    "motorcycle": 0.332,
+    "bicycle": 0.316,
+    "traffic_cone": 0.675,
+    "barrier": 0.342
+   },
+   "ATE": 0.599,
+   "ASE": 0.247,
+   "AOE": 0.375,
+   "AVE": 1.288
+  }
+ },
+ "centerpoint_voxel_track": {
+  "dev": {
+   "mAP": 0.573,
+   "NDS": 0.5834,
+   "ap": {
+    "car": 0.894,
+    "truck": 0.59,
+    "bus": 0.397,
+    "trailer": 0.0,
+    "construction_vehicle": 0.361,
+    "pedestrian": 0.91,
+    "motorcycle": 0.461,
+    "bicycle": 0.833,
+    "traffic_cone": 0.862,
+    "barrier": 0.423
+   },
+   "ATE": 0.365,
+   "ASE": 0.332,
+   "AOE": 0.624,
+   "AVE": 0.539
+  },
+  "heldout": {
+   "mAP": 0.6164,
+   "NDS": 0.6885,
+   "ap": {
+    "car": 0.869,
+    "truck": 0.548,
+    "bus": 0.727,
+    "trailer": 0.361,
+    "construction_vehicle": 0.398,
+    "pedestrian": 0.895,
+    "motorcycle": 0.579,
+    "bicycle": 0.51,
+    "traffic_cone": 0.813,
+    "barrier": 0.464
+   },
+   "ATE": 0.256,
+   "ASE": 0.219,
+   "AOE": 0.212,
+   "AVE": 0.325
+  }
+ },
+ "fuse4": {
+  "dev": {
+   "mAP": 0.6169,
+   "NDS": 0.6211,
+   "ap": {
+    "car": 0.906,
+    "truck": 0.591,
+    "bus": 0.417,
+    "trailer": 0.0,
+    "construction_vehicle": 0.586,
+    "pedestrian": 0.915,
+    "motorcycle": 0.673,
+    "bicycle": 0.689,
+    "traffic_cone": 0.867,
+    "barrier": 0.525
+   },
+   "ATE": 0.336,
+   "ASE": 0.325,
+   "AOE": 0.564,
+   "AVE": 0.452
+  },
+  "heldout": {
+   "mAP": 0.6371,
+   "NDS": 0.6904,
+   "ap": {
+    "car": 0.878,
+    "truck": 0.547,
+    "bus": 0.78,
+    "trailer": 0.554,
+    "construction_vehicle": 0.439,
+    "pedestrian": 0.891,
+    "motorcycle": 0.479,
+    "bicycle": 0.502,
+    "traffic_cone": 0.803,
+    "barrier": 0.498
+   },
+   "ATE": 0.232,
+   "ASE": 0.242,
+   "AOE": 0.274,
+   "AVE": 0.288
+  }
+ },
+ "ensemble": {
+  "dev": {
+   "mAP": 0.644,
+   "NDS": 0.6429,
+   "ap": {
+    "car": 0.914,
+    "truck": 0.611,
+    "bus": 0.43,
+    "trailer": 0.0,
+    "construction_vehicle": 0.607,
+    "pedestrian": 0.916,
+    "motorcycle": 0.828,
+    "bicycle": 0.744,
+    "traffic_cone": 0.871,
+    "barrier": 0.519
+   },
+   "ATE": 0.338,
+   "ASE": 0.325,
+   "AOE": 0.532,
+   "AVE": 0.399
+  },
+  "heldout": {
+   "mAP": 0.6682,
+   "NDS": 0.7128,
+   "ap": {
+    "car": 0.886,
+    "truck": 0.587,
+    "bus": 0.803,
+    "trailer": 0.62,
+    "construction_vehicle": 0.473,
+    "pedestrian": 0.9,
+    "motorcycle": 0.555,
+    "bicycle": 0.561,
+    "traffic_cone": 0.802,
+    "barrier": 0.495
+   },
+   "ATE": 0.229,
+   "ASE": 0.237,
+   "AOE": 0.22,
+   "AVE": 0.268
+  }
+ },
+ "ensemble6": {
+  "dev": {
+   "mAP": 0.6387,
+   "NDS": 0.6402,
+   "ap": {
+    "car": 0.912,
+    "truck": 0.649,
+    "bus": 0.421,
+    "trailer": 0.0,
+    "construction_vehicle": 0.585,
+    "pedestrian": 0.922,
+    "motorcycle": 0.821,
+    "bicycle": 0.782,
+    "traffic_cone": 0.888,
+    "barrier": 0.407
+   },
+   "ATE": 0.337,
+   "ASE": 0.323,
+   "AOE": 0.538,
+   "AVE": 0.396
+  },
+  "heldout": {
+   "mAP": 0.6623,
+   "NDS": 0.7114,
+   "ap": {
+    "car": 0.886,
+    "truck": 0.572,
+    "bus": 0.812,
+    "trailer": 0.47,
+    "construction_vehicle": 0.468,
+    "pedestrian": 0.903,
+    "motorcycle": 0.593,
+    "bicycle": 0.582,
+    "traffic_cone": 0.834,
+    "barrier": 0.503
+   },
+   "ATE": 0.236,
+   "ASE": 0.234,
+   "AOE": 0.207,
+   "AVE": 0.277
+  }
+ }
+}

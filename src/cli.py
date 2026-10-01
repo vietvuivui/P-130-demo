@@ -10,9 +10,14 @@ python -m src.cli detect-sweeps --scenes scene-0061    # detect mọi ảnh CAM_
 python -m src.cli propagate scene-0061_000             # lan truyền từ frame đã approve sang các keyframe sau
 python -m src.cli eval-propagation                     # thí nghiệm keyframe hoàn hảo -> eval/results/
 
+QC:
+python -m src.cli qc-report                            # checklist sẵn sàng phát hành; exit 1 nếu chưa READY
+python -m src.cli quick-check vendor_labels.json       # kiểm nhanh file nhãn ngoài; exit 1 nếu có lỗi (error)
 Phần 3D (dự đoán từ tools3d/run3d.py trên máy có GPU):
 python -m src.cli label3d --model pointpillars          # kiểm chứng box 3D bằng camera, tạo frame 3D để duyệt
 python -m src.cli evaluate3d --model pointpillars       # kết luận kiểm chứng so với nhãn gốc -> eval/results/det3d/
+
+python -m src.cli profile --limit 10                   # một frame tốn thời gian ở bước nào (không dùng cache)
 """
 
 from __future__ import annotations
@@ -143,6 +148,50 @@ def cmd_eval_propagation(args) -> None:
     print(report)
 
 
+def cmd_qc_report(args) -> None:
+    from src.services.qc import dataset_report
+    from src.services.store import WorkspaceStore
+
+    settings = get_settings()
+    report = dataset_report(WorkspaceStore(settings.workspace_dir), load_autolabel_config(settings.autolabel_config))
+    if args.json:
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+    else:
+        print(f"{report['status']} — {report['frames']['approved']}/{report['frames']['total']} frame đã approve")
+        for c in report["checks"]:
+            print(f"  [{'x' if c['ok'] else ' '}] {c['label']}: {c['detail']}")
+    raise SystemExit(0 if report["status"] == "READY" else 1)
+
+
+def cmd_quick_check(args) -> None:
+    from src.services.qc import QCError, quick_check
+    from src.services.store import WorkspaceStore
+
+    settings = get_settings()
+    path = Path(args.file)
+    try:
+        res = quick_check(
+            WorkspaceStore(settings.workspace_dir),
+            load_autolabel_config(settings.autolabel_config),
+            path.name,
+            path.read_bytes(),
+        )
+    except QCError as e:
+        raise SystemExit(f"Không đọc được {path}: {e}") from e
+    if args.json:
+        print(res.model_dump_json(indent=2))
+    else:
+        print(
+            f"{res.n_frames} frame, {res.n_labels} nhãn: {res.n_errors} lỗi, {res.n_warnings} cảnh báo, "
+            f"{res.n_acked} cảnh báo người đã xác nhận ({res.elapsed_ms} ms) {res.by_code}"
+        )
+        for msg in res.parse_errors:
+            print(f"  ! {msg}")
+        for fr in res.frames:
+            for f in (f for f in fr.findings if not f.acked):
+                who = f"#{f.object_id}" if f.object_id else "-"
+                print(f"  {f.severity:7s} {fr.frame_id or fr.file_name} {who} {f.code}: {f.message}")
+    raise SystemExit(1 if res.n_errors or res.parse_errors else 0)
 def _preds_file(model: str, path: str | None) -> Path:
     p = Path(path) if path else Path("eval/results/det3d") / model / "ui_preds.json"
     if not p.is_file():
@@ -189,6 +238,16 @@ def cmd_evaluate3d(args) -> None:
         )
 
 
+def cmd_profile(args) -> None:
+    from src.services.nuscenes_data import NuScenesMini
+    from src.services.profiling import print_profile, profile
+
+    settings = get_settings()
+    config = load_autolabel_config(settings.autolabel_config)
+    data = NuScenesMini(settings.nuscenes_dataroot, settings.nuscenes_version)
+    print_profile(profile(data, config, args.scenes, args.limit, privacy=not args.no_privacy))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m src.cli")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -231,12 +290,27 @@ def main() -> None:
     e3.add_argument("--out", default="eval/results/det3d")
     e3.set_defaults(func=cmd_evaluate3d)
 
+    pf = sub.add_parser("profile", help="Đo thời gian từng bước cho N keyframe, không dùng cache")
+    pf.add_argument("--scenes", nargs="*", help="Tên scene (mặc định: scene đầu tiên có dữ liệu)")
+    pf.add_argument("--limit", type=int, default=10, help="Số keyframe")
+    pf.add_argument("--no-privacy", action="store_true", help="Bỏ đo làm mờ mặt / biển số")
+    pf.set_defaults(func=cmd_profile)
+
     ep = sub.add_parser("eval-propagation", help="Thí nghiệm keyframe hoàn hảo: lan truyền GT, so với GT")
     ep.add_argument("--scenes", nargs="*", help="Tên scene (mặc định: mọi scene có trong workspace)")
     ep.add_argument("--max-frames", type=int, help="Số keyframe tối đa đi tới")
     ep.add_argument("--detectors", nargs="*", help="Detector đã chạy cho workspace (mặc định theo config)")
     ep.add_argument("--out", default="eval/results")
     ep.set_defaults(func=cmd_eval_propagation)
+
+    qr = sub.add_parser("qc-report", help="Checklist QC sẵn sàng phát hành (exit 1 nếu chưa READY)")
+    qr.add_argument("--json", action="store_true", help="In toàn bộ báo cáo dạng JSON")
+    qr.set_defaults(func=cmd_qc_report)
+
+    qk = sub.add_parser("quick-check", help="Kiểm nhanh file nhãn COCO / JSONL (exit 1 nếu có lỗi)")
+    qk.add_argument("file", help="File .json (COCO hoặc {'frames': [...]}) hoặc .jsonl")
+    qk.add_argument("--json", action="store_true", help="In kết quả dạng JSON")
+    qk.set_defaults(func=cmd_quick_check)
 
     args = parser.parse_args()
     logging.basicConfig(level=get_settings().log_level, format="%(asctime)s %(levelname)s %(message)s")

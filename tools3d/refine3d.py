@@ -169,10 +169,13 @@ def build_tracks(results: dict[str, list[dict]], scene_samples: list[tuple[str, 
     return tracks
 
 
-def refine_tracks(results: dict[str, list[dict]], scenes: dict[str, list[tuple[str, float]]], track_min_score: float = 0.1,
+def refine_tracks(results: dict[str, list[dict]], scenes: dict[str, list[tuple[str, float]]], track_min_score: float = 0.05,
                   blend: float = 0.5, fill_gaps: bool = True, fix_size: bool = True, fix_velocity: bool = True,
                   fix_heading: bool = True, rescore: bool = True) -> dict[str, list[dict]]:  # fmt: skip
-    """scenes[scene_token] = [(sample_token, timestamp_s)] theo thời gian. Box dưới track_min_score giữ nguyên."""
+    """scenes[scene_token] = [(sample_token, timestamp_s)] theo thời gian. Box dưới track_min_score giữ nguyên.
+
+    track_min_score 0.05 (trước là 0.1), chọn trên dev trong {0.02, 0.03, 0.05, 0.1, 0.2}: ensemble 4 mô hình dev mAP
+    0.644 -> 0.654, test 24 scene 0.666 -> 0.671 (eval/results/lidar2d.md)."""
     out = {tok: [b for b in bs if b["detection_score"] < track_min_score] for tok, bs in results.items()}
     for si, samples in enumerate(scenes.values()):
         times = [t for _, t in samples]

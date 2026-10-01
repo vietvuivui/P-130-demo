@@ -50,7 +50,7 @@ def reviewer_stats(frames: list, events: list[dict], corrections: list[dict], mo
     for c in corrections:
         if c.get("reviewer") and c.get("human_action") not in ("UNDO", "REDO"):
             objects[c["reviewer"]] += 1
-    rejects, undos = defaultdict(int), defaultdict(int)
+    rejects, undos, sweeps = defaultdict(int), defaultdict(int), defaultdict(int)
     for e in events:
         if e.get("mode") != mode:
             continue
@@ -58,8 +58,10 @@ def reviewer_stats(frames: list, events: list[dict], corrections: list[dict], mo
             rejects[e.get("reviewer")] += 1
         elif e.get("type") in ("undo", "redo"):
             undos[e.get("reviewer")] += 1
+        elif e.get("type") == "sweep_action":
+            sweeps[e.get("reviewer")] += 1
     out = []
-    for who in sorted(set(approvals) | set(objects) | set(rejects)):
+    for who in sorted(set(approvals) | set(objects) | set(rejects) | set(sweeps)):
         items = sorted((a for a in approvals.get(who, []) if a[0]), key=lambda a: a[0])
         sessions, cur = [], []
         for a in items:
@@ -75,6 +77,7 @@ def reviewer_stats(frames: list, events: list[dict], corrections: list[dict], mo
             "frames_approved": len(approvals.get(who, [])),
             "objects_handled": objects.get(who, 0),
             "frames_rejected": rejects.get(who, 0),
+            "sweep_boxes_handled": sweeps.get(who, 0),
             "undo_redo": undos.get(who, 0),
             "review_time_s": round(secs, 1),
             "frames_per_hour": _per_hour(len(approvals.get(who, [])), secs),
