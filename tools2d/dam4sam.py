@@ -42,7 +42,11 @@ CONFIGS = {
     "flow+botsort": ("always", "botsort"),
     "dam4sam+byte": ("dam4sam", "byte"),
     "dam4sam+botsort": ("dam4sam", "botsort"),
+    "dam4sam+none": ("dam4sam", "none"),  # DAM4SAM thuần: không ghép với detection, box = hộp bao mask
 }
+# Thứ tự từ đơn giản / rẻ tới phức tạp / đắt: khi hai cấu hình ngang nhau (chênh HOTA < TIE) thì chọn cái đứng trước
+COST_ORDER = ["flow+byte", "flow+botsort", "dam4sam+none", "dam4sam+byte", "dam4sam+botsort"]
+TIE = 0.01
 
 
 def main() -> None:
@@ -51,6 +55,9 @@ def main() -> None:
     ap.add_argument("--check", action="store_true", help="Chỉ kiểm tra cài đặt DAM4SAM rồi thoát")
     ap.add_argument("--force", action="store_true", help="Chạy lại cả cấu hình đã có kết quả")
     ap.add_argument("--allow-sparse", action="store_true", help="Vẫn chạy khi cache detection thiếu ảnh 12 Hz")
+    ap.add_argument("--no-detect", action="store_true", help="Không tự detect ảnh 12 Hz còn thiếu trong cache")
+    ap.add_argument("--bench", action="store_true", help="Đo tăng tốc DAM4SAM (dùng chung encoder + autocast) trước / sau")
+    ap.add_argument("--slow", action="store_true", help="Tắt tăng tốc DAM4SAM (chạy đúng như repo gốc)")
     ap.add_argument("--version", default=os.environ.get("NUSCENES_VERSION", "v1.0-trainval"))
     ap.add_argument("--workspace", default=os.environ.get("WORKSPACE_DIR", "data/workspace"))
     ap.add_argument("--scenes", nargs="*")
@@ -91,7 +98,9 @@ def main() -> None:
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    run_key = {"workspace": str(ws), "scenes": sorted(args.scenes or []), "max_frames": args.max_frames, "model": args.model}
+    run_key = {"workspace": str(ws), "scenes": sorted(args.scenes or []), "max_frames": args.max_frames,
+               "model": args.model, "fast": not args.slow}  # fmt: skip
+    config.propagation.dam4sam_share_encoder = config.propagation.dam4sam_autocast = not args.slow
     # Mọi cấu hình đều đọc detection từ cache; cache trống (chưa `detect-sweeps`, hoặc khoá cache đổi vì đổi weights /
     # prompt / ngưỡng) thì tracker chỉ trôi theo flow, các cấu hình ra giống hệt nhau và không nói lên gì
     ensemble0 = DetectorEnsemble(config, ws / "cache" / "detections")
@@ -104,6 +113,15 @@ def main() -> None:
             n_cached += ensemble0.load_cached(im.sd_token) is not None
     key = ensemble0._cache_file(config.detection.detectors[0], "x").parent.name
     print(f"Cache detection ({key}): {n_cached}/{n_img} ảnh của {len(scenes)} scene có detection", flush=True)
+    if n_cached < n_img and not args.no_detect:
+        print(f"Detect {n_img - n_cached} ảnh còn thiếu (GPU)…", flush=True)
+        for sc in scenes:
+            todo = [im for im in source0.timeline(sc, config.camera) if ensemble0.load_cached(im.sd_token) is None]
+            for i in range(0, len(todo), 16):
+                ensemble0.detect_batch([(im.sd_token, data.dataroot / im.path) for im in todo[i : i + 16]])
+            print(f"  {sc}: detect thêm {len(todo)} ảnh", flush=True)
+        n_cached = sum(ensemble0.load_cached(im.sd_token) is not None
+                       for sc in scenes for im in source0.timeline(sc, config.camera))  # fmt: skip
     if n_img and n_cached / n_img < 0.9 and not args.allow_sparse:
         raise SystemExit(
             "Thiếu detection ở ảnh 12 Hz: chạy trước\n"
@@ -111,6 +129,9 @@ def main() -> None:
             f"  python -m src.cli detect-sweeps --scenes {' '.join(scenes)}\n"
             "(hoặc --allow-sparse để vẫn chạy; kết quả khi đó chỉ phản ánh flow, không phải tracker)"
         )
+
+    if args.bench:
+        bench(store, data, config, ws, scenes[0], out)
 
     results = {}
     prev = out / "dam4sam.json"
@@ -146,15 +167,75 @@ def main() -> None:
     # HOTA / MOTA / IDF1 của nhãn hiện có trong workspace (sau lần lan truyền cuối) — tham khảo
     results["trackeval_workspace"] = te.evaluate_workspace(store, "2d", scenes=args.scenes)["overall"]
     (out / "dam4sam.json").write_text(json.dumps({"_run": run_key, **results}, indent=1, ensure_ascii=False), encoding="utf-8")
-    lines = ["| Cấu hình | Nhãn đúng | Box sai | Đổi ID | Mất dấu | HOTA | DetA | AssA | MOTA | IDF1 | IDSW | Giây |",
-             "|---|---|---|---|---|---|---|---|---|---|---|---|"]  # fmt: skip
-    for name in args.configs:
+    lines = ["| Cấu hình | Nhãn đúng | Box sai | Đổi ID | Mất dấu | HOTA | DetA | AssA | MOTA | IDF1 | Giây |",
+             "|---|---|---|---|---|---|---|---|---|---|---|"]  # fmt: skip
+    done = [n for n in COST_ORDER if n in results]
+    for name in done:
         v = results[name]
-        te = " | ".join(f"{v[k]:.3f}" if k in v else "—" for k in ("HOTA", "DetA", "AssA", "MOTA", "IDF1"))
-        lines.append(f"| {name} | {v['correct']} | {v['wrong']} | {v['id_switch']} | {v['lost']} | {te} | "
-                     f"{v.get('IDSW', '—')} | {v['seconds']} |")  # fmt: skip
+        te_cols = " | ".join(f"{v[k]:.3f}" for k in ("HOTA", "DetA", "AssA", "MOTA", "IDF1"))
+        lines.append(f"| {name} | {v['correct']} | {v['wrong']} | {v['id_switch']} | {v['lost']} | {te_cols} | {v['seconds']} |")
+    lines += ["", *recommend(results, done)]
     (out / "dam4sam.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
+
+
+def recommend(results: dict, done: list[str]) -> list[str]:
+    """Chọn cấu hình: HOTA cao nhất; trong khoảng TIE của cao nhất thì lấy cái đơn giản / rẻ nhất (COST_ORDER)."""
+    if not done:
+        return []
+    best = max(results[n]["HOTA"] for n in done)
+    pick = next(n for n in done if results[n]["HOTA"] >= best - TIE)
+    top = max(done, key=lambda n: results[n]["HOTA"])
+    base = results.get("flow+byte")
+    out = [f"**Khuyến nghị: `{pick}`** (HOTA {results[pick]['HOTA']:.3f}, IDF1 {results[pick]['IDF1']:.3f}, {results[pick]['seconds']} s)."]
+    if pick != top:
+        out.append(f"`{top}` có HOTA cao nhất ({results[top]['HOTA']:.3f}) nhưng chỉ hơn {results[top]['HOTA'] - results[pick]['HOTA']:.3f} "
+                   f"(< {TIE}), không đáng thêm độ phức tạp / thời gian ({results[top]['seconds']} s).")  # fmt: skip
+    if base and pick != "flow+byte":
+        v = results[pick]
+        out.append(f"So với mặc định `flow+byte`: HOTA {base['HOTA']:.3f} → {v['HOTA']:.3f}, IDF1 {base['IDF1']:.3f} → {v['IDF1']:.3f}, "
+                   f"nhãn đúng {base['correct']} → {v['correct']}, thời gian ×{v['seconds'] / max(base['seconds'], 0.1):.0f}.")  # fmt: skip
+    if "dam4sam+byte" in results and "dam4sam+none" in results:
+        a, b = results["dam4sam+none"], results["dam4sam+byte"]
+        out.append(f"Ghép DAM4SAM với detection (byte) so với DAM4SAM thuần: HOTA {a['HOTA']:.3f} → {b['HOTA']:.3f}, "
+                   f"box sai {a['wrong']} → {b['wrong']}, mất dấu {a['lost']} → {b['lost']}.")  # fmt: skip
+    if "dam4sam+byte" in results and "dam4sam+botsort" in results:
+        a, b = results["dam4sam+byte"], results["dam4sam+botsort"]
+        st = b.get("botsort", {})
+        out.append(f"Thêm BoT-SORT vào DAM4SAM: HOTA {a['HOTA']:.3f} → {b['HOTA']:.3f}, đổi ID {a['id_switch']} → {b['id_switch']} "
+                   f"(ngoại hình đổi {st.get('changed', '?')}/{st.get('calls', '?')} lần ghép).")  # fmt: skip
+    out.append(f"Quy tắc chọn: HOTA cao nhất; chênh dưới {TIE} thì lấy cấu hình đơn giản / nhanh hơn. Chỉ chọn trên dev.")
+    return out
+
+
+def bench(store, data, config, ws: Path, scene: str, out: Path) -> None:
+    """Đo tăng tốc DAM4SAM trên một đoạn ngắn (keyframe đầu của scene, đi 2 keyframe): gốc vs dùng chung encoder +
+    autocast; kiểm tra kết quả có đổi không."""
+    from src.services import dam4sam
+    from src.services.detectors import DetectorEnsemble
+    from src.services.sequence import NuScenesSequenceSource, evaluate_propagation
+
+    rows = {}
+    for name, fast in (("gốc (mỗi vật mã hoá lại ảnh, float32)", False), ("dùng chung encoder + autocast", True)):
+        cfg = config.model_copy(deep=True)
+        cfg.propagation.flow, cfg.propagation.association = "dam4sam", "byte"
+        cfg.propagation.dam4sam_share_encoder = cfg.propagation.dam4sam_autocast = fast
+        source = NuScenesSequenceSource(data, DetectorEnsemble(cfg, ws / "cache" / "detections"))
+        for e in dam4sam._ENCODERS.values():
+            e.hits = e.misses = 0
+        t0 = time.perf_counter()
+        r = evaluate_propagation(store, source, cfg, [scene], max_frames=2)
+        dt = time.perf_counter() - t0
+        enc = next(iter(dam4sam._ENCODERS.values()), None)
+        rows[name] = {"seconds": round(dt, 1), "correct": sum(x["correct"] for x in r["per_hop"]),
+                      "wrong": sum(x["wrong"] for x in r["per_hop"]), "HOTA": r["trackeval"]["HOTA"],
+                      "tracks": r["tracks_started"], "encoder_runs": enc.misses if enc else None,
+                      "encoder_reused": enc.hits if enc else None}  # fmt: skip
+        print("bench", name, rows[name], flush=True)
+    a, b = rows.values()
+    print(f"Tăng tốc DAM4SAM: {a['seconds']} s → {b['seconds']} s (×{a['seconds'] / max(b['seconds'], 0.1):.1f}); "
+          f"nhãn đúng {a['correct']} → {b['correct']}, HOTA {a['HOTA']:.3f} → {b['HOTA']:.3f}", flush=True)
+    (out / "bench.json").write_text(json.dumps(rows, indent=1, ensure_ascii=False), encoding="utf-8")
 
 
 if __name__ == "__main__":

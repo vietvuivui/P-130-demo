@@ -107,24 +107,128 @@ def _clone_tracker(template):
     return tr
 
 
+class SharedEncoder:
+    """Bọc `predictor.forward_image` (image encoder Hiera — phần nặng nhất của SAM 2.1): khi `key` được đặt (đường dẫn
+    ảnh đang xử lý) thì ảnh đó chỉ được mã hoá một lần, các vật khác trên cùng ảnh dùng lại kết quả. Bản gốc mã hoá lại
+    cho từng vật vì mỗi vật là một DAM4SAMTracker riêng. `key = None`: chạy như gốc."""
+
+    def __init__(self, orig):
+        self.orig = orig
+        self.key = None
+        self._cached_key = None
+        self._out = None
+        self.hits = 0
+        self.misses = 0
+
+    def __call__(self, img_batch):
+        if self.key is not None and self.key == self._cached_key:
+            self.hits += 1
+            return self._out
+        out = self.orig(img_batch)
+        self.misses += 1
+        self._cached_key, self._out = self.key, out
+        return out
+
+
+class _Fast:
+    """Ngữ cảnh cho một lần gọi DAM4SAM: đặt khoá ảnh cho SharedEncoder, bật autocast, bỏ torch.cuda.empty_cache()
+    (DAM4SAM gọi nó ở mỗi ảnh của mỗi vật, chậm mà không cần khi các tracker dùng chung mô hình)."""
+
+    def __init__(self, encoder: SharedEncoder | None, key: str | None, autocast: bool):
+        self.encoder, self.key, self.autocast = encoder, key, autocast
+        self._ctx = None
+        self._empty = None
+
+    def __enter__(self):
+        if self.encoder is not None:
+            self.encoder.key = self.key
+        try:
+            import torch
+        except ImportError:  # test với tracker giả
+            return self
+        self._empty = torch.cuda.empty_cache
+        torch.cuda.empty_cache = lambda: None
+        if self.autocast and torch.cuda.is_available():
+            self._ctx = torch.autocast("cuda")  # như @torch.cuda.amp.autocast() trong script gốc của DAM4SAM
+            self._ctx.__enter__()
+        return self
+
+    def __exit__(self, *exc):
+        if self._ctx is not None:
+            self._ctx.__exit__(*exc)
+        if self._empty is not None:
+            import torch
+
+            torch.cuda.empty_cache = self._empty
+        if self.encoder is not None:
+            self.encoder.key = None
+        return False
+
+
+_ENCODERS: dict[int, SharedEncoder] = {}
+_AUTOCAST_OK: dict[int, bool] = {}
+
+
+def _shared_encoder(template) -> SharedEncoder | None:
+    """Gắn SharedEncoder vào mô hình của tracker mẫu (một lần)."""
+    pred = getattr(template, "predictor", None)
+    if pred is None or not hasattr(pred, "forward_image"):
+        return None
+    if id(pred) not in _ENCODERS:
+        enc = SharedEncoder(pred.forward_image)
+        pred.forward_image = enc
+        _ENCODERS[id(pred)] = enc
+    return _ENCODERS[id(pred)]
+
+
 class Dam4SamPredictor:
     """Một DAM4SAM tracker cho mỗi track; dự đoán box ở ảnh mới từ mask SAM 2.1."""
 
     def __init__(self, resolve: Callable[[str], Path], model: str = "sam21pp-L", repo_dir: str | Path | None = None,
-                 tracker_factory=None):  # fmt: skip
+                 tracker_factory=None, share_encoder: bool = True, autocast: bool = True):  # fmt: skip
         """model: tên trong DAM4SAM ("sam21pp-L" = SAM 2.1 hiera-large, "sam21pp-B"/"-S"/"-T" nhỏ hơn, nhanh hơn).
         repo_dir: bản clone repo DAM4SAM (mặc định tools2d/DAM4SAM hoặc biến môi trường DAM4SAM_DIR), checkpoint nằm ở
         <repo>/checkpoints. tracker_factory(): trả về object có initialize(img, None, bbox=[x, y, w, h]) và
-        track(img) -> {'pred_mask'} — test truyền bản giả, không cần GPU."""
+        track(img) -> {'pred_mask'} — test truyền bản giả, không cần GPU.
+        share_encoder / autocast: tăng tốc (xem SharedEncoder, _Fast); tắt cả hai = chạy đúng như repo gốc."""
         self.resolve = resolve
         self._img: dict[str, object] = {}
         self._trackers: dict[str, object] = {}
         self.calls = 0
+        self.encoder: SharedEncoder | None = None
+        self.autocast = autocast
+        self._template = None
         if tracker_factory is not None:
             self.factory = tracker_factory
+            self.autocast = False
             return
         template = _template(model, repo_dir)  # nạp SAM 2.1 lên GPU một lần cho cả tiến trình
+        self._template = template
+        enc = _shared_encoder(template)
+        self.encoder = enc if share_encoder else None
         self.factory = lambda: _clone_tracker(template)
+
+    def _fast(self, image_path: str) -> _Fast:
+        return _Fast(self.encoder, image_path, self.autocast)
+
+    def _probe_autocast(self, img) -> None:
+        """Thử autocast một lần trên tracker tạm (khởi tạo + theo dõi chính ảnh đó). Lỗi (GPU / bản torch không hợp)
+        thì tắt autocast cho cả tiến trình thay vì hỏng giữa chừng một lần lan truyền."""
+        key = id(getattr(self._template, "predictor", self._template))
+        if not self.autocast or self._template is None or key in _AUTOCAST_OK:
+            self.autocast = self.autocast and _AUTOCAST_OK.get(key, True)
+            return
+        try:
+            tr = self.factory()
+            w, h = img.size
+            with _Fast(None, None, True):
+                tr.initialize(img, None, bbox=[w * 0.4, h * 0.4, w * 0.2, h * 0.2])
+                tr.track(img)
+            _AUTOCAST_OK[key] = True
+        except Exception as e:  # pragma: no cover - phụ thuộc GPU
+            log.warning("DAM4SAM: autocast không dùng được (%s), chạy float32", e)
+            _AUTOCAST_OK[key] = False
+            self.autocast = False
 
     def image(self, path: str):
         """Ảnh PIL RGB (giao diện của DAM4SAM); nhớ 3 ảnh gần nhất."""
@@ -144,9 +248,11 @@ class Dam4SamPredictor:
         img = self.image(image_path)
         if img is None:
             return False
+        self._probe_autocast(img)
         x1, y1, x2, y2 = (float(v) for v in box)
         tr = self.factory()
-        tr.initialize(img, None, bbox=[x1, y1, x2 - x1, y2 - y1])
+        with self._fast(image_path):
+            tr.initialize(img, None, bbox=[x1, y1, x2 - x1, y2 - y1])
         self._trackers[track_id] = tr
         return True
 
@@ -157,7 +263,8 @@ class Dam4SamPredictor:
             return None
         self.calls += 1
         try:
-            out = tr.track(img)
+            with self._fast(image_path):
+                out = tr.track(img)
         except Exception as e:  # pragma: no cover - lỗi GPU / model
             log.warning("DAM4SAM lỗi ở %s: %s", image_path, e)
             return None

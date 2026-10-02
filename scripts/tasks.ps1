@@ -21,6 +21,8 @@
 #               ghi MOTChallenge và chạy TrackEval chính thức nếu đã cài
 #   dam4sam     lan truyền box/mask bằng DAM4SAM (SAM 2.1, GPU) từ keyframe đã duyệt và so với tracker hiện tại
 #               (-Scenes; cần clone repo DAM4SAM + checkpoint, hướng dẫn ở đầu tools2d/dam4sam.py)
+#   trackall    MỘT LỆNH cho mọi phép đo tracking trên dev (3 scene, hoặc -Scenes a,b): tự detect ảnh 12 Hz thiếu, đo tăng
+#               tốc DAM4SAM, so 5 cấu hình, in bảng + khuyến nghị vào eval\results\trackall\dam4sam.md
 #   push        đẩy nhánh hiện tại lên GitHub
 #   all         check -> test -> eval3d -> label3d -> eval2d
 #
@@ -30,7 +32,7 @@
 param(
     [Parameter(Position = 0)]
     [ValidateSet("check", "install", "serve", "test", "demozip", "eval3d", "label3d", "eval2d", "evaltemporal", "rescore", "profile", "evalprop3d",
-        "push", "trackeval", "dam4sam", "all")]
+        "push", "trackeval", "dam4sam", "trackall", "all")]
     [string]$Task = "check",
     [string]$Dataroot = "..\v1.0-trainval",
     [string]$Scene = "scene-0035",
@@ -212,6 +214,15 @@ function Dam4Sam {
     Run "python" $args_
 }
 
+function TrackAll {
+    # Một lệnh cho mọi phép đo tracking trên dev: tự detect ảnh 12 Hz còn thiếu, đo tăng tốc DAM4SAM, chạy 5 cấu hình
+    # (flow / DAM4SAM x ByteTrack / BoT-SORT / không ghép), in bảng HOTA / MOTA / IDF1 và khuyến nghị
+    $dev = if ($Scenes.Count) { $Scenes } else { @("scene-0035", "scene-0097", "scene-0101") }
+    $ws = if ($Workspace) { $Workspace } else { "data\eval_temporal\ws_dev" }
+    Step "So sánh tracker trên $($dev -join ', ') ($ws)"
+    Run "python" (@("tools2d\dam4sam.py", "--dataroot", $Dataroot, "--workspace", $ws, "--bench", "--out", "eval\results\trackall", "--scenes") + $dev)
+}
+
 function Push {
     Step "git push"
     $branch = (git rev-parse --abbrev-ref HEAD).Trim()
@@ -234,6 +245,7 @@ switch ($Task) {
     "evalprop3d" { EvalProp3d }
     "trackeval" { TrackEval }
     "dam4sam" { Dam4Sam }
+    "trackall" { TrackAll }
     "push" { Push }
     "all" { Check; Test; Eval3d; Label3d; Eval2d }
 }

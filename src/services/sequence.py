@@ -76,7 +76,8 @@ def _dam4sam(source, cfg) -> dict:
         return {}
     from src.services.dam4sam import Dam4SamPredictor
 
-    return {"predictor": Dam4SamPredictor(image_file, cfg.dam4sam_model)}
+    return {"predictor": Dam4SamPredictor(image_file, cfg.dam4sam_model, share_encoder=cfg.dam4sam_share_encoder,
+                                          autocast=cfg.dam4sam_autocast)}  # fmt: skip
 
 
 def _botsort(source, cfg) -> dict:

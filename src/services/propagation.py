@@ -225,8 +225,10 @@ class Tracker:
                 self.images_with_gmc += 1
         preds = []
         sam_hit = False
+        sam_seen: list[bool] = []
         for t in tracks:
             sam_box = self.predictor.predict(t.track_id, image.path) if self.predictor is not None and image.path else None
+            sam_seen.append(sam_box is not None)
             if sam_box is not None:
                 preds.append(np.asarray(sam_box, dtype=np.float64))
                 sam_hit = True
@@ -248,6 +250,8 @@ class Tracker:
         if detections is None:
             self.images_without_detections += 1
             pairs: dict[int, tuple[int, float]] = {}
+        elif cfg.association == "none":
+            pairs = {}
         else:
             pairs = self._match(tracks, pred, detections)
 
@@ -294,8 +298,12 @@ class Tracker:
                     t.vel = t.vel * COAST_VELOCITY_DAMPING
                 t.box = pred[i]
                 t.last_match, t.last_agreement = None, 0.0
+                if cfg.association == "none":
+                    # DAM4SAM thuần: "thấy" = SAM còn tách được vật; mask rỗng mới tính là mất
+                    t.misses = 0 if sam_seen[i] else t.misses + 1
+                    t.matched_steps += sam_seen[i]
                 # Ảnh chưa có detection trong cache không phải bằng chứng object biến mất
-                if detections is not None:
+                elif detections is not None:
                     t.misses += 1
             t.last_t = image.timestamp
             if image.is_keyframe:

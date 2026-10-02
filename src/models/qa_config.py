@@ -179,10 +179,16 @@ class PropagationCfg(BaseModel):
     flow: Literal["off", "missing", "always", "dam4sam"] = "always"
     flow_scale: float = 0.5
     dam4sam_model: str = "sam21pp-L"
+    # Tăng tốc DAM4SAM (src/services/dam4sam.py): mã hoá ảnh một lần cho mọi vật trong ảnh thay vì mỗi vật một lần, và
+    # chạy autocast (float16) như script gốc của DAM4SAM. Tắt để so tốc độ / kiểm tra kết quả không đổi.
+    dam4sam_share_encoder: bool = True
+    dam4sam_autocast: bool = True
     # Ghép track với detection: single = một lượt với mọi box ≥ score_threshold (như trước) | byte = hai lượt kiểu
     # ByteTrack (Zhang et al. 2022): box score ≥ byte_high_score trước, box score thấp chỉ cho track còn thiếu (IoU chặt
     # hơn byte_low_iou), để box score thấp nằm gần không "cướp" track của vật có box rõ
-    association: Literal["single", "byte", "botsort"] = "byte"
+    # none: không ghép với detection (chỉ có nghĩa khi flow = dam4sam): box ghi ra là hộp bao mask của SAM, track dừng
+    # khi SAM không còn thấy vật — "DAM4SAM thuần", để so với việc ghép thêm detector
+    association: Literal["single", "byte", "botsort", "none"] = "byte"
     byte_high_score: float = 0.3
     byte_low_iou: float = 0.5
     # BoT-SORT (Aharon et al. 2022, src/services/botsort.py) = ByteTrack + bù chuyển động camera (GMC, chỉ dùng khi
