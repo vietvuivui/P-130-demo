@@ -51,6 +51,18 @@ def _load_dam4sam(repo_dir: str | Path | None):
     return DAM4SAMTracker
 
 
+_TEMPLATES: dict[tuple[str, str], object] = {}
+
+
+def _template(model: str, repo_dir: str | Path | None):
+    """Tracker mẫu (giữ mô hình SAM 2.1 trên GPU), nhớ theo (model, repo): mỗi lần lan truyền / mỗi scene khi đánh giá
+    tạo một Dam4SamPredictor mới, không được nạp lại ~900 MB weights mỗi lần."""
+    key = (model, str(repo_dir or ""))
+    if key not in _TEMPLATES:
+        _TEMPLATES[key] = _load_dam4sam(repo_dir)(model)
+    return _TEMPLATES[key]
+
+
 def _clone_tracker(template):
     """Mỗi vật cần một DAM4SAMTracker (trạng thái bộ nhớ riêng) nhưng chỉ nạp mô hình SAM 2.1 một lần: sao chép
     tracker mẫu, dùng chung `predictor` (mô hình), trạng thái suy luận được tạo mới ở initialize()."""
@@ -77,8 +89,7 @@ class Dam4SamPredictor:
         if tracker_factory is not None:
             self.factory = tracker_factory
             return
-        cls = _load_dam4sam(repo_dir)
-        template = cls(model)  # nạp SAM 2.1 lên GPU một lần
+        template = _template(model, repo_dir)  # nạp SAM 2.1 lên GPU một lần cho cả tiến trình
         self.factory = lambda: _clone_tracker(template)
 
     def image(self, path: str):

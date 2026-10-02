@@ -388,6 +388,10 @@ class Tracker:
             if i not in out and j not in used:
                 out[i] = (j, float(m[i, j]))
                 used.add(j)
+        botsort.STATS["calls"] += 1
+        botsort.STATS["rescued"] += sum(1 for _, v in out.values() if v < thr)
+        if {a: b for a, (b, _) in out.items()} != {a: b for a, (b, _) in _greedy_match(pred, boxes, thr).items()}:
+            botsort.STATS["changed"] += 1
         return out
 
     def _momentum(self, tracks: list[Track], dets: list[Detection]) -> np.ndarray:

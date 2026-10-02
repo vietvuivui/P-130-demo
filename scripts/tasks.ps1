@@ -25,7 +25,7 @@
 #   all         check -> test -> eval3d -> label3d -> eval2d
 #
 # Tuỳ chọn: -Dataroot ..\v1.0-trainval  -Scene scene-0035  -Weights weights\yoloe-26l-nuimages.pt  -NoTta  -Port 8000
-#           -Scenes scene-0003 scene-0016 (held-out cho evaltemporal)  -Mode mean (cho rescore)
+#           -Scenes scene-0003,scene-0016 (dấu phẩy; held-out cho evaltemporal)  -Mode mean (cho rescore)
 
 param(
     [Parameter(Position = 0)]

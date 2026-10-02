@@ -17,6 +17,9 @@ from pathlib import Path
 
 import numpy as np
 
+# Đếm để biết ngoại hình có thật sự đổi kết quả ghép không (tools2d/dam4sam.py in ra): calls = số lần ghép,
+# changed = số lần kết quả khác ghép theo IoU thuần, rescued = cặp nhận nhờ ngoại hình dù IoU < ngưỡng
+STATS = {"calls": 0, "changed": 0, "rescued": 0}
 EMB_DIM = 8 * 8 + 8 + 6 * 6  # histogram H x S (8x8), histogram V (8 ô), ảnh xám thu nhỏ 6x6
 
 

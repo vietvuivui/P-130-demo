@@ -8,13 +8,17 @@ Cài một lần (trong môi trường có torch CUDA, ví dụ .venv của requ
     git clone https://github.com/jovanavidenovic/DAM4SAM.git tools2d/DAM4SAM
     cd tools2d/DAM4SAM
     pip install -e .                      # cài SAM 2 (có CUDA kernel; lỗi thì: python setup.py build_ext --inplace)
-    pip install vot-toolkit-lite==0.2.0   # (nếu thiếu `vot` khi import)
-    cd checkpoints && bash download_ckpts.sh   # tải sam2.1_hiera_*.pt (Windows: tải tay theo URL trong file)
+    pip install vot-toolkit==0.7.1 vot-trax==4.0.2   # DAM4SAM import `vot` (không nằm trong pip install -e .)
+    # checkpoint (~900 MB) vào tools2d/DAM4SAM/checkpoints/ — Windows PowerShell:
+    #   curl.exe -L -o checkpoints/sam2.1_hiera_large.pt https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt
+    python tools2d/dam4sam.py --check     # kiểm tra cài đặt (import, checkpoint, CUDA) mà không chạy gì
 
 Chạy (workspace đã `python -m src.cli run` + `detect-sweeps`, cache detection có sẵn):
 
     python tools2d/dam4sam.py --dataroot ..\\v1.0-trainval --workspace data\\eval_temporal\\ws_dev --scenes scene-0035
-    scripts\\tasks.ps1 dam4sam -Workspace data\\eval_temporal\\ws_dev
+    scripts\\tasks.ps1 dam4sam -Workspace data\\eval_temporal\\ws_dev -Scenes scene-0035,scene-0097   # PowerShell: dấu phẩy
+
+Cấu hình đã có kết quả trong <out>/dam4sam.json (cùng workspace + scenes) được bỏ qua; --force để chạy lại.
 
 In bảng: nhãn đúng / box sai / đổi ID / mất dấu, HOTA, MOTA, IDF1 và thời gian cho từng cấu hình:
     flow+byte (mặc định), flow+botsort, dam4sam+byte, dam4sam+botsort.
@@ -41,9 +45,38 @@ CONFIGS = {
 }
 
 
+def check_install(model: str = "sam21pp-L") -> list[str]:
+    """Những thứ còn thiếu để chạy DAM4SAM (rỗng = đủ). Không nạp mô hình."""
+    import importlib.util
+
+    problems = []
+    repo = Path(os.environ.get("DAM4SAM_DIR") or ROOT / "tools2d" / "DAM4SAM")
+    if not (repo / "dam4sam_tracker.py").is_file():
+        return [f"repo DAM4SAM ở {repo}: git clone https://github.com/jovanavidenovic/DAM4SAM.git tools2d/DAM4SAM"]
+    for mod, hint in (("vot", "pip install vot-toolkit==0.7.1 vot-trax==4.0.2"),
+                      ("sam2", f"cd {repo} rồi pip install -e ."),
+                      ("torch", "pip install torch (bản CUDA)"), ("yaml", "pip install pyyaml")):  # fmt: skip
+        if importlib.util.find_spec(mod) is None:
+            problems.append(f"gói `{mod}`: {hint}")
+    ckpt = {"sam21pp-L": "sam2.1_hiera_large.pt", "sam21pp-B": "sam2.1_hiera_base_plus.pt"}.get(model)
+    if ckpt and not (repo / "checkpoints" / ckpt).is_file():
+        problems.append(
+            f"checkpoint {repo / 'checkpoints' / ckpt}: curl.exe -L -o {repo / 'checkpoints' / ckpt} "
+            f"https://dl.fbaipublicfiles.com/segment_anything_2/092824/{ckpt}"
+        )
+    if importlib.util.find_spec("torch") is not None:
+        import torch
+
+        if not torch.cuda.is_available():
+            problems.append("CUDA: torch không thấy GPU (DAM4SAM nạp mô hình lên cuda:0)")
+    return problems
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--dataroot", required=True)
+    ap.add_argument("--dataroot")
+    ap.add_argument("--check", action="store_true", help="Chỉ kiểm tra cài đặt DAM4SAM rồi thoát")
+    ap.add_argument("--force", action="store_true", help="Chạy lại cả cấu hình đã có kết quả")
     ap.add_argument("--version", default=os.environ.get("NUSCENES_VERSION", "v1.0-trainval"))
     ap.add_argument("--workspace", default=os.environ.get("WORKSPACE_DIR", "data/workspace"))
     ap.add_argument("--scenes", nargs="*")
@@ -52,6 +85,19 @@ def main() -> None:
     ap.add_argument("--max-frames", type=int, default=10)
     ap.add_argument("--out", default="eval/results/dam4sam")
     args = ap.parse_args()
+
+    need_sam = args.check or any(CONFIGS[c][0] == "dam4sam" for c in args.configs)
+    if need_sam:
+        problems = check_install(args.model)
+        for p in problems:
+            print("THIẾU:", p)
+        if args.check:
+            print("DAM4SAM sẵn sàng" if not problems else "DAM4SAM chưa sẵn sàng")
+            raise SystemExit(1 if problems else 0)
+        if problems:  # báo ngay, không để chạy xong các cấu hình flow rồi mới lỗi
+            raise SystemExit("Cài xong các mục THIẾU ở trên rồi chạy lại (hướng dẫn ở đầu file này).")
+    if not args.dataroot:
+        ap.error("--dataroot là bắt buộc")
 
     from src.models.qa_config import load_autolabel_config
     from src.services import trackeval as te
@@ -65,8 +111,22 @@ def main() -> None:
     data = NuScenesMini(args.dataroot, args.version)
     ws = Path(args.workspace)
     store = WorkspaceStore(ws)
+    from src.services import botsort
+
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    key = {"workspace": str(ws), "scenes": sorted(args.scenes or []), "max_frames": args.max_frames, "model": args.model}
     results = {}
+    prev = out / "dam4sam.json"
+    if prev.is_file() and not args.force:
+        old = json.loads(prev.read_text(encoding="utf-8"))
+        if old.get("_run") == key:
+            results = {k: v for k, v in old.items() if k in CONFIGS}
     for name in args.configs:
+        if name in results:
+            print(name, "(đã có, bỏ qua; --force để chạy lại)", results[name], flush=True)
+            continue
+        botsort.STATS.update(calls=0, changed=0, rescued=0)
         flow, assoc = CONFIGS[name]
         cfg = config.model_copy(deep=True)
         cfg.propagation.flow, cfg.propagation.association = flow, assoc
@@ -82,12 +142,13 @@ def main() -> None:
             "id_switch": sum(x["id_switch"] for x in rows),
             "lost": sum(x.get("lost", 0) for x in rows),
         }
+        if assoc == "botsort":  # số lần ghép BoT-SORT khác với ghép theo IoU thuần (0 = ngoại hình không đổi gì)
+            results[name]["botsort"] = dict(botsort.STATS)
         print(name, results[name], flush=True)
+        (out / "dam4sam.json").write_text(json.dumps({"_run": key, **results}, indent=1, ensure_ascii=False), encoding="utf-8")
     # HOTA / MOTA / IDF1 của nhãn hiện có trong workspace (sau lần lan truyền cuối) — tham khảo
     results["trackeval_workspace"] = te.evaluate_workspace(store, "2d", scenes=args.scenes)["overall"]
-    out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
-    (out / "dam4sam.json").write_text(json.dumps(results, indent=1, ensure_ascii=False), encoding="utf-8")
+    (out / "dam4sam.json").write_text(json.dumps({"_run": key, **results}, indent=1, ensure_ascii=False), encoding="utf-8")
     lines = ["| Cấu hình | Nhãn đúng | Box sai | Đổi ID | Mất dấu | Giây |", "|---|---|---|---|---|---|"]
     for name in args.configs:
         v = results[name]
