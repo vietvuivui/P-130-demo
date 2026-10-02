@@ -284,11 +284,11 @@ Bảng so sánh mọi phương pháp đã dùng (2D, 3D, có / không dùng thì
 0.366 (zero-shot 0.312). Xem thêm [eval/results/autolabel2d_eval.md](eval/results/autolabel2d_eval.md). Optical flow cho lan truyền và QA
 temporal (trước / sau, dev + held-out): [eval/results/temporal/report.md](eval/results/temporal/report.md).
 
-**Tracking 2D** ([eval/results/tracking.md](eval/results/tracking.md)), chấm bằng TrackEval (HOTA / IDF1 / đổi ID) thay
-cho chỉ số của bài detection. Held-out 20 scene (795 keyframe): optical flow + ByteTrack (mặc định) HOTA 0.563 / IDF1
-0.705; thêm BoT-SORT 0.564 / 0.709; DAM4SAM + BoT-SORT **0.573 / 0.725** (nhãn đúng 3438 → 3678, mất dấu 853 → 639, box
-sai 1161 → 1315, thời gian ×3.4). Trên 3 scene dev các cấu hình ngang nhau (0.578–0.580); DAM4SAM thuần và cấu hình lai
-flow + DAM4SAM kém hơn.
+**Tracking 2D** ([eval/results/tracking.md](eval/results/tracking.md)): từng thuật toán (vận tốc không đổi, optical flow,
+ByteTrack, OC-SORT, BoT-SORT, DAM4SAM) và các tổ hợp, ghi rõ thuật toán nào làm bước dự đoán / bước ghép; chấm bằng
+TrackEval (HOTA / IDF1 / đổi ID). Held-out 20 scene (795 keyframe): optical flow + ByteTrack (mặc định) HOTA 0.563 / IDF1
+0.705; DAM4SAM + BoT-SORT **0.573 / 0.725** (nhãn đúng +7%, mất dấu −25%, box sai +13%, thời gian ×3.4). OC-SORT và
+BoT-SORT thêm vào optical flow không đổi gì đáng kể; DAM4SAM thuần (bỏ YOLO) kém nhất.
 
 **3D trên tập test** ([eval/results/det3d_heldout.md](eval/results/det3d_heldout.md)): 24 scene val chưa dùng để chọn
 cấu hình (957 keyframe), so với nhãn gốc nuScenes. Mô hình đơn tốt nhất CenterPoint voxel mAP 0.578 / NDS 0.655; gộp 4 mô
