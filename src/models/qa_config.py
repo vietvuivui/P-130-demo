@@ -111,6 +111,10 @@ class TemporalCfg(BaseModel):
     match_iou: float = 0.3
     min_support: int = 2
     recover_min_score: float = 0.35
+    # Detector thấy vật ở keyframe nhưng score dưới ngưỡng giữ (detection.min_score) -> box bị bỏ. Nếu sweep trước VÀ sau
+    # đều có box cùng lớp trùng vị trí (score >= ngưỡng này) thì giữ lại box của detector, gắn RECOVERED_BY_TRACK để
+    # người xác nhận (như lượt ghép score thấp của ByteTrack, nhưng ở ngay lúc gán nhãn). None = tắt.
+    recover_weak_min_score: float | None = 0.2
     # Dời box của sweep về thời điểm keyframe bằng optical flow trước khi so khớp (src/services/flow.py)
     flow: bool = False
     flow_scale: float = 0.5

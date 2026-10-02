@@ -13,6 +13,8 @@ class SweepDetections(TypedDict, total=False):
     detections: list[Detection]
     # Box của detections dời về thời điểm keyframe bằng optical flow (cùng thứ tự); thiếu = so khớp trực tiếp
     warped: list[list[float]]
+    # Detection score thấp (dưới ngưỡng giữ, >= recover_weak_min_score): chỉ làm bằng chứng cho box keyframe bị bỏ
+    weak: list[Detection]
 
 
 class QAState(TypedDict, total=False):
@@ -29,6 +31,8 @@ class QAState(TypedDict, total=False):
     key_timestamp: int
     objects: list[LabelObject]  # detection keyframe, đã có object_id
     sweeps: dict[int, SweepDetections]  # offset -> detection ở sweep đó
+    # Detection keyframe bị bỏ vì score dưới ngưỡng giữ (>= recover_weak_min_score): ứng viên RECOVERED_BY_TRACK
+    weak_key: list[Detection]
     lidar_uv: np.ndarray | None
     lidar_depth: np.ndarray | None
 

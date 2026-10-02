@@ -188,3 +188,40 @@ def test_risk_level_thresholds(config):
     assert risk_level(0.0, cfg) == "low"
     assert risk_level(cfg.levels.medium, cfg) == "medium"
     assert risk_level(cfg.levels.high, cfg) == "high"
+
+def test_weak_keyframe_detection_confirmed_by_both_sides_is_recovered(config):
+    # Xe đạp: keyframe 0.20 (< ngưỡng giữ 0.30), sweep t-1 0.26 / t+1 0.23 (cũng dưới ngưỡng giữ, >= 0.2)
+    weak = [Detection(bbox=[2064, 417, 2112, 489], label="bicycle", score=0.2)]
+    sweeps = {-1: sweep(900), 1: sweep(1050)}
+    sweeps[-1]["weak"] = [Detection(bbox=[2052, 413, 2100, 476], label="bicycle", score=0.26)]
+    sweeps[1]["weak"] = [Detection(bbox=[2072, 422, 2128, 486], label="bicycle", score=0.23)]
+    results, recovered = check_temporal([], sweeps, 1000, config, weak)
+    assert len(recovered) == 1
+    r = recovered[0]
+    assert r.source == "track" and r.label == "bicycle" and r.bbox == [2064, 417, 2112, 489] and r.score == 0.2
+    assert codes(results[r.object_id]) == ["RECOVERED_BY_TRACK"]
+    assert "thấy mờ" in results[r.object_id]["issues"][0].message
+    # Chỉ một bên có bằng chứng -> không đề xuất
+    sweeps[1]["weak"] = []
+    assert check_temporal([], sweeps, 1000, config, weak)[1] == []
+    # Tắt bằng config
+    cfg = config.model_copy(deep=True)
+    cfg.qa.temporal.recover_weak_min_score = None
+    sweeps[1]["weak"] = [Detection(bbox=[2072, 422, 2128, 486], label="bicycle", score=0.23)]
+    assert check_temporal([], sweeps, 1000, cfg, weak)[1] == []
+
+
+def test_recovered_box_snaps_to_weak_keyframe_detection(config):
+    # Xe ở xa: detector thấy 0.58 nhưng score bị hạ còn 0.29 khi gộp với 3D -> bị bỏ; sweep t-1 / t+1 đều thấy rõ
+    sweeps = {
+        -1: sweep(900, ([715, 447.5, 742.5, 468.8], "car", 0.69)),
+        1: sweep(1050, ([708.8, 451.9, 736.2, 474.4], "car", 0.62)),
+    }
+    weak = [Detection(bbox=[710, 447, 738, 471], label="car", score=0.29, det_score=0.58)]
+    results, recovered = check_temporal([], sweeps, 1000, config, weak)
+    assert len(recovered) == 1
+    r = recovered[0]
+    assert r.bbox == [710, 447, 738, 471] and r.score == 0.29 and r.det_score == 0.58
+    msg = results[r.object_id]["issues"][0].message
+    assert "0.58" in msg and "gộp với box 3D" in msg
+

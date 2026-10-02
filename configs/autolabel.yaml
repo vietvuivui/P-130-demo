@@ -155,6 +155,11 @@ qa:
     min_support: 2
     # Track có ở sweep trước + sau với score >= ngưỡng này mới được đề xuất RECOVERED_BY_TRACK
     recover_min_score: 0.35
+    # Detector thấy vật ở keyframe nhưng score dưới min_score (0.10–0.30) -> box bị bỏ. Nếu sweep trước VÀ sau đều có box
+    # cùng lớp trùng vị trí (score >= ngưỡng này, kể cả box sweep dưới min_score) thì giữ lại box của detector, gắn
+    # RECOVERED_BY_TRACK (nét đứt, phải xác nhận; không bao giờ vào nhóm duyệt theo lô). Ví dụ: xe đạp 0.34 ở frame
+    # trước, 0.20 ở frame này, sweep 0.26 / 0.23. Box nội suy từ sweep cũng lấy box detector khi có (sát vật hơn). null = tắt
+    recover_weak_min_score: 0.2
     # Optical flow (OpenCV DIS, ~0.06 s/cặp ảnh trên CPU) dời box của sweep về thời điểm keyframe trước khi so khớp:
     # box sweep khớp keyframe đúng hơn hẳn (IoU TB ở t±2: 0.58 -> 0.83), cờ FLICKER đúng hơn nhưng bắt ít lỗi hơn:
     # held-out 20 scene (795 keyframe) lỗi lọt qua duyệt theo lô 1632 -> 2082. Không khuyên bật.

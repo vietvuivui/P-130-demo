@@ -2,7 +2,10 @@
 
 - FLICKER: box ở keyframe gần như không xuất hiện lại ở sweep lân cận -> dễ là FP.
 - RECOVERED_BY_TRACK: object có ở sweep trước và sau nhưng detector sót ở keyframe
-  -> đề xuất box nội suy theo thời gian (bắt FN, điểm yếu lớn nhất của pre-label).
+  -> đề xuất box nội suy theo thời gian (bắt FN, điểm yếu lớn nhất của pre-label). Nếu detector thật ra có thấy vật ở
+  keyframe nhưng score dưới ngưỡng giữ (box "yếu", state["weak_key"]) thì dùng luôn box của detector (sát vật hơn box
+  nội suy), và box yếu được sweep hai bên xác nhận (kể cả box sweep score thấp, sweep["weak"]) cũng được đề xuất —
+  cùng ý với lượt ghép score thấp của ByteTrack: box mờ chỉ được tin khi đã có bằng chứng vật ở đó.
 """
 
 from __future__ import annotations
@@ -29,7 +32,11 @@ def match_greedy(a: list[list[float]], b: list[list[float]], thr: float) -> dict
 
 
 def check_temporal(
-    objects: list[LabelObject], sweeps: dict[int, SweepDetections], key_timestamp: int, config: AutoLabelConfig
+    objects: list[LabelObject],
+    sweeps: dict[int, SweepDetections],
+    key_timestamp: int,
+    config: AutoLabelConfig,
+    weak_key: list[Detection] | None = None,
 ) -> tuple[dict[str, dict], list[LabelObject]]:
     cfg = config.qa.temporal
     boxes = [o.bbox for o in objects]
@@ -64,23 +71,105 @@ def check_temporal(
             r["term"] = 0.5 * (1 - support / available)
 
     recovered = _recover_missed(objects, sweeps, unmatched, key_timestamp, config)
+    weak_used = _snap_to_weak(recovered, weak_key or [], config)
+    recovered += _recover_weak(objects + recovered, sweeps, unmatched, weak_key or [], weak_used, config)
     for obj in recovered:
+        at = " và ".join(f"t{int(k):+d}" for k in obj.track)
+        lo = config.detection.min_score_per_class.get(obj.label, config.detection.min_score)
+        if obj.det_score is not None and obj.det_score > obj.score:  # score bị hạ khi gộp với box 3D (lidar2d.py)
+            msg = (f"Detector thấy ở keyframe (score {obj.det_score:.2f}, còn {obj.score:.2f} sau khi gộp với box 3D, "
+                   f"dưới ngưỡng {lo:.2f}); vật có ở sweep {at}")
+        elif obj.det_score is not None:  # box của detector ở keyframe, score dưới ngưỡng giữ
+            msg = f"Detector thấy mờ ở keyframe (score {obj.score:.2f} < {lo:.2f}); vật có ở sweep {at}"
+        else:
+            msg = f"Detector sót ở keyframe; box nội suy từ sweep {at}"
         results[obj.object_id] = {
             "presence": {k: v is not None for k, v in obj.track.items()},
             "track": obj.track,
             "support": sum(v is not None for v in obj.track.values()),
             "available": available,
-            "issues": [
-                QAIssue(
-                    code="RECOVERED_BY_TRACK",
-                    group="temporal",
-                    message="Detector sót ở keyframe; box nội suy từ sweep "
-                    + " và ".join(f"t{int(k):+d}" for k in obj.track),
-                )
-            ],
+            "issues": [QAIssue(code="RECOVERED_BY_TRACK", group="temporal", message=msg)],
             "term": 0.8,
         }
     return results, recovered
+
+
+def _snap_to_weak(recovered: list[LabelObject], weak_key: list[Detection], config: AutoLabelConfig) -> set[int]:
+    """Box nội suy trùng một detection keyframe bị bỏ vì score thấp -> lấy box của detector (sát vật hơn). Trả về chỉ
+    số các detection yếu đã dùng."""
+    used: set[int] = set()
+    thr = config.qa.temporal.match_iou
+    for r in recovered:
+        best = max(
+            ((iou(r.bbox, d.bbox), i) for i, d in enumerate(weak_key) if i not in used and d.label == r.label),
+            default=(0.0, -1),
+        )
+        if best[0] >= thr:
+            d = weak_key[best[1]]
+            used.add(best[1])
+            r.bbox, r.mask = [round(v, 1) for v in d.bbox], d.mask
+            r.score, r.det_score = d.score, d.det_score if d.det_score is not None else d.score
+    return used
+
+
+def _recover_weak(
+    taken: list[LabelObject],
+    sweeps: dict[int, SweepDetections],
+    unmatched: dict[int, list[tuple[Detection, list[float] | None]]],
+    weak_key: list[Detection],
+    used: set[int],
+    config: AutoLabelConfig,
+) -> list[LabelObject]:
+    """Detection keyframe score thấp (bị bỏ) được sweep trước VÀ sau xác nhận (box cùng lớp, IoU >= match_iou, score >=
+    recover_weak_min_score — kể cả box sweep chưa qua ngưỡng giữ) -> đề xuất box của detector."""
+    cfg = config.qa.temporal
+    lo = cfg.recover_weak_min_score
+    if lo is None or not weak_key or not sweeps:
+        return []
+    before = [o for o in sweeps if o < 0]
+    after = [o for o in sweeps if o > 0]
+    if not before or not after:
+        return []
+
+    def evidence(d: Detection, offsets: list[int]) -> tuple[int, Detection] | None:
+        best: tuple[float, int, Detection] | None = None
+        for o in offsets:
+            cands = [(p, pw) for p, pw in unmatched.get(o, [])] + [(p, None) for p in sweeps[o].get("weak", [])]
+            for p, pw in cands:
+                if p.label != d.label or p.score < lo:
+                    continue
+                v = iou(d.bbox, pw if pw is not None else p.bbox)
+                if v >= cfg.match_iou and (best is None or v > best[0]):
+                    best = (v, o, p)
+        return (best[1], best[2]) if best else None
+
+    out: list[LabelObject] = []
+    occupied = [(o.bbox, o.label) for o in taken]
+
+    def taken_already(d: Detection) -> bool:
+        # Trùng box cùng lớp đã có, hoặc gần như cùng một box (người đi xe đạp: pedestrian + bicycle chồng nhau là hợp lệ)
+        return any(iou(d.bbox, b) >= (cfg.match_iou if lb == d.label else 0.7) for b, lb in occupied)
+
+    for i, d in enumerate(weak_key):
+        if i in used or d.score < lo or taken_already(d):
+            continue
+        b, a = evidence(d, before), evidence(d, after)
+        if b is None or a is None:
+            continue
+        out.append(
+            LabelObject(
+                object_id=f"w{len(out) + 1}",
+                bbox=[round(v, 1) for v in d.bbox],
+                label=d.label,
+                score=d.score,
+                det_score=d.det_score if d.det_score is not None else d.score,
+                source="track",
+                mask=d.mask,
+                track={str(b[0]): b[1].bbox, str(a[0]): a[1].bbox},
+            )
+        )
+        occupied.append((d.bbox, d.label))
+    return out
 
 
 def _recover_missed(
@@ -133,6 +222,7 @@ def _recover_missed(
 
 def temporal_node(state: QAState) -> dict:
     results, recovered = check_temporal(
-        state.get("objects", []), state.get("sweeps", {}), state.get("key_timestamp", 0), state["config"]
-    )
+        state.get("objects", []), state.get("sweeps", {}), state.get("key_timestamp", 0), state["config"],
+        state.get("weak_key"),
+    )  # fmt: skip
     return {"temporal": results, "recovered": recovered}

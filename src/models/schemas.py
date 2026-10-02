@@ -128,6 +128,8 @@ class SweepInfo(ImageInfo):
     offset: int
     # Detection máy sinh (giữ nguyên, không sửa)
     detections: list[Detection] = Field(default_factory=list)
+    # Detection score thấp hơn ngưỡng giữ (>= qa.temporal.recover_weak_min_score), chỉ để làm bằng chứng
+    weak: list[Detection] = Field(default_factory=list)
     # Bản người đã sửa: tạo từ detections ở lần sửa đầu tiên; None = chưa ai sửa sweep này
     boxes: list[SweepBox] | None = None
 
@@ -182,6 +184,8 @@ class FrameRecord(BaseModel):
     image: ImageInfo
     intrinsic: list[list[float]]
     sweeps: list[SweepInfo] = Field(default_factory=list)
+    # Detection keyframe bị bỏ vì score dưới ngưỡng giữ (>= recover_weak_min_score): để tính lại RECOVERED_BY_TRACK
+    weak: list[Detection] = Field(default_factory=list)
     detectors: list[str] = Field(default_factory=list)
     has_lidar: bool = True
     status: Literal["auto", "editing", "approved", "rejected"] = "auto"

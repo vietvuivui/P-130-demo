@@ -165,6 +165,12 @@ def label_keyframe(
         return d.score >= sweep_min if sweep_min is not None else det_cfg.keep(d.label, d.score)
 
     sweep_dets = {o: [d for d in dets if keep_sweep(d)] for o, dets in zip(offsets, raw[1:], strict=True)}
+    # Box score thấp (chưa qua ngưỡng giữ) chỉ làm bằng chứng cho RECOVERED_BY_TRACK (qa.temporal.recover_weak_min_score)
+    weak_lo = tcfg.recover_weak_min_score
+    sweep_weak = {
+        o: [strip_mask(d) for d in dets if not keep_sweep(d) and weak_lo is not None and d.score >= weak_lo]
+        for o, dets in zip(offsets, raw[1:], strict=True)
+    }
     with sw("flow"):
         warped = sweep_warps(image, sweeps, sweep_dets, image_file, tcfg) if offsets else {}
     # Score keyframe tính lại theo sweep trước khi lọc ngưỡng: vật thấy ổn định được giữ, box chỉ loé lên bị bỏ
@@ -172,6 +178,7 @@ def label_keyframe(
     if boxes3d is not None:  # box 3D chiếu xuống ảnh (lidar2d.py): [{bbox, label, score}]
         key_all = merge_detections(key_all, boxes3d, det_cfg.lidar3d.match_iou, det_cfg.lidar3d.camera_only_scale)
     key_dets = sorted((d for d in key_all if det_cfg.keep(d.label, d.score)), key=lambda d: -d.score)
+    weak_key = [d for d in key_all if not det_cfg.keep(d.label, d.score) and weak_lo is not None and d.score >= weak_lo]
 
     objects = [
         LabelObject(
@@ -195,7 +202,8 @@ def label_keyframe(
             "intrinsic": intrinsic,
             "key_timestamp": image.timestamp,
             "objects": objects,
-            "sweeps": {o: sweep_state(sweeps[o].timestamp, sweep_dets[o], warped.get(o)) for o in offsets},
+            "sweeps": {o: sweep_state(sweeps[o].timestamp, sweep_dets[o], warped.get(o), sweep_weak[o]) for o in offsets},
+            "weak_key": weak_key,
             "lidar_uv": uv,
             "lidar_depth": depth,
         }
@@ -212,7 +220,8 @@ def label_keyframe(
         camera=camera,
         image=image,
         intrinsic=intrinsic,
-        sweeps=[SweepInfo(offset=o, detections=sweep_dets[o], **sweeps[o].model_dump()) for o in offsets],
+        sweeps=[SweepInfo(offset=o, detections=sweep_dets[o], weak=sweep_weak[o], **sweeps[o].model_dump()) for o in offsets],
+        weak=[strip_mask(d) for d in weak_key],
         detectors=ensemble.names + ([LIDAR3D] if boxes3d is not None else []),
         has_lidar=uv is not None,
         frame_risk=state["frame_risk"],
@@ -221,11 +230,18 @@ def label_keyframe(
     )
 
 
-def sweep_state(timestamp: int, dets: list, warped: list | None) -> dict:
+def sweep_state(timestamp: int, dets: list, warped: list | None, weak: list | None = None) -> dict:
     state = {"timestamp": timestamp, "detections": dets}
     if warped is not None:
         state["warped"] = warped
+    if weak:
+        state["weak"] = weak
     return state
+
+
+def strip_mask(d):
+    """Detection chỉ để làm bằng chứng: bỏ mask cho file frame gọn."""
+    return d.model_copy(update={"mask": None}) if d.mask is not None else d
 
 
 def sweep_warps(
