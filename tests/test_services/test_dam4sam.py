@@ -140,3 +140,24 @@ def test_recommend_prefers_simpler_config_within_tie():
     assert "`dam4sam+none`" in lines[0]  # 0.61 nằm trong 0.01 của 0.618 và đơn giản hơn
     res["flow+byte"]["HOTA"] = 0.61
     assert "`flow+byte`" in tool.recommend(res, done)[0]
+
+
+def test_thin_timeline_keeps_keyframes_and_every_kth_sweep():
+    from types import SimpleNamespace
+
+    from src.services.nuscenes_data import TimelineImage
+    from src.services.sequence import thin_timeline
+
+    # 2 keyframe, giữa mỗi cặp có 5 sweep (như nuScenes 12 Hz / 2 Hz)
+    images = []
+    for k in range(2):
+        images += [TimelineImage(f"s{k}{i}", k * 6 + i) for i in range(5)]
+        images.append(TimelineImage(f"k{k}", k * 6 + 5, sample_token=f"sample{k}"))
+    cfg = SimpleNamespace(flow="dam4sam", dam4sam_stride=1)
+    assert thin_timeline(images, cfg) == images
+    cfg.dam4sam_stride = 3
+    assert [im.sd_token for im in thin_timeline(images, cfg)] == ["s02", "k0", "s12", "k1"]
+    cfg.dam4sam_stride = 6
+    assert [im.sd_token for im in thin_timeline(images, cfg)] == ["k0", "k1"]
+    cfg.flow = "always"  # optical flow cần mọi ảnh: không bao giờ bỏ
+    assert thin_timeline(images, cfg) == images

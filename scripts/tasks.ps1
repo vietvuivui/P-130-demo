@@ -40,6 +40,8 @@ param(
     [switch]$NoTta,
     [int]$Port = 8000,
     [string[]]$Scenes = @(),
+    [string]$Model = "sam21pp-L",   # DAM4SAM: sam21pp-L | -B | -S | -T (nhỏ hơn = nhanh hơn)
+    [int]$Stride = 1,               # DAM4SAM: chỉ xử lý mỗi ảnh thứ k giữa hai keyframe (3 nhanh gấp ~3, 6 = chỉ keyframe)
     [string]$Workspace = "",
     [int]$Limit = 10,
     [ValidateSet("off", "mean", "linked")]
@@ -220,7 +222,11 @@ function TrackAll {
     $dev = if ($Scenes.Count) { $Scenes } else { @("scene-0035", "scene-0097", "scene-0101") }
     $ws = if ($Workspace) { $Workspace } else { "data\eval_temporal\ws_dev" }
     Step "So sánh tracker trên $($dev -join ', ') ($ws)"
-    Run "python" (@("tools2d\dam4sam.py", "--dataroot", $Dataroot, "--workspace", $ws, "--bench", "--out", "eval\results\trackall", "--scenes") + $dev)
+    # Biến thể nhanh (-Model sam21pp-T, -Stride 3 ...) ghi vào thư mục riêng để không đè kết quả của cấu hình gốc
+    $out = "eval\results\trackall"
+    $extra = @("--model", $Model, "--stride", $Stride)
+    if ($Model -ne "sam21pp-L" -or $Stride -ne 1) { $out = "${out}_$($Model.Split('-')[-1])_k$Stride" } else { $extra += "--bench" }
+    Run "python" (@("tools2d\dam4sam.py", "--dataroot", $Dataroot, "--workspace", $ws, "--out", $out) + $extra + @("--scenes") + $dev)
 }
 
 function Push {

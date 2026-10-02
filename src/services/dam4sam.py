@@ -34,7 +34,14 @@ def mask_to_box(mask: np.ndarray, min_px: int = 4) -> list[float] | None:
     return [float(xs.min()), float(ys.min()), float(xs.max() + 1), float(ys.max() + 1)]
 
 
-CHECKPOINTS = {"sam21pp-L": "sam2.1_hiera_large.pt", "sam21pp-B": "sam2.1_hiera_base_plus.pt"}
+CHECKPOINTS = {
+    "sam21pp-L": "sam2.1_hiera_large.pt",
+    "sam21pp-B": "sam2.1_hiera_base_plus.pt",
+    "sam21pp-S": "sam2.1_hiera_small.pt",
+    "sam21pp-T": "sam2.1_hiera_tiny.pt",
+}
+# Repo DAM4SAM (utils/utils.py) tìm bản L / B trong checkpoints/, còn bản S / T ở ngay gốc repo
+_CKPT_AT_ROOT = {"sam21pp-S", "sam21pp-T"}
 _ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -55,9 +62,10 @@ def check_install(model: str = "sam21pp-L") -> list[str]:
         if importlib.util.find_spec(mod) is None:
             problems.append(f"gói `{mod}`: {hint}")
     ckpt = CHECKPOINTS.get(model)
-    if ckpt and not (repo / "checkpoints" / ckpt).is_file():
+    ckpt_path = (repo if model in _CKPT_AT_ROOT else repo / "checkpoints") / (ckpt or "")
+    if ckpt and not ckpt_path.is_file():
         problems.append(
-            f"checkpoint {repo / 'checkpoints' / ckpt}: curl.exe -L -o {repo / 'checkpoints' / ckpt} "
+            f"checkpoint {ckpt_path}: curl.exe -L -o {ckpt_path} "
             f"https://dl.fbaipublicfiles.com/segment_anything_2/092824/{ckpt}"
         )
     if importlib.util.find_spec("torch") is not None:

@@ -157,6 +157,20 @@ def sweep_overrides(frames: list[FrameRecord]) -> dict[str, list[Detection]]:
     return {s.sd_token: effective_detections(s) for f in frames for s in f.sweeps if s.boxes is not None}
 
 
+def thin_timeline(images: list[TimelineImage], cfg) -> list[TimelineImage]:
+    """propagation.dam4sam_stride = k > 1 (chỉ khi flow == dam4sam): giữ mọi keyframe và mỗi ảnh sweep thứ k tính từ
+    keyframe gần nhất, để DAM4SAM (chậm, mỗi vật một lần chạy trên mỗi ảnh) xử lý ít ảnh hơn."""
+    k = getattr(cfg, "dam4sam_stride", 1)
+    if cfg.flow != "dam4sam" or k <= 1:
+        return images
+    out, since = [], 0
+    for im in images:
+        since = 0 if im.is_keyframe else since + 1
+        if im.is_keyframe or since % k == 0:
+            out.append(im)
+    return out
+
+
 def _timeline_after(source: SequenceSource, keyframe: FrameRecord) -> list[TimelineImage]:
     timeline = source.timeline(keyframe.scene, keyframe.camera)
     idx = next((i for i, im in enumerate(timeline) if im.sd_token == keyframe.image.sd_token), None)
@@ -206,7 +220,7 @@ def propagate_from(
     )  # fmt: skip
     at = now_iso()
     hops = 0
-    for image in images:
+    for image in thin_timeline(images, cfg):
         dets = overrides[image.sd_token] if image.sd_token in overrides else source.detections(image.sd_token)
         tracker.step(image, dets)
         if not image.is_keyframe:
@@ -329,7 +343,7 @@ def evaluate_propagation(
         tracker = Tracker(tracks, cfg, first.image.width, first.image.height, _motion(source, cfg), first.image.path,
                           **_botsort(source, cfg), **_dam4sam(source, cfg))  # fmt: skip
         hops = 0
-        for image in _timeline_after(source, first):
+        for image in thin_timeline(_timeline_after(source, first), cfg):
             tracker.step(image, source.detections(image.sd_token))
             if not image.is_keyframe:
                 continue

@@ -63,6 +63,8 @@ def main() -> None:
     ap.add_argument("--scenes", nargs="*")
     ap.add_argument("--configs", nargs="*", default=list(CONFIGS), choices=list(CONFIGS))
     ap.add_argument("--model", default="sam21pp-L", help="sam21pp-L | sam21pp-B | sam21pp-S | sam21pp-T")
+    ap.add_argument("--stride", type=int, default=1,
+                    help="DAM4SAM chỉ xử lý mỗi ảnh thứ k giữa hai keyframe (1 = mọi ảnh 12 Hz, 3 nhanh gấp ~3, 6 = chỉ keyframe)")
     ap.add_argument("--max-frames", type=int, default=10)
     ap.add_argument("--out", default="eval/results/dam4sam")
     args = ap.parse_args()
@@ -91,6 +93,7 @@ def main() -> None:
 
     config = load_autolabel_config(ROOT / "configs" / "autolabel.yaml")
     config.propagation.dam4sam_model = args.model
+    config.propagation.dam4sam_stride = args.stride
     data = NuScenesMini(args.dataroot, args.version)
     ws = Path(args.workspace)
     store = WorkspaceStore(ws)
@@ -99,7 +102,7 @@ def main() -> None:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     run_key = {"workspace": str(ws), "scenes": sorted(args.scenes or []), "max_frames": args.max_frames,
-               "model": args.model, "fast": not args.slow}  # fmt: skip
+               "model": args.model, "fast": not args.slow, "stride": args.stride}  # fmt: skip
     config.propagation.dam4sam_share_encoder = config.propagation.dam4sam_autocast = not args.slow
     # Mọi cấu hình đều đọc detection từ cache; cache trống (chưa `detect-sweeps`, hoặc khoá cache đổi vì đổi weights /
     # prompt / ngưỡng) thì tracker chỉ trôi theo flow, các cấu hình ra giống hệt nhau và không nói lên gì
@@ -167,7 +170,9 @@ def main() -> None:
     # HOTA / MOTA / IDF1 của nhãn hiện có trong workspace (sau lần lan truyền cuối) — tham khảo
     results["trackeval_workspace"] = te.evaluate_workspace(store, "2d", scenes=args.scenes)["overall"]
     (out / "dam4sam.json").write_text(json.dumps({"_run": run_key, **results}, indent=1, ensure_ascii=False), encoding="utf-8")
-    lines = ["| Cấu hình | Nhãn đúng | Box sai | Đổi ID | Mất dấu | HOTA | DetA | AssA | MOTA | IDF1 | Giây |",
+    lines = [f"DAM4SAM: model `{args.model}`, stride {args.stride}, tăng tốc {'tắt' if args.slow else 'bật'}; "
+             f"scene: {', '.join(scenes)}.", "",
+             "| Cấu hình | Nhãn đúng | Box sai | Đổi ID | Mất dấu | HOTA | DetA | AssA | MOTA | IDF1 | Giây |",
              "|---|---|---|---|---|---|---|---|---|---|---|"]  # fmt: skip
     done = [n for n in COST_ORDER if n in results]
     for name in done:

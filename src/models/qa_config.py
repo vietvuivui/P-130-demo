@@ -182,6 +182,10 @@ class PropagationCfg(BaseModel):
     # Tăng tốc DAM4SAM (src/services/dam4sam.py): mã hoá ảnh một lần cho mọi vật trong ảnh thay vì mỗi vật một lần, và
     # chạy autocast (float16) như script gốc của DAM4SAM. Tắt để so tốc độ / kiểm tra kết quả không đổi.
     dam4sam_share_encoder: bool = True
+    # Chỉ cho DAM4SAM xử lý mỗi ảnh thứ k giữa hai keyframe (keyframe luôn được xử lý): 1 = mọi ảnh 12 Hz (như cũ),
+    # 3 = khoảng 2 ảnh mỗi keyframe (nhanh gấp ~3), 6 = chỉ keyframe 2 Hz (nhanh gấp ~6). SAM 2.1 bám theo bộ nhớ ngoại
+    # hình chứ không theo chuyển động nên chịu được bước nhảy dài hơn optical flow.
+    dam4sam_stride: int = Field(default=1, ge=1)
     dam4sam_autocast: bool = True
     # Ghép track với detection: single = một lượt với mọi box ≥ score_threshold (như trước) | byte = hai lượt kiểu
     # ByteTrack (Zhang et al. 2022): box score ≥ byte_high_score trước, box score thấp chỉ cho track còn thiếu (IoU chặt
