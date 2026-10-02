@@ -183,7 +183,8 @@ class Tracker:
         self.images_with_flow = 0
         self.images_with_gmc = 0
         self.motion = motion if cfg.flow not in ("off", "dam4sam") else None
-        self.predictor = predictor if cfg.flow == "dam4sam" else None
+        self.predictor = predictor if cfg.flow in ("dam4sam", "flow+dam4sam") else None
+        self.sam_calls = 0
         self.images_with_sam = 0
         self.appearance = appearance if cfg.association == "botsort" else None
         self.gmc = gmc if cfg.association == "botsort" and cfg.botsort_gmc else None
@@ -213,7 +214,7 @@ class Tracker:
         cfg = self.cfg
         field = None
         prev_for_gmc = self.prev_path
-        if self.motion is not None and self.prev_path and image.path and (cfg.flow == "always" or detections is None):
+        if self.motion is not None and self.prev_path and image.path and (cfg.flow in ("always", "flow+dam4sam") or detections is None):
             field = self.motion.between(self.prev_path, image.path)
         self.prev_path = image.path or self.prev_path
         if field is not None:
@@ -227,7 +228,10 @@ class Tracker:
         sam_hit = False
         sam_seen: list[bool] = []
         for t in tracks:
-            sam_box = self.predictor.predict(t.track_id, image.path) if self.predictor is not None and image.path else None
+            # dam4sam: SAM cho mọi track; flow+dam4sam: chỉ track đang mất detection (flow lo phần còn lại)
+            use_sam = self.predictor is not None and image.path and (cfg.flow == "dam4sam" or t.misses > 0)
+            sam_box = self.predictor.predict(t.track_id, image.path) if use_sam else None
+            self.sam_calls += bool(use_sam)
             sam_seen.append(sam_box is not None)
             if sam_box is not None:
                 preds.append(np.asarray(sam_box, dtype=np.float64))
@@ -425,6 +429,9 @@ class Tracker:
     def _check_stop(self, t: Track) -> None:
         cfg = self.cfg
         limit = cfg.oc_max_lost if cfg.oc_recover else cfg.max_coast_images
+        if cfg.flow == "dam4sam" and cfg.dam4sam_stride > 1:
+            # ngưỡng tính theo ảnh 12 Hz; khi bỏ bớt ảnh thì chia theo stride để vẫn dừng sau cùng một khoảng thời gian
+            limit = max(1, round(limit / cfg.dam4sam_stride))
         if t.misses > limit:
             t.stop(f"Mất dấu: {t.misses} ảnh liên tiếp không có detection khớp")
             return

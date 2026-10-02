@@ -40,12 +40,13 @@ sys.path.insert(0, str(ROOT))
 CONFIGS = {
     "flow+byte": ("always", "byte"),
     "flow+botsort": ("always", "botsort"),
+    "flow+dam4sam+byte": ("flow+dam4sam", "byte"),  # lai: flow cho mọi track, DAM4SAM chỉ cho track đang mất detection
     "dam4sam+byte": ("dam4sam", "byte"),
     "dam4sam+botsort": ("dam4sam", "botsort"),
     "dam4sam+none": ("dam4sam", "none"),  # DAM4SAM thuần: không ghép với detection, box = hộp bao mask
 }
 # Thứ tự từ đơn giản / rẻ tới phức tạp / đắt: khi hai cấu hình ngang nhau (chênh HOTA < TIE) thì chọn cái đứng trước
-COST_ORDER = ["flow+byte", "flow+botsort", "dam4sam+none", "dam4sam+byte", "dam4sam+botsort"]
+COST_ORDER = ["flow+byte", "flow+botsort", "flow+dam4sam+byte", "dam4sam+none", "dam4sam+byte", "dam4sam+botsort"]
 TIE = 0.01
 
 
@@ -69,7 +70,7 @@ def main() -> None:
     ap.add_argument("--out", default="eval/results/dam4sam")
     args = ap.parse_args()
 
-    need_sam = args.check or any(CONFIGS[c][0] == "dam4sam" for c in args.configs)
+    need_sam = args.check or any("dam4sam" in CONFIGS[c][0] for c in args.configs)
     if need_sam:
         from src.services.dam4sam import check_install
 

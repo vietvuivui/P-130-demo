@@ -176,7 +176,10 @@ class PropagationCfg(BaseModel):
     # Optical flow cho tracker lan truyền: off (dự đoán theo vận tốc) | missing (chỉ ảnh chưa có detection) | always
     # dam4sam: thay flow bằng DAM4SAM (SAM 2.1, cần GPU; src/services/dam4sam.py): mỗi vật được phân đoạn ở từng ảnh,
     # box dự đoán = hộp bao mask; detection vẫn dùng để ghép / dừng track như thường
-    flow: Literal["off", "missing", "always", "dam4sam"] = "always"
+    # flow+dam4sam: lai — optical flow cho mọi track ở mọi ảnh như "always"; DAM4SAM chỉ được gọi cho track vừa mất
+    # detection (misses > 0, thường là đang bị che) để bắc cầu qua đoạn che khuất. Rẻ hơn nhiều so với dam4sam vì SAM
+    # chỉ chạy cho vài vật, và giữ được box đầy đủ của người duyệt khi vật vẫn được detector thấy.
+    flow: Literal["off", "missing", "always", "dam4sam", "flow+dam4sam"] = "always"
     flow_scale: float = 0.5
     dam4sam_model: str = "sam21pp-L"
     # Tăng tốc DAM4SAM (src/services/dam4sam.py): mã hoá ảnh một lần cho mọi vật trong ảnh thay vì mỗi vật một lần, và

@@ -72,7 +72,7 @@ def with_engine(config: AutoLabelConfig, engine: str | None) -> AutoLabelConfig:
 def _dam4sam(source, cfg) -> dict:
     """Dam4SamPredictor khi propagation.flow == dam4sam (src/services/dam4sam.py; cần GPU + repo DAM4SAM)."""
     image_file = getattr(source, "image_file", None)
-    if cfg.flow != "dam4sam" or image_file is None:
+    if cfg.flow not in ("dam4sam", "flow+dam4sam") or image_file is None:
         return {}
     from src.services.dam4sam import Dam4SamPredictor
 

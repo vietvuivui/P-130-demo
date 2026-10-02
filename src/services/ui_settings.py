@@ -22,6 +22,7 @@ FIELDS: dict[str, dict] = {
         "choices": {
             "always": "Optical flow ở mọi ảnh (khuyên dùng)",
             "dam4sam": "DAM4SAM (SAM 2.1) phân đoạn từng vật — cần GPU và repo DAM4SAM",
+            "flow+dam4sam": "Lai: optical flow, DAM4SAM chỉ cho vật đang mất detection — cần GPU và repo DAM4SAM",
             "missing": "Optical flow chỉ ở ảnh chưa detect",
             "off": "Đoán theo vận tốc không đổi (cách cũ)",
         },

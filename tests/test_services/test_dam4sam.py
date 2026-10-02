@@ -161,3 +161,39 @@ def test_thin_timeline_keeps_keyframes_and_every_kth_sweep():
     assert [im.sd_token for im in thin_timeline(images, cfg)] == ["k0", "k1"]
     cfg.flow = "always"  # optical flow cần mọi ảnh: không bao giờ bỏ
     assert thin_timeline(images, cfg) == images
+
+
+def test_hybrid_calls_sam_only_for_tracks_that_lost_detection(config, tmp_path, monkeypatch):
+    cfg = config.propagation.model_copy(deep=True)
+    cfg.flow = "flow+dam4sam"
+    pred = Dam4SamPredictor(lambda p: tmp_path / p, tracker_factory=FakeSam)
+    monkeypatch.setattr(pred, "image", lambda path: FakeImg())
+
+    def mk(i, x):
+        return Track(track_id=f"k:{i}", label="car", box=np.array([x, 100.0, x + 100.0, 160.0]), kind="keep",
+                     keyframe_id="k", keyframe_object_id=str(i), last_t=0)  # fmt: skip
+
+    seen, hidden = mk(1, 100.0), mk(2, 600.0)
+    tr = Tracker([seen, hidden], cfg, 1600, 900, None, "k.jpg", predictor=pred)
+    det = Detection(bbox=[100.0, 100.0, 200.0, 160.0], label="car", score=0.9)
+    # Ảnh 1: chưa track nào mất detection -> không gọi SAM; vật 2 không có detection nên bị tính 1 lần miss
+    tr.step(TimelineImage(sd_token="a", timestamp=83_333, path="a.jpg"), [det])
+    assert tr.sam_calls == 0 and seen.misses == 0 and hidden.misses == 1
+    # Ảnh 2: chỉ vật 2 (đang mất detection) được SAM dự đoán -> box theo mask (dời 10 px)
+    tr.step(TimelineImage(sd_token="b", timestamp=166_666, path="b.jpg"), [det])
+    assert tr.sam_calls == 1 and pred.calls == 1
+    assert hidden.box.tolist() == [610.0, 100.0, 710.0, 160.0] and seen.last_match is det
+
+
+def test_stop_limit_scales_with_stride(config, tmp_path, monkeypatch):
+    cfg = config.propagation.model_copy(deep=True)
+    cfg.flow, cfg.max_coast_images, cfg.dam4sam_stride, cfg.oc_recover = "dam4sam", 6, 3, False
+    pred = Dam4SamPredictor(lambda p: tmp_path / p, tracker_factory=FakeSam)
+    monkeypatch.setattr(pred, "image", lambda path: FakeImg())
+    t = Track(track_id="k:1", label="car", box=np.array([100.0, 100.0, 200.0, 160.0]), kind="keep",
+              keyframe_id="k", keyframe_object_id="1", last_t=0)  # fmt: skip
+    tr = Tracker([t], cfg, 1600, 900, None, "k.jpg", predictor=pred)
+    for i in range(3):  # 6 ảnh / stride 3 = dừng sau 2 lần miss, ở lần thứ 3
+        assert t.alive
+        tr.step(TimelineImage(sd_token=str(i), timestamp=(i + 1) * 250_000, path=f"{i}.jpg"), [])
+    assert not t.alive
