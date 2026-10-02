@@ -77,6 +77,7 @@ def main() -> None:
     ap.add_argument("--dataroot")
     ap.add_argument("--check", action="store_true", help="Chỉ kiểm tra cài đặt DAM4SAM rồi thoát")
     ap.add_argument("--force", action="store_true", help="Chạy lại cả cấu hình đã có kết quả")
+    ap.add_argument("--allow-sparse", action="store_true", help="Vẫn chạy khi cache detection thiếu ảnh 12 Hz")
     ap.add_argument("--version", default=os.environ.get("NUSCENES_VERSION", "v1.0-trainval"))
     ap.add_argument("--workspace", default=os.environ.get("WORKSPACE_DIR", "data/workspace"))
     ap.add_argument("--scenes", nargs="*")
@@ -115,12 +116,32 @@ def main() -> None:
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    key = {"workspace": str(ws), "scenes": sorted(args.scenes or []), "max_frames": args.max_frames, "model": args.model}
+    run_key = {"workspace": str(ws), "scenes": sorted(args.scenes or []), "max_frames": args.max_frames, "model": args.model}
+    # Mọi cấu hình đều đọc detection từ cache; cache trống (chưa `detect-sweeps`, hoặc khoá cache đổi vì đổi weights /
+    # prompt / ngưỡng) thì tracker chỉ trôi theo flow, các cấu hình ra giống hệt nhau và không nói lên gì
+    ensemble0 = DetectorEnsemble(config, ws / "cache" / "detections")
+    source0 = NuScenesSequenceSource(data, ensemble0)
+    scenes = args.scenes or sorted({f.scene for f in store.list_frames()})
+    n_img = n_cached = 0
+    for sc in scenes:
+        for im in source0.timeline(sc, config.camera):
+            n_img += 1
+            n_cached += ensemble0.load_cached(im.sd_token) is not None
+    key = ensemble0._cache_file(config.detection.detectors[0], "x").parent.name
+    print(f"Cache detection ({key}): {n_cached}/{n_img} ảnh của {len(scenes)} scene có detection", flush=True)
+    if n_img and n_cached / n_img < 0.9 and not args.allow_sparse:
+        raise SystemExit(
+            "Thiếu detection ở ảnh 12 Hz: chạy trước\n"
+            f"  $env:WORKSPACE_DIR='{ws}'; $env:NUSCENES_DATAROOT='{args.dataroot}'; $env:NUSCENES_VERSION='{args.version}'\n"
+            f"  python -m src.cli detect-sweeps --scenes {' '.join(scenes)}\n"
+            "(hoặc --allow-sparse để vẫn chạy; kết quả khi đó chỉ phản ánh flow, không phải tracker)"
+        )
+
     results = {}
     prev = out / "dam4sam.json"
     if prev.is_file() and not args.force:
         old = json.loads(prev.read_text(encoding="utf-8"))
-        if old.get("_run") == key:
+        if old.get("_run") == run_key:
             results = {k: v for k, v in old.items() if k in CONFIGS}
     for name in args.configs:
         if name in results:
@@ -145,10 +166,10 @@ def main() -> None:
         if assoc == "botsort":  # số lần ghép BoT-SORT khác với ghép theo IoU thuần (0 = ngoại hình không đổi gì)
             results[name]["botsort"] = dict(botsort.STATS)
         print(name, results[name], flush=True)
-        (out / "dam4sam.json").write_text(json.dumps({"_run": key, **results}, indent=1, ensure_ascii=False), encoding="utf-8")
+        (out / "dam4sam.json").write_text(json.dumps({"_run": run_key, **results}, indent=1, ensure_ascii=False), encoding="utf-8")
     # HOTA / MOTA / IDF1 của nhãn hiện có trong workspace (sau lần lan truyền cuối) — tham khảo
     results["trackeval_workspace"] = te.evaluate_workspace(store, "2d", scenes=args.scenes)["overall"]
-    (out / "dam4sam.json").write_text(json.dumps({"_run": key, **results}, indent=1, ensure_ascii=False), encoding="utf-8")
+    (out / "dam4sam.json").write_text(json.dumps({"_run": run_key, **results}, indent=1, ensure_ascii=False), encoding="utf-8")
     lines = ["| Cấu hình | Nhãn đúng | Box sai | Đổi ID | Mất dấu | Giây |", "|---|---|---|---|---|---|"]
     for name in args.configs:
         v = results[name]
