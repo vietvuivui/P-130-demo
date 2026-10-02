@@ -28,6 +28,7 @@ from src.models.schemas import (
     RejectRequest,
     ReviewActionRequest,
     ReviewerRequest,
+    SegmentRequest,
     SweepActionRequest,
     VideoDetail,
     VideoSummary,
@@ -788,6 +789,38 @@ def _check_engine(engine: str, config: AutoLabelConfig) -> None:
     e = next(x for x in _engines(config) if x["id"] == engine)
     if not e["available"]:
         raise _error(409, "ENGINE_UNAVAILABLE", f"Luồng {e['label']} chưa dùng được trên máy chủ này: {e['reason']}")
+
+
+@router.get("/segment/info")
+def segment_info():
+    """Công cụ bấm-để-chọn-vật đang dùng SAM 2.1 hay GrabCut (dự phòng CPU), kèm lý do nếu SAM chưa dùng được."""
+    from src.services import segment
+
+    return segment.engine_info()
+
+
+@router.post("/frames/{frame_id}/segment")
+def segment_object(
+    frame_id: str,
+    req: SegmentRequest,
+    store: WorkspaceStore = Depends(get_store),
+    dataroot: Path = Depends(get_dataroot),
+):
+    """Bấm điểm lên vật -> box + đa giác mask (không ghi gì vào frame; UI gửi ADD_BOX khi người dùng chọn lớp)."""
+    from src.services import segment
+
+    frame = _load(store, frame_id)
+    try:
+        path = image_path(dataroot, frame, req.offset, workspace=store.root)
+    except KeyError as e:
+        raise _error(404, "SWEEP_NOT_FOUND", f"Frame không có sweep offset {req.offset}") from e
+    w, h = frame.image.width, frame.image.height
+    if any(len(p) != 2 or not (0 <= p[0] <= w and 0 <= p[1] <= h) for p in req.points):
+        raise _error(422, "POINT_OUTSIDE", "Điểm bấm nằm ngoài ảnh")
+    try:
+        return segment.segment_points(path, req.points, req.labels)
+    except segment.SegmentError as e:
+        raise _error(422, "SEGMENT_FAILED", str(e)) from e
 
 
 @router.get("/propagation/engines")

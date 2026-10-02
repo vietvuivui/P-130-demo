@@ -470,7 +470,8 @@ const belowScore = (o) => o.source !== 'human' && o.score < S.minScore;
 // Mask sơ bộ của model (FR-04): chỉ khi người chưa sửa / vẽ lại box (mask không còn khớp box mới)
 function drawMask(o, color, sel) {
   const m = o.mask;
-  if (!m || m.length < 6 || ['EDIT_BOX', 'ADD_BOX'].includes(o.review.action)) return;
+  // Box đã sửa tay thì mask cũ không còn khớp; box thêm bằng bấm-để-chọn-vật (ADD_BOX có mask) vẫn hiện mask
+  if (!m || m.length < 6 || o.review.action === 'EDIT_BOX') return;
   ctx.save();
   ctx.globalAlpha = sel ? 0.35 : 0.2;
   ctx.fillStyle = color;
@@ -547,6 +548,7 @@ function drawCanvas() {
         alpha: sel || !S.sweepSel ? 1 : 0.8,
       });
     }
+    drawClickPreview();
     if (S.editBox) drawBox(S.editBox, '#7c5cd6', { lw: 3, dash: S.mode === 'add' ? [6, 4] : null });
     if (S.editBox && S.mode === 'edit') {
       ctx.fillStyle = '#fff';
@@ -596,6 +598,7 @@ function drawCanvas() {
 
   $('min-score-count').textContent = S.minScore > 0 ? ` · ${shown}/${total} box` : '';
 
+  drawClickPreview();
   if (S.editBox) {
     drawBox(S.editBox, '#7c5cd6', { lw: 3, dash: S.mode === 'add' ? [6, 4] : null });
     if (S.mode === 'edit') {
@@ -638,6 +641,7 @@ function hitObject(x, y) {
 canvas.addEventListener('mousedown', (e) => {
   if (!S.frame) return;
   const [x, y] = toImg(e);
+  if (S.mode === 'click') { clickSegment(x, y, e.shiftKey || e.button === 2); e.preventDefault(); return; }
   if (S.mode === 'add') {
     S.drag = { kind: 'draw', x0: x, y0: y };
     S.editBox = [x, y, x, y];
@@ -746,10 +750,84 @@ function startAdd() {
   draw();
 }
 
+// ---------- bấm để chọn vật (SAM 2.1; máy chủ không có GPU thì GrabCut) ----------
+// Bấm lên vật -> POST /frames/{id}/segment -> box + đa giác mask xem trước; bấm thêm để tinh chỉnh (Shift+bấm hoặc
+// chuột phải = vùng không thuộc vật); chọn lớp rồi Enter / Lưu để thêm như một box người vẽ (kèm mask).
+function startClick() {
+  if (!S.frame || S.frame.status === 'approved') return;
+  if (S.mode !== 'view') cancelEdit();
+  S.mode = 'click';
+  S.click = { points: [], labels: [], polygon: null, busy: false, engine: null };
+  S.editBox = null;
+  canvas.classList.add('drawing');
+  $('btn-click').classList.add('active');
+  $('tool-poly')?.classList.add('active');
+  showEditBar('click');
+  draw();
+}
+
+async function clickSegment(x, y, negative) {
+  const c = S.click;
+  if (!c || c.busy) return;
+  if (negative && !c.points.length) { toast('Bấm vào vật trước; Shift+bấm để loại vùng thừa sau đó'); return; }
+  c.points.push([Math.round(x * 10) / 10, Math.round(y * 10) / 10]);
+  c.labels.push(negative ? 0 : 1);
+  c.busy = true;
+  draw();
+  try {
+    const r = await api(`/frames/${encodeURIComponent(S.frame.frame_id)}/segment`, {
+      method: 'POST', body: { points: c.points, labels: c.labels, offset: S.viewOffset || 0 },
+    });
+    if (S.click !== c) return; // đã huỷ trong lúc chờ
+    c.polygon = r.polygon;
+    c.engine = r.engine;
+    S.editBox = r.bbox;
+    showEditBar('click');
+  } catch (err) {
+    c.points.pop();
+    c.labels.pop();
+    toast(err.message, true);
+  } finally {
+    c.busy = false;
+    draw();
+  }
+}
+
+function drawClickPreview() {
+  const c = S.mode === 'click' ? S.click : null;
+  if (!c) return;
+  const k = px();
+  if (c.polygon && c.polygon.length >= 6) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(c.polygon[0], c.polygon[1]);
+    for (let i = 2; i < c.polygon.length; i += 2) ctx.lineTo(c.polygon[i], c.polygon[i + 1]);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(124, 92, 214, .35)';
+    ctx.fill();
+    ctx.strokeStyle = '#7c5cd6';
+    ctx.lineWidth = 1.5 * k;
+    ctx.stroke();
+    ctx.restore();
+  }
+  c.points.forEach(([x, y], i) => {
+    ctx.beginPath();
+    ctx.arc(x, y, 5 * k, 0, Math.PI * 2);
+    ctx.fillStyle = c.labels[i] ? '#22c55e' : '#ef4444';
+    ctx.fill();
+    ctx.lineWidth = 2 * k;
+    ctx.strokeStyle = '#fff';
+    ctx.stroke();
+  });
+}
+
 function cancelEdit() {
   S.mode = 'view';
   S.editBox = null;
   S.drag = null;
+  S.click = null;
+  $('btn-click')?.classList.remove('active');
+  $('tool-poly')?.classList.remove('active');
   canvas.classList.remove('drawing');
   $('btn-add').classList.remove('active');
   $('edit-bar').classList.add('hidden');
@@ -758,9 +836,13 @@ function cancelEdit() {
 
 function showEditBar(kind) {
   $('edit-bar').classList.remove('hidden');
-  $('add-class').classList.toggle('hidden', kind !== 'add');
-  $('edit-save').classList.toggle('hidden', kind === 'draw');
+  const picked = kind === 'click' && !!S.editBox;
+  $('add-class').classList.toggle('hidden', kind !== 'add' && !picked);
+  $('edit-save').classList.toggle('hidden', kind === 'draw' || (kind === 'click' && !picked));
   $('edit-hint').textContent = {
+    click: picked
+      ? `${S.click?.engine === 'grabcut' ? 'GrabCut (chưa có SAM) · ' : ''}Bấm thêm: tinh chỉnh · Shift+bấm: loại vùng · Enter: lưu`
+      : 'Bấm vào vật cần gán nhãn',
     draw: 'Kéo chuột trên ảnh để vẽ box mới',
     add: 'Chọn lớp cho box mới',
     edit: 'Kéo góc/cạnh hoặc kéo cả box để sửa',
@@ -771,9 +853,17 @@ function showEditBar(kind) {
 async function saveEdit() {
   const box = S.editBox.map((v) => Math.round(v * 10) / 10);
   if (inSweep()) {
-    if (S.mode === 'add') await sweepAct({ action: 'ADD_BOX', bbox: box, label: $('add-class').value });
+    if (S.mode === 'add' || S.mode === 'click') await sweepAct({ action: 'ADD_BOX', bbox: box, label: $('add-class').value });
     else if (S.mode === 'edit') await sweepAct({ action: 'EDIT_BOX', box_id: S.sweepSel, bbox: box });
     cancelEdit();
+    return;
+  }
+  if (S.mode === 'click') {
+    const poly = S.click?.polygon;
+    await act({ action: 'ADD_BOX', bbox: box, label: $('add-class').value, mask: poly && poly.length >= 6 ? poly.slice(0, 400) : undefined });
+    const again = S.frame && S.frame.status !== 'approved';
+    cancelEdit();
+    if (again) startClick(); // chọn tiếp vật khác, Esc để thoát
     return;
   }
   if (S.mode === 'add') {
@@ -2233,6 +2323,7 @@ document.addEventListener('keydown', (e) => {
       c: () => sb && document.querySelector(`[data-sbid="${CSS.escape(sb)}"] [data-sclass]`)?.focus(),
       e: startEdit,
       b: startAdd,
+      m: startClick,
       Enter: () => S.mode !== 'view' && S.editBox && saveEdit(),
     };
     if (sweepKeys[key]) { sweepKeys[key](); e.preventDefault(); }
@@ -2246,6 +2337,7 @@ document.addEventListener('keydown', (e) => {
     c: () => sel && document.querySelector(`[data-oid="${CSS.escape(sel)}"] [data-class]`)?.focus(),
     e: startEdit,
     b: startAdd,
+    m: startClick,
     a: approveLow,
     Enter: () => (S.mode !== 'view' && S.editBox ? saveEdit() : approveFrame()),
   };
@@ -2310,6 +2402,9 @@ $('btn-propagate').addEventListener('click', propagateCurrent);
 $('prop-engine').addEventListener('change', (e) => { storageSet('propEngine', e.target.value); e.target.title = engineInfo().detail || ''; });
 $('auto-prop').addEventListener('change', (e) => { S.autoProp = e.target.checked; storageSet('autoProp', S.autoProp ? '1' : '0'); });
 $('btn-add').addEventListener('click', () => (S.mode === 'add' ? cancelEdit() : startAdd()));
+$('btn-click').addEventListener('click', () => (S.mode === 'click' ? cancelEdit() : startClick()));
+$('tool-poly')?.addEventListener('click', () => (S.mode === 'click' ? cancelEdit() : startClick()));
+canvas.addEventListener('contextmenu', (e) => { if (S.mode === 'click') e.preventDefault(); });
 $('edit-save').addEventListener('click', saveEdit);
 $('edit-cancel').addEventListener('click', cancelEdit);
 $('log-refresh').addEventListener('click', loadLog);

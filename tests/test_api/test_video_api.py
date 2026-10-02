@@ -85,3 +85,30 @@ async def test_upload_over_size_limit_is_rejected(video_client, config, demo_mp4
         r = await video_client.post("/api/v1/videos/upload", files={"file": ("street.mp4", fh, "video/mp4")})
     assert r.status_code == 413 and r.json()["detail"]["code"] == "VIDEO_TOO_LARGE"
     assert (await video_client.get("/api/v1/videos")).json() == []
+
+
+@pytest.mark.asyncio
+async def test_click_to_segment_then_add_box_with_mask(video_client, demo_mp4, monkeypatch):
+    """Bấm vào vật -> /segment trả box + đa giác; ADD_BOX kèm mask lưu thành object người vẽ có mask."""
+    from src.services import segment
+
+    monkeypatch.setattr(segment, "sam_available", lambda: "không có GPU")
+    with open(demo_mp4, "rb") as fh:
+        vid = (await video_client.post("/api/v1/videos/upload", files={"file": ("s.mp4", fh, "video/mp4")})).json()["video_id"]
+    f0 = (await video_client.get(f"/api/v1/videos/{vid}")).json()["frames"][0]["frame_id"]
+    frame = (await video_client.get(f"/api/v1/frames/{f0}")).json()
+    assert (await video_client.get("/api/v1/segment/info")).json()["engine"] == "grabcut"
+    car = max(frame["objects"], key=lambda o: (o["bbox"][2] - o["bbox"][0]) * (o["bbox"][3] - o["bbox"][1]))
+    cx, cy = (car["bbox"][0] + car["bbox"][2]) / 2, (car["bbox"][1] + car["bbox"][3]) / 2
+    r = await video_client.post(f"/api/v1/frames/{f0}/segment", json={"points": [[cx, cy]]})
+    assert r.status_code == 200, r.text
+    seg = r.json()
+    assert seg["engine"] == "grabcut" and seg["bbox"][0] < cx < seg["bbox"][2] and seg["bbox"][1] < cy < seg["bbox"][3]
+    assert (await video_client.post(f"/api/v1/frames/{f0}/segment", json={"points": [[-5, 10]]})).status_code == 422
+    r = await video_client.post(
+        f"/api/v1/frames/{f0}/actions",
+        json={"action": "ADD_BOX", "bbox": seg["bbox"], "label": "car", "mask": seg["polygon"]},
+    )
+    assert r.status_code == 200, r.text
+    added = r.json()["objects"][-1]
+    assert added["source"] == "human" and added["mask"] and len(added["mask"]) == len(seg["polygon"])

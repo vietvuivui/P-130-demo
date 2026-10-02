@@ -231,7 +231,16 @@ class ReviewActionRequest(BaseModel):
     object_id: str | None = None
     label: str | None = None
     bbox: list[float] | None = Field(default=None, min_length=4, max_length=4)
+    # ADD_BOX từ công cụ bấm-để-chọn-vật: đa giác viền mask [x1, y1, x2, y2, ...] (pixel ảnh gốc)
+    mask: list[float] | None = Field(default=None, min_length=6, max_length=400)
     reviewer: str | None = None
+
+
+class SegmentRequest(BaseModel):
+    # Điểm bấm trên ảnh (pixel ảnh gốc); labels: 1 = thuộc vật, 0 = không thuộc (mặc định mọi điểm = 1)
+    points: list[list[float]] = Field(..., min_length=1, max_length=20)
+    labels: list[int] | None = None
+    offset: int = Field(default=0, ge=-5, le=5)  # 0 = keyframe, khác 0 = sweep
 
 
 class ReviewerRequest(BaseModel):

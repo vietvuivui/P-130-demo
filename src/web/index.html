@@ -9,7 +9,7 @@
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=3d19engine">
+  <link rel="stylesheet" href="styles.css?v=3d20click">
 </head>
 
 <body class="dark-theme">
@@ -112,7 +112,7 @@
       <button class="tool-btn" id="tool-rect" title="Vẽ bounding box hình chữ nhật (B)">
         <i class="ri-checkbox-blank-line"></i>
       </button>
-      <button class="tool-btn" id="tool-poly" title="Vẽ hình đa giác (Polygon)">
+      <button class="tool-btn" id="tool-poly" title="Bấm vào vật để tự tách mask + box (M)">
         <i class="ri-pentagon-line"></i>
       </button>
       <div class="tool-divider"></div>
@@ -184,6 +184,7 @@
             <button id="btn-zoom-reset" class="btn btn-ghost btn-sm zoom-level" aria-label="Vừa khung">100%</button>
             <button id="btn-zoom-in" class="btn btn-ghost btn-sm" aria-label="Phóng to">+</button>
           </span>
+          <button id="btn-click" class="btn btn-ghost" title="Bấm vào vật để tự tách (SAM 2.1) thay vì kéo vẽ box (M)">✨ Chọn vật <kbd>M</kbd></button>
           <button id="btn-add" class="btn btn-ghost" title="Vẽ box mới (B)">＋ Box <kbd>B</kbd></button>
         </div>
       </div>
@@ -787,9 +788,9 @@
     }
   </script>
 
-  <script src="app.js?v=3d19engine"></script>
-  <script type="module" src="bev2d.js?v=3d19engine"></script>
-  <script type="module" src="app3d.js?v=3d19engine"></script>
+  <script src="app.js?v=3d20click"></script>
+  <script type="module" src="bev2d.js?v=3d20click"></script>
+  <script type="module" src="app3d.js?v=3d20click"></script>
 </body>
 
 </html>
