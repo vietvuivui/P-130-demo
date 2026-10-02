@@ -999,7 +999,7 @@ async function approveFrame() {
   }
 }
 
-// ---------- luồng lan truyền (người dùng chọn như chọn model): Nhanh = theo Cài đặt; Chính xác = DAM4SAM + BoT-SORT ----------
+// ---------- luồng lan truyền (người dùng chọn như chọn model): Nhanh = theo Cài đặt; DAM4SAM (thử nghiệm) = DAM4SAM + BoT-SORT ----------
 async function loadEngines() {
   const sel = $('prop-engine');
   try {

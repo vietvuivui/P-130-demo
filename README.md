@@ -200,10 +200,11 @@ Chế độ Video:
 định chạy SAM 2.1 bản ONNX, không cần GPU (tải model một lần: `python scripts/download_sam_onnx.py`, 117 MB): lần
 bấm đầu trên mỗi ảnh khoảng 2 giây trên CPU, các lần sau khoảng 0,1 giây. Chưa tải model thì tự lùi về GrabCut.
 
-**Luồng lan truyền** (ô chọn cạnh nút *↦ Lan truyền*): người dùng tự chọn như chọn mô hình. **Nhanh** = optical flow +
-ByteTrack trên box của YOLO (vài giây một video, cho cảnh dễ đến trung bình). **Chính xác** = DAM4SAM (SAM 2.1 + bộ nhớ
-nhận biết vật gây nhiễu) bám từng vật đã duyệt (cần GPU và `tools2d/DAM4SAM`, chạy nền có thanh tiến độ, cho cảnh khó:
-che khuất, vật giống nhau đứng sát). So sánh hai luồng: [eval/results/tracking.md](eval/results/tracking.md).
+**Luồng lan truyền** (ô chọn cạnh nút *↦ Lan truyền*): người dùng tự chọn như chọn mô hình. **Nhanh** (mặc định) = optical
+flow + ByteTrack trên box của YOLO, vài giây một video. **DAM4SAM (thử nghiệm)** = SAM 2.1 + bộ nhớ nhận biết vật gây
+nhiễu bám từng vật đã duyệt, ghép kiểu BoT-SORT (cần GPU và `tools2d/DAM4SAM`, chạy nền có thanh tiến độ). Trên 3 scene
+dev luồng DAM4SAM không hơn luồng Nhanh (HOTA 0.578 so với 0.580) và chậm hơn khoảng 12 lần:
+[eval/results/tracking.md](eval/results/tracking.md).
 
 Phím tắt: `↑/↓` chọn object · `K` keep · `D` delete · `C` đổi lớp · `E` sửa box · `B` vẽ box mới · `M` chọn vật ·
 `A` approve low-risk · `Enter` approve frame · `N/P` frame kế/trước · `L` LiDAR · `G` GT; chế độ Video thêm
@@ -283,9 +284,10 @@ Bảng so sánh mọi phương pháp đã dùng (2D, 3D, có / không dùng thì
 temporal (trước / sau, dev + held-out): [eval/results/temporal/report.md](eval/results/temporal/report.md).
 
 **Tracking 2D** ([eval/results/tracking.md](eval/results/tracking.md)), chấm bằng TrackEval (HOTA / IDF1 / đổi ID) thay
-cho chỉ số của bài detection: optical flow + ByteTrack HOTA 0.580 / IDF1 0.757 trên 3 scene dev; thêm BoT-SORT gần như
-không đổi (0.580 / 0.758); DAM4SAM đúng nhiều vật hơn (120 so với 106 nhãn đúng trên scene-0035) nhưng chậm hơn khoảng
-90–100 lần trên RTX 4050 (bản chưa tăng tốc).
+cho chỉ số của bài detection, 3 scene dev: optical flow + ByteTrack (mặc định) HOTA 0.580 / IDF1 0.757 trong 62 giây.
+Không cấu hình nào trong 6 cấu hình còn lại (BoT-SORT, DAM4SAM thuần, DAM4SAM + ByteTrack / BoT-SORT, lai flow + DAM4SAM)
+vượt được: tốt nhất là DAM4SAM + BoT-SORT 0.578 / 0.747, chậm hơn 12 lần. DetA của mọi cấu hình gần bằng nhau
+(0.47–0.48): nút thắt là detector, không phải tracker.
 
 **3D trên tập test** ([eval/results/det3d_heldout.md](eval/results/det3d_heldout.md)): 24 scene val chưa dùng để chọn
 cấu hình (957 keyframe), so với nhãn gốc nuScenes. Mô hình đơn tốt nhất CenterPoint voxel mAP 0.578 / NDS 0.655; gộp 4 mô
@@ -321,7 +323,7 @@ vẫn chạy được bản demo.
 | `REVIEWER_NAME` | `annotator` | Tên ghi vào correction log |
 | `SAM_ONNX_DIR` | `./weights/sam2-onnx` | Thư mục model SAM 2.1 ONNX của nút "Chọn vật" (`scripts/download_sam_onnx.py` tải về đây) |
 | `SAM_ONNX_PROVIDERS` | `CUDAExecutionProvider,CPUExecutionProvider` | Thứ tự backend ONNX Runtime; không có GPU thì tự dùng CPU |
-| `DAM4SAM_DIR` | `./tools2d/DAM4SAM` | Bản clone DAM4SAM cho luồng lan truyền "Chính xác" và `scripts\tasks.ps1 dam4sam` |
+| `DAM4SAM_DIR` | `./tools2d/DAM4SAM` | Bản clone DAM4SAM cho luồng lan truyền "DAM4SAM (thử nghiệm)" và `scripts\tasks.ps1 dam4sam` |
 | `MM3D_PYTHON` | (tự tìm `.venv-mm3d`) | Python của môi trường MMDetection3D cho bước 3D |
 | `AUTH_REQUIRED` | `false` | `true`: phải đăng nhập mới dùng API / UI (tài khoản ở `USERS_FILE`, mặc định `./data/users.json`) |
 | `AUTH_OPEN_SIGNUP` | `false` | Cho tự đăng ký sau người đầu tiên (mặc định chỉ vào qua link mời) |

@@ -12,7 +12,7 @@ Quay màn hình 1920×1080, thu tiếng thuyết minh.
 | 0:40–0:55 | Thẻ dự án → Thành viên → tạo link mời → Chia việc | Mời người khác bằng link, chia frame; frame đang mở bị khoá 🔒 |
 | 0:55–1:35 | Chế độ Ảnh: hàng đợi khó nhất trước, box đỏ + lý do, Keep / Delete / đổi lớp, *Approve all low-risk* | Review by exception: chỉ xem box rủi ro, box an toàn duyệt theo lô |
 | 1:35–1:55 | `M` Chọn vật: bấm vào một xe chưa có nhãn → mask + box → Lưu | Thêm nhãn bằng một cú bấm (SAM 2.1), không cần vẽ box |
-| 1:55–2:20 | Chế độ Video: chọn luồng Nhanh / Chính xác, Approve → nhãn ↦ sang keyframe sau, phát video | Lan truyền nhãn đã duyệt sang các frame sau; người dùng tự chọn luồng |
+| 1:55–2:20 | Chế độ Video: chọn luồng Nhanh / DAM4SAM, Approve → nhãn ↦ sang keyframe sau, phát video | Lan truyền nhãn đã duyệt sang các frame sau; người dùng tự chọn luồng |
 | 2:20–2:40 | Chế độ 3D: box 3D, bấm box trên ảnh camera → nhảy tới box trong 3D, box bị che vẽ nét đứt | Nhãn 3D từ ensemble LiDAR, kiểm chứng bằng 6 camera |
 | 2:40–3:00 | Tab Metrics (tỉ lệ phải sửa, HOTA / IDF1) → Xuất COCO / nuScenes | Số đo và dataset xuất ra chỉ gồm frame đã duyệt |
 

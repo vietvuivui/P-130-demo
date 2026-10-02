@@ -31,7 +31,7 @@ keyframe CAM_FRONT. Nhãn máy do YOLOE-26-L zero-shot + QA Agent sinh ra.
 | TC-11 | Kiểm tra temporal với vật ở gần đang chạy nhanh qua ảnh | ⚠️ Lỗi đã biết |
 | TC-12 | Chọn vật: bấm điểm / kéo khung thô, SAM 2.1 ONNX trả mask + box | ✅ Đạt (bấm trúng một chi tiết thì chỉ ra chi tiết đó) |
 | TC-13 | Nhiều người dùng: bắt đăng nhập, khoá frame đang mở | ✅ Đạt |
-| TC-14 | So sánh tracker bằng TrackEval | ✅ Đạt (DAM4SAM mới đo 1 scene, chưa có HOTA) |
+| TC-14 | So sánh tracker bằng TrackEval | ✅ Đạt (flow + ByteTrack tốt nhất, HOTA 0.580) |
 
 ---
 
@@ -279,22 +279,19 @@ GET  /presence (Huy) -> "locks":{"vid-dash3s-18b2fe_004":{"user_id":"u-278450b6"
 
 ## TC-14 · So sánh tracker bằng TrackEval
 
-- **Lệnh:** `scripts\tasks.ps1 trackall` (nhãn gốc ở keyframe đóng vai nhãn người, lan truyền tối đa 10 keyframe).
-- **Output thực tế** (3 scene dev, RTX 4050; `eval/results/tracking.md`):
+- **Lệnh:** `python tools2d\dam4sam.py ... --stride 3` (nhãn gốc ở keyframe đóng vai nhãn người, lan truyền tối đa 10
+  keyframe; lệnh đầy đủ ở cuối `eval/results/tracking.md`).
+- **Output thực tế** (3 scene dev, RTX 4050):
 
 ```text
-flow + ByteTrack   đúng 846  sai 209  đổi ID 32  mất 201   HOTA 0.580  AssA 0.733  IDF1 0.757   119 s
-flow + BoT-SORT    đúng 846  sai 209  đổi ID 28  mất 203   HOTA 0.580  AssA 0.736  IDF1 0.758   136 s
+flow + ByteTrack (mặc định)  đúng 846  sai 209  đổi ID 32  mất 201   HOTA 0.580  IDF1 0.757    62 s
+flow + BoT-SORT              đúng 846  sai 209  đổi ID 28  mất 203   HOTA 0.580  IDF1 0.758    98 s
+lai flow + DAM4SAM           đúng 859  sai 255  đổi ID 67  mất 173   HOTA 0.562  IDF1 0.730   506 s
+DAM4SAM + ByteTrack          đúng 849  sai 261  đổi ID 20  mất 200   HOTA 0.574  IDF1 0.740   848 s
+DAM4SAM + BoT-SORT           đúng 856  sai 248  đổi ID 18  mất 196   HOTA 0.578  IDF1 0.747   731 s
+DAM4SAM thuần                đúng 1007 sai 691  đổi ID 83  mất 0     HOTA 0.532  IDF1 0.685  1029 s
 ```
 
-  Riêng scene-0035 (DAM4SAM chạy bản chưa tăng tốc, chưa xuất HOTA):
-
-```text
-flow + ByteTrack      đúng 106  sai 31  đổi ID 10  mất 17      14 s
-DAM4SAM + ByteTrack   đúng 117  sai 31  đổi ID 10  mất  9    1466 s
-DAM4SAM + BoT-SORT    đúng 120  sai 26  đổi ID  5  mất  9    1226 s
-```
-
-- **Kết luận:** Đạt. BoT-SORT gần như không đổi kết quả khi ghép với optical flow (đổi 8 / 1770 lần ghép). DAM4SAM đúng
-  thêm 11–14 nhãn và mất dấu ít hơn một nửa, đổi lại chậm hơn khoảng 90–100 lần. Chưa đo: HOTA của DAM4SAM, DAM4SAM không
-  kèm tracker ghép, và bản tăng tốc trên cả 3 scene.
+- **Kết luận:** Đạt (phép đo chạy được và cho kết luận rõ). Giữ flow + ByteTrack làm mặc định: không cấu hình nào vượt
+  được, DAM4SAM chậm hơn 8–14 lần. DetA của các cấu hình gần bằng nhau (0.47–0.48), tức nút thắt là detector. Chưa đo trên
+  tập held-out.

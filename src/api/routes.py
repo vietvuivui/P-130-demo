@@ -778,8 +778,9 @@ def _engines(config: AutoLabelConfig) -> list[dict]:
     return [
         {"id": "default", "label": "Nhanh", "available": True, "reason": None,
          "detail": f"Theo ⚙ Cài đặt: flow {p.flow} + ghép {p.association}. Chạy CPU, khoảng 1 giây."},
-        {"id": "dam4sam", "label": "Chính xác", "available": not problems, "reason": "; ".join(problems) or None,
-         "detail": "DAM4SAM (SAM 2.1) phân đoạn từng vật ở mọi ảnh + BoT-SORT. Cần GPU, vài phút mỗi lần; chạy nền."},
+        {"id": "dam4sam", "label": "DAM4SAM (thử nghiệm)", "available": not problems, "reason": "; ".join(problems) or None,
+         "detail": "DAM4SAM (SAM 2.1) phân đoạn từng vật + BoT-SORT. Cần GPU, chậm hơn khoảng 12 lần; trên 3 scene dev "
+                   "HOTA ngang luồng Nhanh (0.578 so với 0.580), ít đổi ID hơn nhưng nhiều box sai hơn. Chạy nền."},
     ]  # fmt: skip
 
 

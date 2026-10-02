@@ -55,7 +55,8 @@ def _motion(source, cfg) -> FlowProvider | None:
 ENGINES = {
     # Luồng lan truyền người dùng chọn cho từng lần bấm (giống chọn model): ghi đè propagation.flow / association
     "default": None,  # theo tab ⚙ Cài đặt của workspace (mặc định: optical flow + ByteTrack, chạy CPU, ~1 s)
-    "dam4sam": {"flow": "dam4sam", "association": "botsort"},  # SAM 2.1 phân đoạn từng vật + BoT-SORT; GPU, chậm
+    # SAM 2.1 phân đoạn từng vật + BoT-SORT; GPU, chậm. stride 3: cấu hình đã đo (eval/results/tracking.md)
+    "dam4sam": {"flow": "dam4sam", "association": "botsort", "dam4sam_stride": 3},
 }
 
 
