@@ -387,3 +387,6 @@ def test_evaluate_propagation_with_perfect_detector(scene, config):
     for r in result["per_hop"]:
         assert r["correct_rate"] == 1.0 and r["coverage"] == 1.0 and r["id_switch"] == 0
     assert result["calibration"]["n_wrong"] == 0
+    te = result["trackeval"]  # detector hoàn hảo: mọi chỉ số tracking đạt tối đa
+    assert te["HOTA"] == 1.0 and te["MOTA"] == 1.0 and te["IDF1"] == 1.0 and te["IDSW"] == 0
+    assert te["frames"] == 2 and te["num_gt_dets"] == 4

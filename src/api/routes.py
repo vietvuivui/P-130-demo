@@ -32,12 +32,18 @@ from src.models.schemas import (
     VideoDetail,
     VideoSummary,
 )
-from src.services import history, qc, review
+from src.services import history, jobs, qc, review
 from src.services import video as video_service
 from src.services.detectors import DetectorEnsemble
 from src.services.exporter import EXPORT_FILES, NothingToExportError, NotReadyError, export_dataset
 from src.services.pipeline import image_path
-from src.services.sequence import PropagationError, SequenceSource, WorkspaceSequenceSource, propagate_from
+from src.services.sequence import (
+    PropagationError,
+    SequenceSource,
+    WorkspaceSequenceSource,
+    propagate_from,
+    with_engine,
+)
 from src.services.store import WorkspaceStore
 
 router = APIRouter()
@@ -756,10 +762,66 @@ def propagate(
 ):
     """Lan truyền quyết định của người ở frame đã approve sang các keyframe sau còn "auto"."""
     _load(store, frame_id)
+    _check_engine(req.engine, config)
     try:
-        return propagate_from(store, source, config, frame_id, req.max_frames)
+        return propagate_from(store, source, with_engine(config, req.engine), frame_id, req.max_frames)
     except PropagationError as e:
         raise _error(e.status, e.code, str(e)) from e
+
+
+def _engines(config: AutoLabelConfig) -> list[dict]:
+    from src.services import dam4sam
+
+    p = config.propagation
+    problems = dam4sam.check_install(p.dam4sam_model)
+    return [
+        {"id": "default", "label": "Nhanh", "available": True, "reason": None,
+         "detail": f"Theo ⚙ Cài đặt: flow {p.flow} + ghép {p.association}. Chạy CPU, khoảng 1 giây."},
+        {"id": "dam4sam", "label": "Chính xác", "available": not problems, "reason": "; ".join(problems) or None,
+         "detail": "DAM4SAM (SAM 2.1) phân đoạn từng vật ở mọi ảnh + BoT-SORT. Cần GPU, vài phút mỗi lần; chạy nền."},
+    ]  # fmt: skip
+
+
+def _check_engine(engine: str, config: AutoLabelConfig) -> None:
+    if engine == "default":
+        return
+    e = next(x for x in _engines(config) if x["id"] == engine)
+    if not e["available"]:
+        raise _error(409, "ENGINE_UNAVAILABLE", f"Luồng {e['label']} chưa dùng được trên máy chủ này: {e['reason']}")
+
+
+@router.get("/propagation/engines")
+def propagation_engines(config: AutoLabelConfig = Depends(get_config)):
+    """Các luồng lan truyền người dùng chọn được ở giao diện, kèm lý do nếu máy chủ chưa chạy được."""
+    return _engines(config)
+
+
+@router.post("/frames/{frame_id}/propagate-async")
+def propagate_async(
+    frame_id: str,
+    req: PropagateRequest,
+    store: WorkspaceStore = Depends(get_store),
+    config: AutoLabelConfig = Depends(get_config),
+    source: SequenceSource = Depends(get_sequence_source),
+):
+    """Như /propagate nhưng chạy nền (cho luồng chậm như DAM4SAM); hỏi tiến độ ở GET /propagation/job."""
+    frame = _load(store, frame_id)
+    if frame.status != "approved":
+        raise _error(409, "NOT_APPROVED", "Chỉ lan truyền từ frame đã approve (mọi quyết định của người đã chốt)")
+    _check_engine(req.engine, config)
+    cfg = with_engine(config, req.engine)
+
+    def work(progress):
+        progress(0.05, f"Đang lan truyền từ {frame_id} ({req.engine})…")
+        return {"frame_id": frame_id, "engine": req.engine,
+                **propagate_from(store, source, cfg, frame_id, req.max_frames).model_dump()}  # fmt: skip
+
+    return jobs.start(_job_key(store, "propagate"), work)
+
+
+@router.get("/propagation/job")
+def propagation_job(store: WorkspaceStore = Depends(get_store)):
+    return jobs.status(_job_key(store, "propagate"))
 
 
 # ---- Video ----

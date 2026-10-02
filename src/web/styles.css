@@ -2317,3 +2317,8 @@ body.in-project .brand-sub { display: none; }
 .lock-banner { background: var(--medium-soft, #fef3c7); color: #7c5a00; border: 1px solid var(--medium); border-radius: 8px; padding: 6px 10px; font-size: 12px; margin: 6px 12px 0; display: flex; gap: 8px; align-items: center; }
 .lock-banner .btn { margin-left: auto; }
 body.readonly .oc-btns, body.readonly #btn-approve-low, body.readonly #btn-approve-frame, body.readonly #btn-add, body.readonly #btn-reject, body.readonly #btn-propagate { opacity: .4; pointer-events: none; }
+
+/* ===== Chọn luồng lan truyền ===== */
+.prop-engine { height: 28px; padding: 2px 6px; font-size: 12px; border-radius: 6px; max-width: 140px; }
+.prop-job { font-size: 12px; color: var(--accent); white-space: nowrap; font-variant-numeric: tabular-nums; }
+#btn-propagate.busy { opacity: .5; pointer-events: none; }

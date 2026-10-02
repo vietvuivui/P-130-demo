@@ -9,7 +9,7 @@
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=3d18team">
+  <link rel="stylesheet" href="styles.css?v=3d19engine">
 </head>
 
 <body class="dark-theme">
@@ -226,7 +226,9 @@
             <button id="btn-play" class="btn btn-ghost btn-sm" title="Phát (Space)">▶ Phát</button>
             <button id="btn-next" class="btn btn-ghost btn-sm" title="Frame sau (N)">▶|</button>
             <label class="toggle"><input type="checkbox" id="auto-prop" checked> Lan truyền khi approve</label>
+            <select id="prop-engine" class="prop-engine" title="Luồng lan truyền cho lần bấm này"></select>
             <button id="btn-propagate" class="btn btn-ghost btn-sm" disabled>↦ Lan truyền <kbd>T</kbd></button>
+            <span id="prop-job" class="prop-job hidden" role="status"></span>
           </span>
         </div>
         <div class="timeline" id="timeline"></div>
@@ -785,9 +787,9 @@
     }
   </script>
 
-  <script src="app.js?v=3d18team"></script>
-  <script type="module" src="bev2d.js?v=3d18team"></script>
-  <script type="module" src="app3d.js?v=3d18team"></script>
+  <script src="app.js?v=3d19engine"></script>
+  <script type="module" src="bev2d.js?v=3d19engine"></script>
+  <script type="module" src="app3d.js?v=3d19engine"></script>
 </body>
 
 </html>

@@ -34,6 +34,40 @@ def mask_to_box(mask: np.ndarray, min_px: int = 4) -> list[float] | None:
     return [float(xs.min()), float(ys.min()), float(xs.max() + 1), float(ys.max() + 1)]
 
 
+CHECKPOINTS = {"sam21pp-L": "sam2.1_hiera_large.pt", "sam21pp-B": "sam2.1_hiera_base_plus.pt"}
+_ROOT = Path(__file__).resolve().parents[2]
+
+
+def check_install(model: str = "sam21pp-L") -> list[str]:
+    """Những thứ còn thiếu để chạy DAM4SAM (rỗng = đủ). Không nạp mô hình."""
+    import importlib.util
+    import os
+
+    repo = Path(os.environ.get("DAM4SAM_DIR") or _ROOT / "tools2d" / "DAM4SAM")
+    if not (repo / "dam4sam_tracker.py").is_file():
+        return [f"repo DAM4SAM ở {repo}: git clone https://github.com/jovanavidenovic/DAM4SAM.git tools2d/DAM4SAM"]
+    problems = []
+    needs_vot = "from vot" in (repo / "dam4sam_tracker.py").read_text(encoding="utf-8", errors="ignore")
+    mods = [("sam2", f"cd {repo} rồi pip install -e ."), ("torch", "pip install torch (bản CUDA)"), ("yaml", "pip install pyyaml")]
+    if needs_vot:  # bản clone chưa thay `vot` bằng vot_shim.py
+        mods.append(("vot", "pip install vot-toolkit==0.7.1 vot-trax==4.0.2"))
+    for mod, hint in mods:
+        if importlib.util.find_spec(mod) is None:
+            problems.append(f"gói `{mod}`: {hint}")
+    ckpt = CHECKPOINTS.get(model)
+    if ckpt and not (repo / "checkpoints" / ckpt).is_file():
+        problems.append(
+            f"checkpoint {repo / 'checkpoints' / ckpt}: curl.exe -L -o {repo / 'checkpoints' / ckpt} "
+            f"https://dl.fbaipublicfiles.com/segment_anything_2/092824/{ckpt}"
+        )
+    if importlib.util.find_spec("torch") is not None:
+        import torch
+
+        if not torch.cuda.is_available():
+            problems.append("CUDA: torch không thấy GPU (DAM4SAM nạp mô hình lên cuda:0)")
+    return problems
+
+
 def _load_dam4sam(repo_dir: str | Path | None):
     """Import DAM4SAMTracker từ bản clone của repo DAM4SAM (không có trên PyPI)."""
     import os

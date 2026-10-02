@@ -842,6 +842,14 @@ async function approveFrame() {
     const cur = S.frame;
     if (S.viewMode === 'video') {
       // Video: lan truyền sang các frame sau rồi mở frame kế tiếp (nơi vừa nhận nhãn lan truyền)
+      if (S.autoProp && engineInfo().id !== 'default') {
+        // Luồng chậm (DAM4SAM) chạy nền: không chờ và không tự mở frame kế (frame người đã mở sẽ không nhận nhãn lan
+        // truyền); xong thì tải lại timeline
+        propagate(cur.frame_id).then(() => refreshVideo());
+        await refreshVideo();
+        renderAll();
+        return;
+      }
       if (S.autoProp) await propagate(cur.frame_id);
       await refreshVideo();
       const frames = S.video?.frames || [];
@@ -863,9 +871,62 @@ async function approveFrame() {
   }
 }
 
+// ---------- luồng lan truyền (người dùng chọn như chọn model): Nhanh = theo Cài đặt; Chính xác = DAM4SAM + BoT-SORT ----------
+async function loadEngines() {
+  const sel = $('prop-engine');
+  try {
+    S.engines = await api('/propagation/engines');
+  } catch { S.engines = [{ id: 'default', label: 'Nhanh', available: true, detail: '' }]; }
+  const saved = storageGet('propEngine', 'default');
+  sel.innerHTML = S.engines.map((e) => `<option value="${esc(e.id)}" ${e.available ? '' : 'disabled'} title="${esc(e.detail)}${e.reason ? '\nChưa dùng được: ' + esc(e.reason) : ''}">${e.id === 'default' ? '⚡' : '🎯'} ${esc(e.label)}${e.available ? '' : ' (chưa cài)'}</option>`).join('');
+  sel.value = S.engines.some((e) => e.id === saved && e.available) ? saved : 'default';
+  sel.title = engineInfo().detail || '';
+  resumePropJob();
+}
+const engineInfo = () => (S.engines || []).find((e) => e.id === $('prop-engine').value) || { id: 'default' };
+
+function showPropJob(job) {
+  const el = $('prop-job');
+  const running = job?.state === 'running';
+  el.classList.toggle('hidden', !running);
+  $('btn-propagate').classList.toggle('busy', running);
+  if (running) el.textContent = `🎯 ${job.message || 'Đang lan truyền…'} ${fmtTime((Date.now() / 1000) - (job.started || Date.now() / 1000))}`;
+}
+
+// Hỏi tiến độ việc lan truyền chạy nền tới khi xong; trả về kết quả (hoặc ném lỗi)
+async function waitPropJob() {
+  for (;;) {
+    const job = await api('/propagation/job');
+    showPropJob(job);
+    if (job.state === 'done') return job.result;
+    if (job.state === 'error') throw new Error(job.message);
+    if (job.state !== 'running') return null;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+}
+
+async function resumePropJob() { // mở lại trang khi việc nền còn chạy: hiện tiến độ, xong thì tải lại timeline
+  try {
+    const job = await api('/propagation/job');
+    if (job.state !== 'running') return;
+    const r = await waitPropJob();
+    if (r) { toast(`Lan truyền (${r.engine}) xong: ${r.frames_updated.length} frame, ${r.objects_propagated} nhãn`); refreshLists(); }
+  } catch (err) { toast('Lan truyền lỗi: ' + err.message, true); }
+}
+
 async function propagate(frameId) {
   try {
-    const r = await api(`/frames/${encodeURIComponent(frameId)}/propagate`, { method: 'POST', body: {} });
+    const engine = engineInfo().id;
+    let r;
+    if (engine === 'default') {
+      r = await api(`/frames/${encodeURIComponent(frameId)}/propagate`, { method: 'POST', body: {} });
+    } else {
+      const job = await api(`/frames/${encodeURIComponent(frameId)}/propagate-async`, { method: 'POST', body: { engine } });
+      if (job.state === 'running' && job.message && !job.message.includes(frameId)) toast('Đang có một lần lan truyền khác chạy nền, đợi nó xong');
+      else toast(`Luồng ${engineInfo().label}: chạy nền, vài phút. Bạn vẫn duyệt tiếp được.`);
+      r = await waitPropJob();
+      if (!r) return null;
+    }
     const n = r.frames_updated.length;
     const extra = r.objects_suppressed ? `, tự xoá ${r.objects_suppressed} box người đã xoá` : '';
     toast(n ? `Lan truyền sang ${n} frame (${r.objects_propagated} nhãn${extra}). ${r.stop_reason || ''}` : `Không lan truyền: ${r.stop_reason || 'không có frame phù hợp'}`);
@@ -2246,6 +2307,7 @@ $('reject-send').addEventListener('click', sendReject);
 $('reject-cancel').addEventListener('click', () => $('reject-box').classList.add('hidden'));
 $('reject-reason').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendReject(); });
 $('btn-propagate').addEventListener('click', propagateCurrent);
+$('prop-engine').addEventListener('change', (e) => { storageSet('propEngine', e.target.value); e.target.title = engineInfo().detail || ''; });
 $('auto-prop').addEventListener('change', (e) => { S.autoProp = e.target.checked; storageSet('autoProp', S.autoProp ? '1' : '0'); });
 $('btn-add').addEventListener('click', () => (S.mode === 'add' ? cancelEdit() : startAdd()));
 $('edit-save').addEventListener('click', saveEdit);
@@ -2358,6 +2420,7 @@ async function initProject() {
     S.cfg = await api('/config');
     $('reviewer').value = storageGet('reviewer', S.cfg.reviewer);
     await initUser();
+    loadEngines();
     S.autoProp = storageGet('autoProp', '1') === '1';
     $('auto-prop').checked = S.autoProp;
     $('add-class').innerHTML = classOptions('car');

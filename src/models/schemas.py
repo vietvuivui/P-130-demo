@@ -247,6 +247,9 @@ class RejectRequest(BaseModel):
 class PropagateRequest(BaseModel):
     # Số keyframe tối đa đi tới; None = theo config
     max_frames: int | None = Field(default=None, ge=1, le=200)
+    # Luồng lan truyền cho lần này (src/services/sequence.py: ENGINES): default = theo Cài đặt của workspace;
+    # dam4sam = SAM 2.1 + BoT-SORT (GPU, chậm, chạy nền qua POST /frames/{id}/propagate-async)
+    engine: Literal["default", "dam4sam"] = "default"
 
 
 class PropagateSkip(BaseModel):
