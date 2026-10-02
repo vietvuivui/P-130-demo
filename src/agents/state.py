@@ -33,6 +33,8 @@ class QAState(TypedDict, total=False):
     sweeps: dict[int, SweepDetections]  # offset -> detection ở sweep đó
     # Detection keyframe bị bỏ vì score dưới ngưỡng giữ (>= recover_weak_min_score): ứng viên RECOVERED_BY_TRACK
     weak_key: list[Detection]
+    # Vật tracker mang từ keyframe trước (src/services/carry.py), đã là LabelObject source=track
+    carried: list[LabelObject]
     lidar_uv: np.ndarray | None
     lidar_depth: np.ndarray | None
 

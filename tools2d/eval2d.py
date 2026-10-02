@@ -58,6 +58,27 @@ def evaluate(dets_per_img, gts, min_score: float) -> dict:
                 n_gt=dict(n_gt), images=len(gts))  # fmt: skip
 
 
+def small_object_recall(dets_per_img, gts, min_score: float) -> dict:
+    """Recall ở ngưỡng giữ theo chiều cao GT (px): <32, 32-64, 64-128, >=128 — vật nhỏ / ở xa có được bắt không."""
+    from src.services.evaluation import _match
+
+    bins = [(0, 32), (32, 64), (64, 128), (128, 10**9)]
+    hit = {b: 0 for b in bins}
+    tot = {b: 0 for b in bins}
+    for dets, gt in zip(dets_per_img, gts, strict=True):
+        preds = [{"bbox": d.bbox, "label": d.label} for d in dets if d.score >= min_score and not d.label.startswith("__")]
+        _, matched = _match(preds, gt, 0.5, class_aware=False)
+        for j, g in enumerate(gt):
+            if g["ignore"]:
+                continue
+            h = g["bbox"][3] - g["bbox"][1]
+            for b in bins:
+                if b[0] <= h < b[1]:
+                    tot[b] += 1
+                    hit[b] += j in matched
+    return {f"{lo}-{hi if hi < 10**9 else ''}": f"{hit[b]}/{tot[b]}" for b in bins for lo, hi in [b]}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--dataroot", required=True, type=Path)
@@ -65,6 +86,8 @@ def main() -> None:
     ap.add_argument("--weights", nargs="+", required=True)
     ap.add_argument("--config", type=Path, default=ROOT / "configs" / "autolabel.yaml")
     ap.add_argument("--imgsz", type=int, default=None)
+    ap.add_argument("--tiles", type=int, default=None, help="chạy thêm trên lưới ô n x n (detection.yoloe.tiles)")
+    ap.add_argument("--splits", nargs="*", default=None, help="chỉ dev / heldout")
     ap.add_argument("--cache", type=Path, default=ROOT / "data" / "cache_eval2d")
     ap.add_argument("--out", type=Path, default=ROOT / "eval" / "results" / "det2d_finetune.json")
     args = ap.parse_args()
@@ -96,18 +119,25 @@ def main() -> None:
         cfg.detection.yoloe.weights = w
         if args.imgsz:
             cfg.detection.yoloe.imgsz = args.imgsz
+        if args.tiles:
+            cfg.detection.yoloe.tiles = args.tiles
+        tag = f"{Path(w).name}@{cfg.detection.yoloe.imgsz}" + (f"+tiles{args.tiles}" if args.tiles else "")
         ens = DetectorEnsemble(cfg, args.cache)
         for split, items in sorted(splits.items()):
+            if args.splits and split not in args.splits:
+                continue
             t0 = time.time()
             dets = []
             for i in range(0, len(items), 8):
                 dets += ens.detect_batch([(tok, p) for tok, p, _ in items[i : i + 8]])
             r = evaluate(dets, [g for _, _, g in items], cfg.detection.min_score)
             r["sec"] = round(time.time() - t0, 1)
-            res[f"{Path(w).name}@{cfg.detection.yoloe.imgsz}:{split}"] = r
-            print(f"{Path(w).name:32s} {split:8s} mAP50 {r['mAP50']:.3f}  P {r['P']:.3f}  R {r['R']:.3f}  F1 {r['F1']:.3f}  "
+            r["ap_small"] = small_object_recall(dets, [g for _, _, g in items], cfg.detection.min_score)
+            res[f"{tag}:{split}"] = r
+            print(f"{tag:40s} {split:8s} mAP50 {r['mAP50']:.3f}  P {r['P']:.3f}  R {r['R']:.3f}  F1 {r['F1']:.3f}  "
                   f"({r['images']} ảnh)", flush=True)  # fmt: skip
             print("   AP:", "  ".join(f"{k} {v:.2f}" for k, v in r["ap"].items()))
+            print("   recall theo cỡ vật (cao px):", "  ".join(f"{k} {v}" for k, v in r["ap_small"].items()))
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(res, indent=1, ensure_ascii=False), encoding="utf-8")
     print("Ghi", args.out)

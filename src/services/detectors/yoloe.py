@@ -50,7 +50,8 @@ class YoloeDetector(Detector):
 
     @property
     def version(self) -> str:
-        return f"{self.name}-{Path(self.cfg.weights).stem}-{self.cfg.imgsz}" + ("-flip" if self.cfg.tta_flip else "")
+        v = f"{self.name}-{Path(self.cfg.weights).stem}-{self.cfg.imgsz}" + ("-flip" if self.cfg.tta_flip else "")
+        return v + (f"-tiles{self.cfg.tiles}" if self.cfg.tiles > 1 else "")
 
     def _predict(self, sources: list) -> list[list[Detection]]:
         results = self.model.predict(
@@ -85,19 +86,51 @@ class YoloeDetector(Detector):
 
     def detect(self, image_paths: list[Path]) -> list[list[Detection]]:
         out = self._predict([str(p) for p in image_paths])
-        if not self.cfg.tta_flip:
+        if not self.cfg.tta_flip and self.cfg.tiles <= 1:
             return out
-        # Thêm lượt ảnh lật ngang, lật box về lại; hai lượt cùng là "yoloe" nên bước gộp (fusion) tự nhập box trùng
         import cv2
 
         images = [cv2.imdecode(np.fromfile(str(p), np.uint8), cv2.IMREAD_COLOR) for p in image_paths]
-        flipped = self._predict([im[:, ::-1].copy() for im in images])
-        for dets, fdets, im in zip(out, flipped, images, strict=True):
-            w = im.shape[1]
-            for d in fdets:
-                x1, y1, x2, y2 = d.bbox
-                d.bbox = [round(w - x2, 1), y1, round(w - x1, 1), y2]
-                if d.mask:
-                    d.mask = [round(w - v, 1) if i % 2 == 0 else v for i, v in enumerate(d.mask)]
-            dets.extend(fdets)
+        if self.cfg.tta_flip:
+            # Thêm lượt ảnh lật ngang, lật box về lại; hai lượt cùng là "yoloe" nên bước gộp (fusion) tự nhập box trùng
+            flipped = self._predict([im[:, ::-1].copy() for im in images])
+            for dets, fdets, im in zip(out, flipped, images, strict=True):
+                w = im.shape[1]
+                for d in fdets:
+                    x1, y1, x2, y2 = d.bbox
+                    d.bbox = [round(w - x2, 1), y1, round(w - x1, 1), y2]
+                    if d.mask:
+                        d.mask = [round(w - v, 1) if i % 2 == 0 else v for i, v in enumerate(d.mask)]
+                dets.extend(fdets)
+        if self.cfg.tiles > 1:
+            for dets, im in zip(out, images, strict=True):
+                dets.extend(self._detect_tiles(im))
         return out
+
+    def _detect_tiles(self, im: np.ndarray, overlap: float = 0.15, margin: int = 4) -> list[Detection]:
+        """Chạy model trên lưới ô chồng mép rồi dời box về toạ độ ảnh. Box chạm mép trong của ô (vật bị ô cắt) bị bỏ:
+        lượt ảnh đầy đủ đã có box cho vật lớn; ô chỉ để thêm vật nhỏ. Bước gộp của ensemble nhập các box trùng."""
+        h, w = im.shape[:2]
+        n = self.cfg.tiles
+        tw, th = w / n, h / n
+        ox, oy = tw * overlap, th * overlap
+        crops, rects = [], []
+        for r in range(n):
+            for c in range(n):
+                x1, y1 = int(max(0, c * tw - ox)), int(max(0, r * th - oy))
+                x2, y2 = int(min(w, (c + 1) * tw + ox)), int(min(h, (r + 1) * th + oy))
+                crops.append(np.ascontiguousarray(im[y1:y2, x1:x2]))
+                rects.append((x1, y1, x2, y2))
+        found: list[Detection] = []
+        for dets, (x1, y1, x2, y2) in zip(self._predict(crops), rects, strict=True):
+            for d in dets:
+                bx1, by1, bx2, by2 = d.bbox
+                cut = ((bx1 <= margin and x1 > 0) or (by1 <= margin and y1 > 0)
+                       or (bx2 >= x2 - x1 - margin and x2 < w) or (by2 >= y2 - y1 - margin and y2 < h))  # fmt: skip
+                if cut:
+                    continue
+                d.bbox = [round(bx1 + x1, 1), round(by1 + y1, 1), round(bx2 + x1, 1), round(by2 + y1, 1)]
+                if d.mask:
+                    d.mask = [round(v + (x1 if i % 2 == 0 else y1), 1) for i, v in enumerate(d.mask)]
+                found.append(d)
+        return found

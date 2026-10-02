@@ -41,6 +41,9 @@ class YoloeCfg(BaseModel):
     imgsz: int = 1280
     # Chạy thêm ảnh lật ngang rồi gộp (augment=True của Ultralytics không có tác dụng với YOLOE): ~2x thời gian
     tta_flip: bool = False
+    # Chạy thêm trên lưới ô tiles x tiles (chồng mép 15%) rồi gộp với lượt ảnh đầy đủ: vật nhỏ / ở xa được nhìn ở độ
+    # phân giải cao hơn (ảnh 1600x900 ở imgsz 1280 -> ô 920x520 phóng lên 1280, lớn gấp ~1.7). 1 = tắt. Thời gian ~x(1 + tiles²)
+    tiles: int = Field(default=1, ge=1, le=4)
     # Lưu mask segmentation sơ bộ của model -seg (đa giác đã đơn giản hoá), FR-04
     masks: bool = True
 
@@ -72,6 +75,10 @@ class Lidar3DCfg(BaseModel):
     # (cọc tiêu, người) hai nguồn lệch vài px nên 0.5 để sót nhiều cặp trùng; 0.3 ghép nhầm sang cọc bên cạnh.
     match_iou: float = 0.4
     camera_only_scale: float = 0.5  # hệ số điểm của box chỉ detector ảnh thấy
+    # Box chỉ camera thấy mà trong box không có điểm LiDAR (vật ngoài tầm LiDAR / bị che): LiDAR không có cơ hội thấy nó,
+    # nên không nên hạ điểm như camera_only_scale. None = hạ như thường (cách cũ); 1.0 = giữ nguyên điểm detector.
+    no_lidar_scale: float | None = None
+    no_lidar_max_points: int = 2  # "không có điểm LiDAR" = số điểm trong box <= ngần này
 
 
 class DetectionCfg(BaseModel):
@@ -115,6 +122,11 @@ class TemporalCfg(BaseModel):
     # đều có box cùng lớp trùng vị trí (score >= ngưỡng này) thì giữ lại box của detector, gắn RECOVERED_BY_TRACK để
     # người xác nhận (như lượt ghép score thấp của ByteTrack, nhưng ở ngay lúc gán nhãn). None = tắt.
     recover_weak_min_score: float | None = 0.2
+    # Mang nhãn máy của keyframe TRƯỚC sang keyframe này bằng tracker lan truyền (flow + ByteTrack, qua các ảnh 12 Hz ở
+    # giữa) ngay lúc gán nhãn: vật mà detector thấy mờ ở keyframe này (dưới ngưỡng giữ) nhưng tracker theo được từ
+    # frame trước thì giữ box của detector, gắn RECOVERED_BY_TRACK. Tốn thêm optical flow cho ~4 cặp ảnh mỗi keyframe.
+    carry_prev: bool = False
+    carry_min_score: float = 0.3  # chỉ mang vật có score >= ngưỡng này (hoặc người đã giữ) ở frame trước
     # Dời box của sweep về thời điểm keyframe bằng optical flow trước khi so khớp (src/services/flow.py)
     flow: bool = False
     flow_scale: float = 0.5

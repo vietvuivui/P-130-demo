@@ -37,6 +37,7 @@ def check_temporal(
     key_timestamp: int,
     config: AutoLabelConfig,
     weak_key: list[Detection] | None = None,
+    carried: list[LabelObject] | None = None,
 ) -> tuple[dict[str, dict], list[LabelObject]]:
     cfg = config.qa.temporal
     boxes = [o.bbox for o in objects]
@@ -73,10 +74,16 @@ def check_temporal(
     recovered = _recover_missed(objects, sweeps, unmatched, key_timestamp, config)
     weak_used = _snap_to_weak(recovered, weak_key or [], config)
     recovered += _recover_weak(objects + recovered, sweeps, unmatched, weak_key or [], weak_used, config)
+    for c in carried or []:  # vật tracker mang từ keyframe trước (carry.py); bỏ nếu đã có box trùng
+        if not any(iou(c.bbox, o.bbox) >= cfg.match_iou and o.label == c.label for o in objects + recovered):
+            recovered.append(c)
     for obj in recovered:
-        at = " và ".join(f"t{int(k):+d}" for k in obj.track)
+        at = " và ".join(f"t{int(k):+d}" for k in obj.track if k != "prev")
         lo = config.detection.min_score_per_class.get(obj.label, config.detection.min_score)
-        if obj.det_score is not None and obj.det_score > obj.score:  # score bị hạ khi gộp với box 3D (lidar2d.py)
+        if obj.carried_from:
+            msg = (f"Detector thấy mờ ở keyframe (score {obj.score:.2f} < {lo:.2f}); tracker theo được vật "
+                   f"{obj.carried_from} từ frame trước tới đây")
+        elif obj.det_score is not None and obj.det_score > obj.score:  # score bị hạ khi gộp với box 3D (lidar2d.py)
             msg = (f"Detector thấy ở keyframe (score {obj.det_score:.2f}, còn {obj.score:.2f} sau khi gộp với box 3D, "
                    f"dưới ngưỡng {lo:.2f}); vật có ở sweep {at}")
         elif obj.det_score is not None:  # box của detector ở keyframe, score dưới ngưỡng giữ
@@ -223,6 +230,6 @@ def _recover_missed(
 def temporal_node(state: QAState) -> dict:
     results, recovered = check_temporal(
         state.get("objects", []), state.get("sweeps", {}), state.get("key_timestamp", 0), state["config"],
-        state.get("weak_key"),
+        state.get("weak_key"), state.get("carried"),
     )  # fmt: skip
     return {"temporal": results, "recovered": recovered}

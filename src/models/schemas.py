@@ -101,6 +101,8 @@ class LabelObject(BaseModel):
     mask: list[float] | None = None
     # Box của cùng object ở các sweep lân cận, key là offset ("-2", "-1", "1", "2")
     track: dict[str, list[float] | None] = Field(default_factory=dict)
+    # Vật mang từ keyframe trước bằng tracker lúc gán nhãn (src/services/carry.py): "frame#object (score)"
+    carried_from: str | None = None
     qa: QAResult | None = None
     review: ReviewState = Field(default_factory=ReviewState)
 

@@ -21,6 +21,9 @@
 #               ghi MOTChallenge và chạy TrackEval chính thức nếu đã cài
 #   dam4sam     lan truyền box/mask bằng DAM4SAM (SAM 2.1, GPU) từ keyframe đã duyệt và so với tracker hiện tại
 #               (-Scenes; cần clone repo DAM4SAM + checkpoint, hướng dẫn ở đầu tools2d/dam4sam.py)
+#   improve     đo 4 cải tiến (10/2026) bằng số: detector ở 1920 / lưới ô cho vật nhỏ; không hạ điểm vật ngoài tầm LiDAR
+#               khi gộp 3D; giữ box detector thấy mờ khi sweep hai bên thấy; mang nhãn frame trước bằng tracker.
+#               Kết quả: eval\results\improve\*.json (+ bảng in ra). GPU ~10 phút cho detector, còn lại CPU ~20 phút
 #   trackall    MỘT LỆNH cho mọi phép đo tracking trên dev (3 scene, hoặc -Scenes a,b): tự detect ảnh 12 Hz thiếu, đo tăng
 #               tốc DAM4SAM, so 5 cấu hình, in bảng + khuyến nghị vào eval\results\trackall\dam4sam.md
 #   push        đẩy nhánh hiện tại lên GitHub
@@ -32,7 +35,7 @@
 param(
     [Parameter(Position = 0)]
     [ValidateSet("check", "install", "serve", "test", "demozip", "eval3d", "label3d", "eval2d", "evaltemporal", "rescore", "profile", "evalprop3d",
-        "push", "trackeval", "dam4sam", "trackall", "all")]
+        "push", "trackeval", "dam4sam", "trackall", "improve", "all")]
     [string]$Task = "check",
     [string]$Dataroot = "..\v1.0-trainval",
     [string]$Scene = "scene-0035",
@@ -229,6 +232,25 @@ function TrackAll {
     Run "python" (@("tools2d\dam4sam.py", "--dataroot", $Dataroot, "--workspace", $ws, "--out", $out) + $extra + @("--scenes") + $dev)
 }
 
+function Improve {
+    $out = "eval\results\improve"
+    New-Item -ItemType Directory -Force -Path $out | Out-Null
+    $w = "weights\yoloe-26l-nuimages-lp-1280.pt"
+    Step "1/4 Detector: 1280 (mặc định) / 1920 / 1280 + lưới ô 2x2 — mAP50, recall theo cỡ vật (GPU)"
+    Run "python" @("tools2d\eval2d.py", "--dataroot", $Dataroot, "--weights", $w, "--out", "$out\det2d.json")
+    Run "python" @("tools2d\eval2d.py", "--dataroot", $Dataroot, "--weights", $w, "--imgsz", "1920", "--out", "$out\det2d.json")
+    Run "python" @("tools2d\eval2d.py", "--dataroot", $Dataroot, "--weights", $w, "--tiles", "2", "--out", "$out\det2d.json")
+    Step "2/4 Gộp box 3D vào nhãn 2D: hạ điểm box chỉ camera thấy (0.5) so với không hạ khi box không có điểm LiDAR (CPU)"
+    Run "python" @("tools2d\eval_lidar2d.py", "--dataroot", $Dataroot, "--out", "$out\lidar2d.json")
+    foreach ($split in @(@("dev", "data\eval_temporal\ws_dev"), @("heldout", "data\eval_temporal\ws_heldout"))) {
+        $name, $ws = $split[0], $split[1]
+        Step "3-4/4 QA temporal trên $name ($ws): noweak (trước 02/10) / weak (giữ box thấy mờ) / carry (+ mang nhãn frame trước) (CPU)"
+        Run "python" @("tools2d\eval_temporal.py", "--dataroot", $Dataroot, "--workspace", $ws, "--out", "$out\temporal_$name",
+            "--variants", "noweak", "weak", "carry", "carry-only", "--no-propagation")
+    }
+    Write-Host "Xong. Gửi: $out\det2d.json, lidar2d.json, temporal_dev\temporal_eval.json, temporal_heldout\temporal_eval.json (hoặc chép bảng in ra)." -ForegroundColor Green
+}
+
 function Push {
     Step "git push"
     $branch = (git rev-parse --abbrev-ref HEAD).Trim()
@@ -252,6 +274,7 @@ switch ($Task) {
     "trackeval" { TrackEval }
     "dam4sam" { Dam4Sam }
     "trackall" { TrackAll }
+    "improve" { Improve }
     "push" { Push }
     "all" { Check; Test; Eval3d; Label3d; Eval2d }
 }

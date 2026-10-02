@@ -264,6 +264,7 @@ def _process_video(store: WorkspaceStore, ensemble: DetectorEnsemble, config: Au
                     sweeps=sweeps,
                     image_file=store.resolve,
                     intrinsic=intrinsic,
+                    prev=store.load_frame(f"{video_id}_{k - 1:03d}", copy=False) if k > 0 else None,
                 )
                 record.autolabel_s, record.autolabel_run = round(time.perf_counter() - t_start, 3), run_id
                 store.save_frame(record)

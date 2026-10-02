@@ -92,6 +92,9 @@ class AutoLabelPipeline:
             self.data.lidar_in_image(frame, self.config.qa.lidar.min_depth_m) if frame.lidar_sd_token else (None, None)
         )
         t_lidar = time.perf_counter() - t0
+        prev = None
+        if self.config.qa.temporal.carry_prev and index > 0:
+            prev = self.store.load_frame(f"{scene}_{index - 1:03d}", copy=False)
         record = label_keyframe(
             self.ensemble,
             self.config,
@@ -107,6 +110,7 @@ class AutoLabelPipeline:
             uv=uv,
             depth=depth,
             boxes3d=boxes3d,
+            prev=prev,
         )
         record.autolabel_s, record.autolabel_run = round(time.perf_counter() - t0, 3), self.run_id
         if frame.lidar_sd_token:
@@ -146,8 +150,10 @@ def label_keyframe(
     uv: np.ndarray | None = None,
     depth: np.ndarray | None = None,
     boxes3d: list[dict] | None = None,
+    prev: FrameRecord | None = None,
 ) -> FrameRecord:
-    """Bước 2 -> 3 cho một keyframe bất kỳ (scene nuScenes hoặc video tải lên): detect keyframe + sweep, QA Agent."""
+    """Bước 2 -> 3 cho một keyframe bất kỳ (scene nuScenes hoặc video tải lên): detect keyframe + sweep, QA Agent.
+    prev: keyframe liền trước của cùng scene (nếu có) để mang nhãn sang bằng tracker (qa.temporal.carry_prev)."""
     offsets = sorted(sweeps)
     images = [(image.sd_token, image_file(image.path))] + [
         (sweeps[o].sd_token, image_file(sweeps[o].path)) for o in offsets
@@ -176,9 +182,18 @@ def label_keyframe(
     # Score keyframe tính lại theo sweep trước khi lọc ngưỡng: vật thấy ổn định được giữ, box chỉ loé lên bị bỏ
     key_all = rescore(raw[0], sweep_dets, warped, tcfg.rescore, tcfg.match_iou)
     if boxes3d is not None:  # box 3D chiếu xuống ảnh (lidar2d.py): [{bbox, label, score}]
-        key_all = merge_detections(key_all, boxes3d, det_cfg.lidar3d.match_iou, det_cfg.lidar3d.camera_only_scale)
+        l3 = det_cfg.lidar3d
+        key_all = merge_detections(key_all, boxes3d, l3.match_iou, l3.camera_only_scale, uv=uv,
+                                   no_lidar_scale=l3.no_lidar_scale, no_lidar_max_points=l3.no_lidar_max_points)  # fmt: skip
     key_dets = sorted((d for d in key_all if det_cfg.keep(d.label, d.score)), key=lambda d: -d.score)
     weak_key = [d for d in key_all if not det_cfg.keep(d.label, d.score) and weak_lo is not None and d.score >= weak_lo]
+    carried = []
+    if tcfg.carry_prev and prev is not None:
+        from src.services.carry import carry_from_prev
+
+        with sw("carry"):
+            carried = carry_from_prev(prev, image, sweeps, key_all, dict(zip(offsets, raw[1:], strict=True)),
+                                      image_file, config)  # fmt: skip
 
     objects = [
         LabelObject(
@@ -204,6 +219,7 @@ def label_keyframe(
             "objects": objects,
             "sweeps": {o: sweep_state(sweeps[o].timestamp, sweep_dets[o], warped.get(o), sweep_weak[o]) for o in offsets},
             "weak_key": weak_key,
+            "carried": carried,
             "lidar_uv": uv,
             "lidar_depth": depth,
         }

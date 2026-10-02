@@ -40,6 +40,7 @@ def main() -> None:
     ap.add_argument("--variants", nargs="*", default=DEFAULT_VARIANTS, choices=list(VARIANTS))
     ap.add_argument("--scenes", nargs="*", help="chỉ các scene này (mặc định: mọi scene của workspace)")
     ap.add_argument("--config", default=str(ROOT / "configs" / "autolabel.yaml"))
+    ap.add_argument("--no-propagation", action="store_true", help="chỉ chấm 2D, bỏ phần lan truyền")
     args = ap.parse_args()
 
     from src.models.qa_config import load_autolabel_config
@@ -47,7 +48,8 @@ def main() -> None:
 
     config = load_autolabel_config(args.config)
     data = NuScenesMini(args.dataroot, args.version)
-    print_summary(evaluate(data, args.workspace, args.out, config, args.variants, args.scenes))
+    print_summary(evaluate(data, args.workspace, args.out, config, args.variants, args.scenes,
+                           propagation=not args.no_propagation))  # fmt: skip
 
 
 if __name__ == "__main__":

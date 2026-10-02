@@ -66,6 +66,13 @@ def project_boxes(preds: Sequence[dict], cam_from_global: np.ndarray, intrinsic:
     return out
 
 
+def _points_in(uv: np.ndarray, box: Sequence[float]) -> int:
+    if uv is None or len(uv) == 0:
+        return 0
+    x1, y1, x2, y2 = box
+    return int(((uv[:, 0] >= x1) & (uv[:, 0] <= x2) & (uv[:, 1] >= y1) & (uv[:, 1] <= y2)).sum())
+
+
 def merge_boxes(boxes3d: Sequence[dict], boxes2d: Sequence[dict], match_iou: float = 0.4,
                 camera_only_scale: float = 0.5) -> list[tuple[dict | None, int | None, float]]:  # fmt: skip
     """Ghép tham lam theo điểm box 3D giảm dần. Trả về [(box 3D | None, chỉ số box 2D | None, điểm)]."""
@@ -89,9 +96,13 @@ def merge_boxes(boxes3d: Sequence[dict], boxes2d: Sequence[dict], match_iou: flo
 
 
 def merge_detections(
-    dets: list, boxes3d: Sequence[dict], match_iou: float = 0.4, camera_only_scale: float = 0.5
-) -> list:
-    """Gộp Detection của detector 2D với box 3D đã chiếu. Box lấy từ 3D bỏ mask (mask của detector không còn khớp)."""
+    dets: list, boxes3d: Sequence[dict], match_iou: float = 0.4, camera_only_scale: float = 0.5,
+    uv: np.ndarray | None = None, no_lidar_scale: float | None = None, no_lidar_max_points: int = 2,
+) -> list:  # fmt: skip
+    """Gộp Detection của detector 2D với box 3D đã chiếu. Box lấy từ 3D bỏ mask (mask của detector không còn khớp).
+
+    uv + no_lidar_scale: box chỉ camera thấy mà có <= no_lidar_max_points điểm LiDAR bên trong (vật ngoài tầm LiDAR /
+    bị che) dùng hệ số no_lidar_scale thay cho camera_only_scale — LiDAR không có cơ hội thấy vật đó nên không nên phạt."""
     from src.models.schemas import Detection
 
     plain = [{"bbox": d.bbox, "label": d.label, "score": d.score} for d in dets]
@@ -100,6 +111,8 @@ def merge_detections(
         score = round(float(score), 4)
         if p is None:
             d = dets[j]
+            if no_lidar_scale is not None and uv is not None and _points_in(uv, d.bbox) <= no_lidar_max_points:
+                score = round(float(d.score * no_lidar_scale), 4)
             out.append(
                 d.model_copy(update={"score": score, "det_score": d.det_score if d.det_score is not None else d.score})
             )
