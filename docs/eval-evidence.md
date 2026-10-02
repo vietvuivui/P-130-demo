@@ -31,7 +31,7 @@ keyframe CAM_FRONT. Nhãn máy do YOLOE-26-L zero-shot + QA Agent sinh ra.
 | TC-11 | Kiểm tra temporal với vật ở gần đang chạy nhanh qua ảnh | ⚠️ Lỗi đã biết |
 | TC-12 | Chọn vật: bấm điểm / kéo khung thô, SAM 2.1 ONNX trả mask + box | ✅ Đạt (bấm trúng một chi tiết thì chỉ ra chi tiết đó) |
 | TC-13 | Nhiều người dùng: bắt đăng nhập, khoá frame đang mở | ✅ Đạt |
-| TC-14 | So sánh tracker bằng TrackEval | ✅ Đạt (flow + ByteTrack tốt nhất, HOTA 0.580) |
+| TC-14 | So sánh tracker bằng TrackEval | ✅ Đạt (held-out: HOTA 0.563 mặc định, 0.573 với DAM4SAM + BoT-SORT) |
 
 ---
 
@@ -292,6 +292,14 @@ DAM4SAM + BoT-SORT           đúng 856  sai 248  đổi ID 18  mất 196   HOTA
 DAM4SAM thuần                đúng 1007 sai 691  đổi ID 83  mất 0     HOTA 0.532  IDF1 0.685  1029 s
 ```
 
-- **Kết luận:** Đạt (phép đo chạy được và cho kết luận rõ). Giữ flow + ByteTrack làm mặc định: không cấu hình nào vượt
-  được, DAM4SAM chậm hơn 8–14 lần. DetA của các cấu hình gần bằng nhau (0.47–0.48), tức nút thắt là detector. Chưa đo trên
-  tập held-out.
+  Held-out 20 scene (795 keyframe):
+
+```text
+flow + ByteTrack (mặc định)  đúng 3438  sai 1161  đổi ID 171  mất 853   HOTA 0.563  IDF1 0.705    731 s
+flow + BoT-SORT              đúng 3460  sai 1146  đổi ID 161  mất 853   HOTA 0.564  IDF1 0.709   1090 s
+DAM4SAM + BoT-SORT           đúng 3678  sai 1315  đổi ID 155  mất 639   HOTA 0.573  IDF1 0.725   2456 s
+```
+
+- **Kết luận:** Đạt (phép đo chạy được và cho kết luận rõ). Mặc định giữ flow + ByteTrack (CPU, nhanh). DAM4SAM + BoT-SORT
+  hơn một chút trên held-out (HOTA +0.010, nhãn đúng +7%, mất dấu −25%, box sai +13%, thời gian ×3,4) nên là luồng
+  "Chính xác" người dùng tự chọn; trên dev hai luồng ngang nhau.

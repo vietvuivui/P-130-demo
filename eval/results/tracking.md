@@ -1,12 +1,30 @@
 # Tracking 2D — so sánh các luồng lan truyền (TrackEval)
 
 Cách đo: nhãn gốc nuScenes ở một keyframe đóng vai nhãn người đã duyệt, lan truyền tối đa 10 keyframe, chấm với nhãn
-gốc ở các keyframe sau. Workspace `data/eval_temporal/ws_dev` (3 scene dev: scene-0035, scene-0097, scene-0101; CAM_FRONT;
-detector YOLOE-26-L fine-tune), RTX 4050, chạy 2026-10-02. DAM4SAM: model `sam21pp-L`, stride 3 (keyframe + 1 ảnh giữa
+gốc ở các keyframe sau. Hai tập: dev (3 scene) và held-out (20 scene); CAM_FRONT; detector YOLOE-26-L fine-tune; RTX 4050;
+chạy 2026-10-02. DAM4SAM: model `sam21pp-L`, stride 3 (keyframe + 1 ảnh giữa
 hai keyframe), dùng chung image encoder + autocast.
 
-**Kết luận: giữ optical flow + ByteTrack làm mặc định.** Không cấu hình nào vượt được nó; các cấu hình DAM4SAM chậm hơn
-8–14 lần.
+## Kết luận
+
+- **Mặc định giữ optical flow + ByteTrack** (luồng "Nhanh"): chạy CPU, không cần cài thêm gì.
+- **DAM4SAM + BoT-SORT (luồng "Chính xác") hơn một chút trên held-out**: HOTA 0.563 → 0.573, IDF1 0.705 → 0.725, nhãn đúng
+  +7%, mất dấu −25%; đổi lại box sai +13%, cần GPU và chậm hơn 3,4 lần. Tỉ lệ box đúng trên box ghi ra gần như không đổi
+  (72,1% → 71,4%): DAM4SAM giữ được nhiều vật hơn chứ không chính xác hơn trên từng box.
+- Trên 3 scene dev hai luồng ngang nhau (0.580 và 0.578), nên mức hơn này nhỏ; chưa có khoảng tin cậy theo từng scene.
+
+## Held-out: 20 scene, 795 keyframe (workspace `data/eval_temporal/ws_heldout`)
+
+| Cấu hình | Nhãn đúng | Box sai | Đổi ID | Mất dấu | HOTA | DetA | AssA | MOTA | IDF1 | Giây |
+|---|---|---|---|---|---|---|---|---|---|---|
+| optical flow + ByteTrack (mặc định) | 3438 | 1161 | 171 | 853 | 0.563 | 0.457 | 0.750 | 0.453 | 0.705 | 731 |
+| optical flow + BoT-SORT | 3460 | 1146 | 161 | 853 | 0.564 | 0.459 | 0.751 | 0.459 | 0.709 | 1090 |
+| **DAM4SAM + BoT-SORT** | 3678 | 1315 | 155 | 639 | **0.573** | 0.472 | 0.761 | 0.467 | **0.725** | 2456 |
+
+BoT-SORT đổi 83 / 9981 lần ghép khi đi với optical flow, 79 / 3772 khi đi với DAM4SAM. Chưa đo trên held-out: DAM4SAM +
+ByteTrack, DAM4SAM thuần, cấu hình lai.
+
+## Dev: 3 scene (scene-0035, scene-0097, scene-0101)
 
 | Cấu hình | Nhãn đúng | Box sai | Đổi ID | Mất dấu | HOTA | DetA | AssA | MOTA | IDF1 | Giây |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -19,7 +37,7 @@ hai keyframe), dùng chung image encoder + autocast.
 
 ¹ Đo trước khi sửa ngưỡng dừng track (xem dưới); cấu hình này không dùng ngưỡng theo detection nên vẫn so được.
 
-## Nhận xét
+## Nhận xét (dev)
 
 - **Nút thắt là detector.** DetA của mọi cấu hình có ghép detection gần bằng nhau (0.470–0.481): box ghi ra ở keyframe là
   box của YOLO, tracker chỉ quyết định box nào thuộc vật nào, và optical flow đã làm việc đó đủ tốt.
@@ -43,9 +61,12 @@ Track dừng sau `max_coast_images` = 6 ảnh liên tiếp không khớp detecti
 
 ## Chưa đo
 
-- Tập held-out (các số trên là tập dev).
+- Khoảng tin cậy / kết quả theo từng scene trên held-out; các cấu hình DAM4SAM khác trên held-out.
 - DAM4SAM ở mọi ảnh 12 Hz (stride 1) trên cả 3 scene, và model nhỏ hơn (`sam21pp-T`).
 - Detector sau khi fine-tune thêm trên RTX 3090.
 
-Chạy lại: `python tools2d\dam4sam.py --dataroot ..\v1.0-trainval --workspace data\eval_temporal\ws_dev --out
+Chạy lại held-out: `python tools2d\dam4sam.py --dataroot ..\v1.0-trainval --workspace data\eval_temporal\ws_heldout --out
+eval\results\trackall_heldout --stride 3 --configs flow+byte flow+botsort dam4sam+botsort`.
+
+Chạy lại dev: `python tools2d\dam4sam.py --dataroot ..\v1.0-trainval --workspace data\eval_temporal\ws_dev --out
 eval\results\trackall_v2 --stride 3 --scenes scene-0035 scene-0097 scene-0101`.

@@ -91,7 +91,7 @@ theo mô hình, khung 3D / BEV, ảnh camera có box chiếu xuống, card từn
 7. Chọn vật (`segment.py`, nút ✨ ở chế độ Ảnh / Video): người dùng bấm điểm hoặc kéo khung thô, server trả mask + box.
    Engine theo thứ tự: SAM 2.1 ONNX (ONNX Runtime; encoder chạy một lần mỗi ảnh và cache 8 ảnh gần nhất, decoder chạy
    lại theo từng lần bấm) → SAM 2.1 PyTorch (dùng chung bản clone DAM4SAM) → GrabCut của OpenCV.
-8. Luồng lan truyền (`sequence.py: ENGINES`): "Nhanh" = optical flow + ByteTrack trên box YOLO; "DAM4SAM (thử nghiệm)" = DAM4SAM
+8. Luồng lan truyền (`sequence.py: ENGINES`): "Nhanh" = optical flow + ByteTrack trên box YOLO; "Chính xác" = DAM4SAM
    (`dam4sam.py`), mỗi vật đã duyệt một tracker, dùng chung image encoder trong cùng ảnh; chạy nền qua
    `/frames/{id}/propagate-async`. BoT-SORT (`botsort.py`: bù chuyển động camera + ngoại hình) là tuỳ chọn ghép.
 9. Nhiều người dùng (`users.py`, `auth_routes.py`, `auth_middleware.py`): tài khoản (PBKDF2), phiên cookie, mời vào dự
