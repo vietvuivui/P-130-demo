@@ -238,8 +238,10 @@ class ReviewActionRequest(BaseModel):
 
 class SegmentRequest(BaseModel):
     # Điểm bấm trên ảnh (pixel ảnh gốc); labels: 1 = thuộc vật, 0 = không thuộc (mặc định mọi điểm = 1)
-    points: list[list[float]] = Field(..., min_length=1, max_length=20)
+    points: list[list[float]] = Field(default_factory=list, max_length=20)
     labels: list[int] | None = None
+    # Box thô quanh vật [x1, y1, x2, y2] (kéo chuột): SAM bó mask sát vật trong box. Cần ít nhất một điểm hoặc box
+    box: list[float] | None = Field(default=None, min_length=4, max_length=4)
     offset: int = Field(default=0, ge=-5, le=5)  # 0 = keyframe, khác 0 = sweep
 
 

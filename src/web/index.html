@@ -9,7 +9,7 @@
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=3d20click">
+  <link rel="stylesheet" href="styles.css?v=3d22scroll">
 </head>
 
 <body class="dark-theme">
@@ -178,7 +178,6 @@
           <label class="toggle" title="Mask segmentation sơ bộ của model (tô mờ trong box)"><input type="checkbox" id="show-mask" checked> Mask</label>
           <label class="toggle score-filter" title="Ẩn box của model có score dưới ngưỡng (chỉ đổi cách xem; box ẩn vẫn phải duyệt trước khi approve)">Score ≥
             <input type="range" id="min-score" min="0" max="1" step="0.05" value="0"><span id="min-score-val" class="mono">0.00</span><span id="min-score-count" class="muted"></span></label>
-          <label class="toggle" title="Nhìn từ trên xuống: ảnh camera chiếu xuống mặt đường (homography), box đặt lên mặt đường theo LiDAR hoặc chân vật"><input type="checkbox" id="show-bev2d"> BEV <kbd>V</kbd></label>
           <span class="zoom-controls" title="Phóng to/thu nhỏ: lăn chuột trên ảnh, phím + / − ; phím 0 về vừa khung. Khi phóng to, kéo vùng trống để di chuyển ảnh">
             <button id="btn-zoom-out" class="btn btn-ghost btn-sm" aria-label="Thu nhỏ">−</button>
             <button id="btn-zoom-reset" class="btn btn-ghost btn-sm zoom-level" aria-label="Vừa khung">100%</button>
@@ -189,7 +188,7 @@
         </div>
       </div>
 
-      <!-- Canvas Wrap & BEV Row -->
+      <!-- Canvas -->
       <div class="stage-row" id="stage-row">
         <div class="canvas-wrap" id="canvas-wrap">
           <div id="drop-hint" class="drop-hint hidden">Thả frame vào đây để gán nhãn</div>
@@ -203,17 +202,6 @@
           <div id="empty-state" class="empty-state">
             <p>Chưa có frame nào trong workspace.</p>
           </div>
-        </div>
-
-        <div class="bev2d-wrap hidden" id="bev2d-wrap">
-          <div class="bev2d-head">
-            <strong>BEV</strong>
-            <label class="toggle"><input type="checkbox" id="bev2d-img" checked> Ảnh</label>
-            <label class="toggle"><input type="checkbox" id="bev2d-pts" checked> LiDAR</label>
-          </div>
-          <canvas id="bev2d-canvas"></canvas>
-          <div class="bev2d-foot"><span id="bev2d-note" class="muted"></span>
-            <span class="muted">nét liền: box 3D hoặc vị trí theo LiDAR · nét đứt: theo chân vật</span></div>
         </div>
       </div>
 
@@ -381,7 +369,7 @@
           </span>
         </div>
         <div class="shortcuts">
-          <kbd>↑</kbd><kbd>↓</kbd> chọn object · click ô t±1/t±2 bên dưới để sửa sweep (<kbd>Esc</kbd> quay về) · <kbd>K</kbd> keep · <kbd>D</kbd> delete · <kbd>C</kbd> đổi lớp · <kbd>E</kbd> sửa box · <kbd>V</kbd> BEV · <kbd>T</kbd> lan truyền · <kbd>Space</kbd> phát video · <kbd>N</kbd>/<kbd>P</kbd> frame kế · <kbd>Ctrl</kbd>+<kbd>Z</kbd>/<kbd>Y</kbd> hoàn tác / làm lại · <kbd>R</kbd> trả lại · lăn chuột, <kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>0</kbd> vừa khung
+          <kbd>↑</kbd><kbd>↓</kbd> chọn object · click ô t±1/t±2 bên dưới để sửa sweep (<kbd>Esc</kbd> quay về) · <kbd>K</kbd> keep · <kbd>D</kbd> delete · <kbd>C</kbd> đổi lớp · <kbd>E</kbd> sửa box · <kbd>T</kbd> lan truyền · <kbd>Space</kbd> phát video · <kbd>N</kbd>/<kbd>P</kbd> frame kế · <kbd>Ctrl</kbd>+<kbd>Z</kbd>/<kbd>Y</kbd> hoàn tác / làm lại · <kbd>R</kbd> trả lại · lăn chuột, <kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>0</kbd> vừa khung
         </div>
       </div>
 
@@ -788,9 +776,8 @@
     }
   </script>
 
-  <script src="app.js?v=3d20click"></script>
-  <script type="module" src="bev2d.js?v=3d20click"></script>
-  <script type="module" src="app3d.js?v=3d20click"></script>
+  <script src="app.js?v=3d22scroll"></script>
+  <script type="module" src="app3d.js?v=3d22scroll"></script>
 </body>
 
 </html>

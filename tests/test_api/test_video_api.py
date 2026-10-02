@@ -92,6 +92,7 @@ async def test_click_to_segment_then_add_box_with_mask(video_client, demo_mp4, m
     """Bấm vào vật -> /segment trả box + đa giác; ADD_BOX kèm mask lưu thành object người vẽ có mask."""
     from src.services import segment
 
+    monkeypatch.setattr(segment, "onnx_available", lambda: "chưa có mô hình")
     monkeypatch.setattr(segment, "sam_available", lambda: "không có GPU")
     with open(demo_mp4, "rb") as fh:
         vid = (await video_client.post("/api/v1/videos/upload", files={"file": ("s.mp4", fh, "video/mp4")})).json()["video_id"]
@@ -105,6 +106,10 @@ async def test_click_to_segment_then_add_box_with_mask(video_client, demo_mp4, m
     seg = r.json()
     assert seg["engine"] == "grabcut" and seg["bbox"][0] < cx < seg["bbox"][2] and seg["bbox"][1] < cy < seg["bbox"][3]
     assert (await video_client.post(f"/api/v1/frames/{f0}/segment", json={"points": [[-5, 10]]})).status_code == 422
+    assert (await video_client.post(f"/api/v1/frames/{f0}/segment", json={"points": []})).status_code == 422
+    r = await video_client.post(f"/api/v1/frames/{f0}/segment", json={"box": [cx - 60, cy - 40, cx + 60, cy + 40]})
+    assert r.status_code == 200 and r.json()["bbox"][0] < cx < r.json()["bbox"][2]
+    assert (await video_client.post(f"/api/v1/frames/{f0}/segment/preload")).json() == {"preloading": False}
     r = await video_client.post(
         f"/api/v1/frames/{f0}/actions",
         json={"action": "ADD_BOX", "bbox": seg["bbox"], "label": "car", "mask": seg["polygon"]},

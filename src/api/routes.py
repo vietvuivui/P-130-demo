@@ -799,6 +799,24 @@ def segment_info():
     return segment.engine_info()
 
 
+@router.post("/frames/{frame_id}/segment/preload")
+def segment_preload(
+    frame_id: str,
+    offset: int = Query(0, ge=-5, le=5),
+    store: WorkspaceStore = Depends(get_store),
+    dataroot: Path = Depends(get_dataroot),
+):
+    """Mã hoá ảnh trước ở luồng nền (SAM ONNX) để lần bấm đầu không phải chờ."""
+    from src.services import segment
+
+    frame = _load(store, frame_id)
+    try:
+        path = image_path(dataroot, frame, offset, workspace=store.root)
+    except KeyError:
+        return {"preloading": False}
+    return {"preloading": segment.preload(path)}
+
+
 @router.post("/frames/{frame_id}/segment")
 def segment_object(
     frame_id: str,
@@ -817,8 +835,10 @@ def segment_object(
     w, h = frame.image.width, frame.image.height
     if any(len(p) != 2 or not (0 <= p[0] <= w and 0 <= p[1] <= h) for p in req.points):
         raise _error(422, "POINT_OUTSIDE", "Điểm bấm nằm ngoài ảnh")
+    if not req.points and req.box is None:
+        raise _error(422, "NO_PROMPT", "Cần ít nhất một điểm hoặc một box")
     try:
-        return segment.segment_points(path, req.points, req.labels)
+        return segment.segment_points(path, req.points, req.labels, box=req.box)
     except segment.SegmentError as e:
         raise _error(422, "SEGMENT_FAILED", str(e)) from e
 

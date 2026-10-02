@@ -258,6 +258,12 @@ function renderQueue() {
         <span style="margin-left:auto">${f.pending ? f.pending + ' chờ' : '✓'}</span>
       </div></li>`;
   }).join('');
+  // đổi frame (N/P, bấm filmstrip…) thì cuộn danh sách tới frame đang mở; không giật khi chỉ làm mới
+  const cur = S.frame?.frame_id || null;
+  if (cur !== S.queueShown) {
+    S.queueShown = cur;
+    list.querySelector('.queue-item.active')?.scrollIntoView({ block: 'nearest' });
+  }
 }
 
 // ---------- frame ----------
@@ -507,7 +513,6 @@ function drawBox(b, color, { lw = 2, dash = null, label = null, alpha = 1, textC
 
 function draw() {
   drawCanvas();
-  window.bev2d?.draw(); // khung BEV (bev2d.js) theo cùng frame / box đang chọn / box đang sửa
 }
 
 function drawCanvas() {
@@ -641,7 +646,11 @@ function hitObject(x, y) {
 canvas.addEventListener('mousedown', (e) => {
   if (!S.frame) return;
   const [x, y] = toImg(e);
-  if (S.mode === 'click') { clickSegment(x, y, e.shiftKey || e.button === 2); e.preventDefault(); return; }
+  if (S.mode === 'click') { // bấm = điểm; kéo = box thô quanh vật (xử lý ở mouseup)
+    S.drag = { kind: 'prompt', x0: x, y0: y, x1: x, y1: y, negative: e.shiftKey || e.button === 2 };
+    e.preventDefault();
+    return;
+  }
   if (S.mode === 'add') {
     S.drag = { kind: 'draw', x0: x, y0: y };
     S.editBox = [x, y, x, y];
@@ -697,6 +706,9 @@ window.addEventListener('mousemove', (e) => {
   const d = S.drag;
   if (d.kind === 'draw') {
     S.editBox = [Math.min(d.x0, x), Math.min(d.y0, y), Math.max(d.x0, x), Math.max(d.y0, y)];
+  } else if (d.kind === 'prompt') {
+    d.x1 = x;
+    d.y1 = y;
   } else if (d.kind === 'handle') {
     const b = S.editBox;
     if (d.edges[0]) b[0] = Math.min(x, b[2] - 4);
@@ -715,6 +727,13 @@ window.addEventListener('mouseup', () => {
   if (!S.drag) return;
   const d = S.drag;
   S.drag = null;
+  if (d.kind === 'prompt') {
+    const k = px();
+    const dragged = Math.abs(d.x1 - d.x0) > 8 * k && Math.abs(d.y1 - d.y0) > 8 * k;
+    if (dragged && !d.negative) clickSegment(null, null, false, [Math.min(d.x0, d.x1), Math.min(d.y0, d.y1), Math.max(d.x0, d.x1), Math.max(d.y0, d.y1)]);
+    else clickSegment(d.x0, d.y0, d.negative);
+    return;
+  }
   if (d.kind === 'draw') {
     const b = S.editBox;
     if (b[2] - b[0] < 4 || b[3] - b[1] < 4) { S.editBox = null; draw(); return; }
@@ -757,7 +776,9 @@ function startClick() {
   if (!S.frame || S.frame.status === 'approved') return;
   if (S.mode !== 'view') cancelEdit();
   S.mode = 'click';
-  S.click = { points: [], labels: [], polygon: null, busy: false, engine: null };
+  S.click = { points: [], labels: [], box: null, polygon: null, busy: false, engine: null };
+  // Mã hoá ảnh trước ở nền (SAM ONNX) để lần bấm đầu không phải chờ
+  api(`/frames/${encodeURIComponent(S.frame.frame_id)}/segment/preload?offset=${S.viewOffset || 0}`, { method: 'POST' }).catch(() => {});
   S.editBox = null;
   canvas.classList.add('drawing');
   $('btn-click').classList.add('active');
@@ -766,17 +787,25 @@ function startClick() {
   draw();
 }
 
-async function clickSegment(x, y, negative) {
+async function clickSegment(x, y, negative, box = null) {
   const c = S.click;
   if (!c || c.busy) return;
-  if (negative && !c.points.length) { toast('Bấm vào vật trước; Shift+bấm để loại vùng thừa sau đó'); return; }
-  c.points.push([Math.round(x * 10) / 10, Math.round(y * 10) / 10]);
-  c.labels.push(negative ? 0 : 1);
+  if (negative && !c.points.length && !c.box) { toast('Bấm vào vật (hoặc kéo box quanh vật) trước; Shift+bấm để loại vùng thừa sau đó'); return; }
+  const undo = { points: c.points.slice(), labels: c.labels.slice(), box: c.box };
+  if (box) { // box thô mới thay cho prompt cũ
+    c.box = box.map((v) => Math.round(v * 10) / 10);
+    c.points = [];
+    c.labels = [];
+  } else {
+    c.points.push([Math.round(x * 10) / 10, Math.round(y * 10) / 10]);
+    c.labels.push(negative ? 0 : 1);
+  }
   c.busy = true;
+  canvas.classList.add('busy');
   draw();
   try {
     const r = await api(`/frames/${encodeURIComponent(S.frame.frame_id)}/segment`, {
-      method: 'POST', body: { points: c.points, labels: c.labels, offset: S.viewOffset || 0 },
+      method: 'POST', body: { points: c.points, labels: c.labels, box: c.box || undefined, offset: S.viewOffset || 0 },
     });
     if (S.click !== c) return; // đã huỷ trong lúc chờ
     c.polygon = r.polygon;
@@ -784,11 +813,11 @@ async function clickSegment(x, y, negative) {
     S.editBox = r.bbox;
     showEditBar('click');
   } catch (err) {
-    c.points.pop();
-    c.labels.pop();
+    Object.assign(c, undo);
     toast(err.message, true);
   } finally {
     c.busy = false;
+    canvas.classList.remove('busy');
     draw();
   }
 }
@@ -808,6 +837,15 @@ function drawClickPreview() {
     ctx.strokeStyle = '#7c5cd6';
     ctx.lineWidth = 1.5 * k;
     ctx.stroke();
+    ctx.restore();
+  }
+  const pr = S.drag?.kind === 'prompt' ? [S.drag.x0, S.drag.y0, S.drag.x1, S.drag.y1] : c.box;
+  if (pr) { // box thô đang kéo / đã dùng làm prompt
+    ctx.save();
+    ctx.setLineDash([6 * k, 4 * k]);
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 1.5 * k;
+    ctx.strokeRect(Math.min(pr[0], pr[2]), Math.min(pr[1], pr[3]), Math.abs(pr[2] - pr[0]), Math.abs(pr[3] - pr[1]));
     ctx.restore();
   }
   c.points.forEach(([x, y], i) => {
@@ -842,7 +880,7 @@ function showEditBar(kind) {
   $('edit-hint').textContent = {
     click: picked
       ? `${S.click?.engine === 'grabcut' ? 'GrabCut (chưa có SAM) · ' : ''}Bấm thêm: tinh chỉnh · Shift+bấm: loại vùng · Enter: lưu`
-      : 'Bấm vào vật cần gán nhãn',
+      : 'Bấm vào vật, hoặc kéo một box quanh vật',
     draw: 'Kéo chuột trên ảnh để vẽ box mới',
     add: 'Chọn lớp cho box mới',
     edit: 'Kéo góc/cạnh hoặc kéo cả box để sửa',
@@ -2301,7 +2339,6 @@ document.addEventListener('keydown', (e) => {
     n: () => stepFrame(1),
     p: () => stepFrame(-1),
     l: () => $('show-lidar').click(),
-    v: () => $('show-bev2d').click(),
     g: () => $('show-gt').click(),
     t: propagateCurrent,
     r: openReject,
@@ -2413,7 +2450,7 @@ $('metrics-refresh').addEventListener('click', loadMetrics);
 $('btn-export').addEventListener('click', doExport);
 $('reviewer').addEventListener('change', (e) => storageSet('reviewer', e.target.value.trim()));
 new ResizeObserver(() => { fitCanvas(); draw(); }).observe($('canvas-wrap'));
-// cho bev2d.js (module) dùng chung trạng thái
+// trạng thái dùng chung với app3d.js
 window.AL = { get S() { return S; }, select, ensureLidar, renderProductivity };
 
 // Dự án: hiện tên + link quay lại, ẩn chế độ không có dữ liệu (không LiDAR -> không 3D)

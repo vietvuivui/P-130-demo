@@ -1528,7 +1528,7 @@ select {
 .sw-line { display: flex; justify-content: space-between; align-items: center; gap: 8px; overflow-wrap: anywhere; }
 
 /* ---- pages ---- */
-.tab-panel:not(.review-layout) {
+.tab-panel:not(.review-layout):not(.workstation-layout) {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -2142,16 +2142,9 @@ body.mode3d #tab-metrics .page > :not(#metrics3d) { display: none; }
 .m3-stage.drawing canvas { cursor: crosshair; }
 .done-tag.added { color: #0891b2; }
 
-/* BEV trong chế độ Ảnh / Video */
+/* Hàng chứa canvas */
 .stage-row { display: flex; gap: 10px; flex: 1; min-height: 0; }
 .stage-row > .canvas-wrap { flex: 1 1 auto; min-width: 0; }
-.bev2d-wrap { flex: 0 0 34%; min-width: 260px; display: flex; flex-direction: column; background: var(--stage); border-radius: var(--radius); overflow: hidden; }
-.bev2d-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px; color: #e2e8f0; font-size: 12px; }
-.bev2d-head .toggle { color: #cbd5e1; }
-.bev2d-wrap canvas { flex: 1; min-height: 0; width: 100%; display: block; cursor: grab; touch-action: none; }
-.bev2d-foot { display: flex; flex-direction: column; gap: 2px; padding: 4px 10px 6px; font-size: 11px; }
-.bev2d-foot .muted { color: #94a3b8; }
-@media (max-width: 900px) { .stage-row { flex-direction: column; } .bev2d-wrap { flex: none; height: 360px; min-width: 0; } }
 
 /* ===== Trang dự án ===== */
 .pj-env { max-width: 1280px; margin: 16px auto 0; padding: 10px 14px; border-radius: var(--radius); background: var(--high-soft); color: var(--text); border: 1px solid var(--high); font-size: 13px; }
@@ -2326,3 +2319,15 @@ body.readonly .oc-btns, body.readonly #btn-approve-low, body.readonly #btn-appro
 /* Thanh sửa box: gợi ý một dòng, không che ảnh */
 #edit-hint { white-space: nowrap; font-size: 12px; }
 .edit-bar { max-width: calc(100% - 24px); }
+
+#canvas.busy { cursor: progress; }
+
+/* Danh sách frame cuộn riêng trong cột của nó (trước đây cả trang cuộn nên phải kéo xuống mới thấy frame sau) */
+.queue-drawer { width: 290px; flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-right: 1px solid var(--border); }
+.queue-drawer.hidden { display: none; }
+.queue-drawer-header { flex: none; padding: 10px 12px 6px; }
+.queue-drawer > .queue-filter { flex: none; }
+.queue-drawer > .queue-list { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.workstation-layout > .workspace { flex: 1 1 0; overflow-y: auto; }
+.workstation-layout > .right-sidebar { overflow-y: auto; }
+.queue-drawer .status-pill { white-space: nowrap; flex: none; }
