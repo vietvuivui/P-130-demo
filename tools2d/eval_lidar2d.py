@@ -35,8 +35,11 @@ VARIANTS = {
     "yoloe": None,
     "fuse, không khử trùng": dict(no_lidar_scale=None, dedup=None),
     "fuse (mặc định)": dict(no_lidar_scale=None),  # khử box 3D trùng của cùng một xe (lidar3d.dedup_bev_overlap)
-    "fuse nolidar=1.0": dict(no_lidar_scale=1.0),
-    "fuse nolidar=0.7": dict(no_lidar_scale=0.7),
+    # Dò ngưỡng chồng nhau trên mặt đường (xe tải ở scene-0035_023 chồng 22%); "khác lớp" = chỉ bỏ cặp box khác lớp
+    "fuse khử trùng 0.20": dict(no_lidar_scale=None, dedup=0.20),
+    "fuse khử trùng 0.30": dict(no_lidar_scale=None, dedup=0.30),
+    "fuse khử trùng 0.50": dict(no_lidar_scale=None, dedup=0.50),
+    "fuse khử khác lớp 0.50": dict(no_lidar_scale=None, dedup=0.50, cross_only=True),
 }
 
 
@@ -95,6 +98,7 @@ def main() -> None:
     l3 = cfg.detection.lidar3d
 
     splits: dict[str, list] = defaultdict(list)
+    removed = defaultdict(int)
     t0 = time.time()
     for scene, idx, tok in data.keyframes(sorted(VAL_SCENES)):
         if tok not in preds or (args.scenes and scene not in args.scenes):
@@ -110,6 +114,7 @@ def main() -> None:
             ego_from_global=np.linalg.inv(data._global_from_ego(f.image.sd_token)),
         )  # fmt: skip
         boxes3d = (boxes3d, dedup_bev(boxes3d, l3.dedup_bev_overlap) if l3.dedup_bev_overlap is not None else boxes3d)
+        removed["all"] += len(boxes3d[0]) - len(boxes3d[1])
         uv, _ = data.lidar_in_image(f, cfg.qa.lidar.min_depth_m) if f.lidar_sd_token else (None, None)
         splits["dev" if scene in DEV else "test"].append((dets, boxes3d, uv, gt))
     print({k: len(v) for k, v in splits.items()}, f"keyframe ({time.time() - t0:.0f}s)", flush=True)
@@ -124,7 +129,10 @@ def main() -> None:
                 if opt is None:
                     per_img.append(dets)
                 else:
-                    boxes3d = [dict(b) for b in (raw3d if "dedup" in opt else dedup3d)]
+                    if opt.get("dedup") is not None:
+                        boxes3d = dedup_bev([dict(b) for b in raw3d], opt["dedup"], cross_only=opt.get("cross_only", False))
+                    else:
+                        boxes3d = [dict(b) for b in (raw3d if "dedup" in opt else dedup3d)]
                     per_img.append(merge_detections(dets, boxes3d, l3.match_iou, l3.camera_only_scale, uv=uv,
                                                     no_lidar_scale=opt["no_lidar_scale"],
                                                     no_lidar_max_points=l3.no_lidar_max_points))  # fmt: skip

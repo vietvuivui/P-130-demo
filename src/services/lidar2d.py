@@ -92,16 +92,19 @@ def bev_overlap(a: dict, b: dict) -> float:
     return inter / max(min(ra[1][0] * ra[1][1], rb[1][0] * rb[1][1]), 1e-6)
 
 
-def dedup_bev(items: list[dict], min_overlap: float) -> list[dict]:
+def dedup_bev(items: list[dict], min_overlap: float, cross_only: bool = False) -> list[dict]:
     """Bỏ box 3D trùng của cùng một xe (ensemble / nối track đôi khi cho hai box lệch nhau vài mét dọc thân xe dài, hoặc
     hai box khác lớp như car + truck ở cùng chỗ). Giữ box điểm cao hơn; lớp của box bị bỏ (nếu khác) ghi vào "alt" của
-    box được giữ để bước gộp với detector ảnh còn ghép được và QA thấy mâu thuẫn lớp."""
+    box được giữ để bước gộp với detector ảnh còn ghép được và QA thấy mâu thuẫn lớp.
+    cross_only: chỉ bỏ cặp box khác lớp (để đo riêng phần car + truck ở cùng chỗ)."""
     kept: list[dict] = []
     for p in sorted(items, key=lambda p: -p["score"]):
         dup = None
         if p["label"] in VEHICLES and p.get("box3d"):
             for q in kept:
                 if q["label"] not in VEHICLES or not q.get("box3d") or frozenset((p["label"], q["label"])) in ARTICULATED:
+                    continue
+                if cross_only and p["label"] == q["label"]:
                     continue
                 if bev_overlap(p["box3d"], q["box3d"]) >= min_overlap:
                     dup = q
