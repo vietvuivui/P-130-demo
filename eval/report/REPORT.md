@@ -1,6 +1,6 @@
 # Report đánh giá mô hình — AutoLabel 3D
 
-Cập nhật 2026-10-01 · nhóm P-130 · biểu đồ vẽ bằng matplotlib: `python eval/report/make_figures.py`
+Cập nhật 2026-10-03 · nhóm P-130 · biểu đồ vẽ bằng matplotlib: `python eval/report/make_figures.py`
 
 Report gom mọi mô hình đã thử nghiệm, các chỉ số đánh giá và các phương pháp tối ưu cho hai phần:
 
@@ -25,6 +25,49 @@ So với điểm xuất phát:
 - **3D:** mAP tăng từ 0.578 lên 0.668 (+0.090) so với CenterPoint voxel, mô hình đơn tốt nhất.
 - **2D:** mAP50 tăng từ 0.312 lên 0.366 (+17%) so với YOLOE zero-shot.
 - **Lan truyền 2D:** nhãn đúng tăng 12% và đổi ID giảm 60% so với khi không có optical flow.
+
+## Luồng hệ thống hiện tại: mặc định và tuỳ chọn (cập nhật 2026-10-03)
+
+```
+Dữ liệu vào (video / bộ ảnh / nuScenes / KITTI)
+   │  cắt frame: keyframe 2 Hz + ảnh giữa 10–12 Hz (sweep)
+   ▼
+① Detector 2D ── YOLOE-26-L fine-tune, 1280 px, giữ box score ≥ 0.30
+   │                                   ┌─ ② Detector 3D (dự án có LiDAR): 4 mô hình LiDAR → gộp → tinh chỉnh theo track
+   ▼                                   ▼
+③ Gộp 2D + 3D ── box 3D chiếu xuống ảnh; box chỉ camera thấy bị hạ điểm ×0.5
+   ▼
+④ QA Agent ── confidence · LiDAR · temporal (so với sweep t−2…t+2) · hình học → rủi ro low / medium / high
+   │           + đề xuất RECOVERED_BY_TRACK (nét đứt) cho vật detector sót hoặc thấy mờ
+   ▼
+⑤ Người duyệt ── review by exception: xem box medium / high, duyệt theo lô box low, thêm box (vẽ hoặc bấm ✨ Chọn vật)
+   ▼
+⑥ Lan truyền ── nhãn đã duyệt sang các keyframe sau: optical flow dự đoán + ByteTrack ghép với box YOLO
+   ▼
+⑦ Xuất COCO / nuScenes / KITTI (chỉ frame đã duyệt) · Metrics · TrackEval
+```
+
+| Bước | Mặc định (đang chạy) | Tuỳ chọn (có sẵn, đang tắt hoặc người dùng tự chọn) | Vì sao chọn mặc định này |
+|---|---|---|---|
+| ① Detector 2D | YOLOE-26-L fine-tune nuImages, 1280 px, ngưỡng giữ 0.30 | YOLOE zero-shot (open-vocab, đổi được lớp bằng chữ), YOLO26, YOLO-World, Grounding DINO, Florence-2, gộp nhiều model; chạy 1920 px; lưới ô 2×2 (`yoloe.tiles`); lật ngang (`tta_flip`) | Fine-tune: mAP50 0.312 → 0.366. 1920 kém hơn (0.344). Lưới ô bắt thêm vật nhỏ nhưng box sai +60% (`improve.md`) |
+| ② Detector 3D | Gộp CenterPoint voxel + pillar + SSN + PointPillars, tinh chỉnh theo track | Một mô hình đơn; thêm lật trục (TTA, chậm ~4 lần); mô hình camera FCOS3D / PGD | mAP 0.578 (mô hình đơn tốt nhất) → 0.668 |
+| ③ Gộp 2D + 3D | Bật; ghép khi IoU ≥ 0.4; box chỉ camera thấy ×0.5 | Tắt gộp; không hạ điểm khi box không có điểm LiDAR (`no_lidar_scale`) | Gộp: việc phải sửa 6990 → 3748. Không hạ điểm: box sai gấp đôi |
+| ④ QA temporal | So box keyframe với 4 sweep trực tiếp; đề xuất vật sót (sweep ≥ 0.35) và vật thấy mờ (≥ 0.20, hai bên đều thấy) | Optical flow cho so khớp (`flow`); tính lại score theo sweep (`rescore: mean / linked`); mang nhãn frame trước bằng tracker (`carry_prev`) | Flow / rescore làm lỗi lọt qua duyệt lô tăng. Thấy mờ: bù 108 vật sót thay vì 35 trên held-out, đổi lại 88% đề xuất sai |
+| ⑤ Thêm box | Vẽ box, hoặc ✨ Chọn vật bằng SAM 2.1 ONNX (chạy CPU) | SAM 2.1 PyTorch (GPU); GrabCut khi chưa tải model | ONNX không cần GPU: ~2 s lần đầu mỗi ảnh, ~0.1 s các lần bấm sau |
+| ⑥ Lan truyền 2D: dự đoán | **Optical flow** ở mọi ảnh (luồng "Nhanh") | **DAM4SAM** (luồng "Chính xác", người dùng chọn trên UI, cần GPU); vận tốc không đổi; lai flow + DAM4SAM | Flow: +14% nhãn đúng so với vận tốc. DAM4SAM hơn flow 0.010 HOTA nhưng chậm 3,4 lần |
+| ⑥ Lan truyền 2D: ghép | **ByteTrack** (hai lượt theo score) | BoT-SORT (đi kèm luồng DAM4SAM); OC-SORT (OCR / ORU / OCM); IoU một lượt; không ghép | ByteTrack: box sai −10%. BoT-SORT / OC-SORT không đổi gì đáng kể khi đã có flow |
+| ⑥ Lan truyền 3D | Vận tốc của mô hình + ego pose, giữ track 4 keyframe | OC-SORT cho 3D | Giữ 4 keyframe: nhãn đúng +1.6% |
+| Nhiều người dùng | Tắt (một người, không đăng nhập) | `AUTH_REQUIRED=1`: tài khoản, link mời, vai trò, chia việc, khoá frame | Giữ cách chạy demo một lệnh |
+
+Hai luồng lan truyền 2D người dùng chọn trên giao diện (held-out 20 scene, chi tiết `eval/results/tracking.md`):
+
+| Luồng | Dự đoán | Ghép | HOTA | IDF1 | Nhãn đúng | Box sai | Mất dấu | Thời gian |
+|---|---|---|---|---|---|---|---|---|
+| Nhanh (mặc định) | optical flow | ByteTrack | 0.563 | 0.705 | 3438 | 1161 | 853 | ×1, CPU |
+| Chính xác | DAM4SAM (SAM 2.1, stride 3) | BoT-SORT | 0.573 | 0.725 | 3678 | 1315 | 639 | ×3,4, GPU |
+
+Trong cả hai luồng, YOLO không tham gia bước dự đoán: nó đã chạy từ bước ① và tracker chỉ đọc box của nó để ghép. Box
+ghi ra ở keyframe sau là box YOLO mang ID và lớp của vật đã duyệt.
 
 ## 1. Giao thức đánh giá và định nghĩa chỉ số
 
@@ -220,6 +263,9 @@ Cấu hình mặc định giữ recall cờ cao nhất, tức là ít lỗi lọ
 xem tay từ 1707 xuống 648 nhưng làm sót thêm vật, nên chỉ để làm tuỳ chọn.
 
 ## 5. Lan truyền nhãn 2D: optical flow × ByteTrack × OC-SORT
+
+Bản đầy đủ hơn, gồm BoT-SORT, DAM4SAM, TrackEval (HOTA / IDF1) và vai trò từng thuật toán trong mỗi tổ hợp:
+[eval/results/tracking.md](../results/tracking.md). Mục này giữ số liệu đợt đo đầu (detector zero-shot).
 
 Test 20 scene, 154 lần lan truyền, dùng chung detection zero-shot. Chỉ đếm những box sản phẩm thật sự ghi ra.
 
