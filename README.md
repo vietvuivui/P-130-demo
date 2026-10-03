@@ -171,7 +171,8 @@ Chế độ Ảnh:
 
 - **Hàng đợi frame** sắp theo frame risk (khó nhất lên đầu), lọc theo trạng thái.
 - **Canvas**: box tô màu theo risk (xanh/vàng/đỏ, luôn có nhãn chữ), box `RECOVERED_BY_TRACK` nét đứt (detector sót
-  hoặc thấy mờ ở keyframe nhưng sweep trước và sau đều thấy; phải xác nhận, không vào nhóm duyệt theo lô),
+  hoặc thấy mờ ở keyframe nhưng sweep trước và sau đều thấy; phải xác nhận, không vào nhóm duyệt theo lô; held-out: bù
+  được 108 vật sót / 795 keyframe nhưng 88% đề xuất sai, xem [eval/results/improve.md](eval/results/improve.md)),
   bật overlay điểm LiDAR (màu theo độ sâu) và GT để đối chiếu.
   Box GT (nét đứt trắng, chữ `GT <lớp>`) = box 3D của nuScenes chiếu xuống ảnh (hình chữ nhật bao 8 đỉnh) nên thường
   rộng hơn box detector; box GT mờ không chữ = vật hiển thị 0–40% hoặc không có điểm LiDAR/radar, bỏ qua khi đánh giá.
