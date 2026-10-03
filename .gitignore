@@ -80,3 +80,5 @@ data/cache_eval2d/
 .venv-mm3d/
 tools3d/work/
 *.pth
+# Bản clone repo DAM4SAM + checkpoint SAM 2.1 (tools2d/dam4sam.py)
+tools2d/DAM4SAM/

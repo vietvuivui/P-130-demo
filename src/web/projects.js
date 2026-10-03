@@ -43,6 +43,10 @@ function toast(msg, error = false) {
 }
 
 async function api(path, opts = {}) {
+  // opts.body là object thường -> gửi JSON (FormData giữ nguyên)
+  if (opts.body && !(opts.body instanceof FormData)) {
+    opts = { ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) }, body: JSON.stringify(opts.body) };
+  }
   const r = await fetch(API + path, opts);
   const body = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(body?.detail?.message || body?.detail || `HTTP ${r.status}`);
@@ -263,6 +267,10 @@ function cardHtml(p) {
         <input type="checkbox" data-pending> gồm chưa duyệt
       </label>
 
+      <button class="btn-action" data-act="team" title="Thành viên, mời theo link, chia việc">
+        <i class="ri-team-line"></i> Thành viên${(p.members || []).length ? ` (${p.members.length})` : ''}
+      </button>
+
       <span class="card-actions-spacer"></span>
 
       <button class="btn-action" data-act="run" ${busy ? 'disabled' : ''} title="Chạy lại các bước chưa xong">
@@ -274,8 +282,76 @@ function cardHtml(p) {
       </button>
     </div>
 
+    ${openTeam.has(p.id) ? teamHtml(p) : ''}
+
     ${exp.length ? `<div class="card-exports"><span class="muted">Tệp đã xuất:</span> ${exp.map((f) => `<a href="${esc(f.url)}" download><i class="ri-file-zip-line"></i> ${esc(f.file)}</a> <span class="muted">(${fmtSize(f.size)})</span>`).join(' · ')}</div>` : ''}
   </article>`;
+}
+
+// ---------- nhiều người dùng: thành viên, mời theo link, chia việc ----------
+const openTeam = new Set();
+const teamCache = {}; // pid -> {members, my_role, assignments, summary, unassigned, invites, lastInvite}
+let ME = null;
+
+const ROLE_VI = { owner: 'Chủ dự án', reviewer: 'Người duyệt', annotator: 'Người gán nhãn' };
+
+async function loadTeam(pid) {
+  const [m, a] = await Promise.all([api(`/${encodeURIComponent(pid)}/members`), api(`/${encodeURIComponent(pid)}/assignments`)]);
+  const t = teamCache[pid] = { ...(teamCache[pid] || {}), ...m, ...a };
+  if (t.my_role === 'owner' || ME?.admin) t.invites = await api(`/${encodeURIComponent(pid)}/invites`).catch(() => []);
+  return t;
+}
+
+function teamHtml(p) {
+  const t = teamCache[p.id];
+  if (!t) return '<div class="pj-team muted">Đang tải…</div>';
+  const canManage = t.my_role === 'owner' || ME?.admin;
+  const canSplit = canManage || t.my_role === 'reviewer';
+  const roleOptions = (cur) => Object.entries(ROLE_VI).map(([k, v]) => `<option value="${k}" ${cur === k ? 'selected' : ''}>${v}</option>`).join('');
+  const members = t.members.map((m) => {
+    const s = t.summary[m.user_id];
+    return `<tr><td><b>${esc(m.name)}</b> <span class="muted">${esc(m.email)}</span></td>
+      <td>${canManage ? `<select class="form-control" data-role="${esc(m.user_id)}">${roleOptions(m.role)}</select>` : ROLE_VI[m.role] || m.role}</td>
+      <td class="num">${s ? `${s.approved}/${s.assigned} frame` : '—'}</td>
+      <td>${canSplit ? `<label class="toggle-include-pending"><input type="checkbox" data-split="${esc(m.user_id)}" checked> chia việc</label>` : ''}
+          ${canManage ? `<button class="btn-action danger" data-act="member-remove" data-user="${esc(m.user_id)}">Gỡ</button>` : ''}</td></tr>`;
+  }).join('');
+  const pending = (t.invites || []).filter((i) => !i.accepted_by);
+  const invites = pending.map((i) => `<li>${esc(i.email)} · ${ROLE_VI[i.role] || i.role} · <button class="linklike" data-act="copy" data-link="${esc(i.link)}">sao chép link</button></li>`).join('');
+  return `<div class="pj-team">
+    ${!ME ? '<p class="muted">Đăng nhập để mời người và chia việc (<a href="login.html">đăng nhập</a>).</p>' : ''}
+    <table class="pj-team-table"><thead><tr><th>Thành viên</th><th>Vai trò</th><th class="num">Đã duyệt / được giao</th><th></th></tr></thead>
+      <tbody>${members || '<tr><td colspan="4" class="muted">Chưa có thành viên: dự án đang mở cho mọi người đã đăng nhập.</td></tr>'}</tbody></table>
+    <div class="pj-team-row">
+      <span class="muted">${t.unassigned} frame chưa giao</span>
+      ${canSplit ? `<button class="btn-action" data-act="split" title="Chia đều frame chưa duyệt (theo thứ tự thời gian) cho các thành viên đã tick; frame đã giao giữ nguyên"><i class="ri-shuffle-line"></i> Chia việc</button>
+        <button class="btn-action" data-act="split-reset" title="Chia lại từ đầu, bỏ phần giao cũ">Chia lại</button>` : ''}
+    </div>
+    ${canManage ? `<form class="pj-invite" data-invite>
+      <input class="form-control" type="email" name="email" placeholder="email người được mời" required>
+      <select class="form-control" name="role">${roleOptions('annotator')}</select>
+      <button class="btn-action primary" type="submit"><i class="ri-link"></i> Tạo link mời</button>
+    </form>
+    ${t.lastInvite ? `<div class="pj-invite-link">Link mời <b>${esc(t.lastInvite.email)}</b>${t.lastInvite.emailed ? ' (đã gửi mail)' : ' — chưa có SMTP, gửi link này cho họ'}:
+      <input class="form-control" type="text" readonly value="${esc(t.lastInvite.link)}" onclick="this.select()"> <button class="btn-action" data-act="copy" data-link="${esc(t.lastInvite.link)}">Sao chép</button></div>` : ''}
+    ${invites ? `<details class="help-details"><summary>Lời mời chưa nhận (${pending.length})</summary><ul>${invites}</ul></details>` : ''}` : ''}
+  </div>`;
+}
+
+async function loadMe() {
+  try {
+    const me = await fetch('/api/v1/auth/me').then((r) => r.json());
+    ME = me.user;
+    const box = $('pj-user');
+    if (box) {
+      box.innerHTML = ME
+        ? `<i class="ri-user-line avatar-icon"></i><span class="user-name" title="${esc(ME.email)}">${esc(ME.name)}${ME.admin ? ' (admin)' : ''}</span>
+           <button class="btn-action" id="pj-logout" type="button">Đăng xuất</button>`
+        : '<i class="ri-user-line avatar-icon"></i><a class="user-name" href="login.html">Đăng nhập</a>';
+      $('pj-logout')?.addEventListener('click', async () => { await fetch('/api/v1/auth/logout', { method: 'POST' }); location.href = 'login.html'; });
+    }
+    if (me.auth_required && !ME) location.href = 'login.html';
+  } catch { /* server cũ không có auth */ }
 }
 
 function render() {
@@ -445,7 +521,25 @@ if (itemsContainer) {
     const act = btn.dataset.act;
 
     try {
-      if (act === 'run') {
+      if (act === 'team') {
+        if (openTeam.has(pid)) openTeam.delete(pid);
+        else { openTeam.add(pid); loadTeam(pid).then(render).catch((err) => toast(err.message, true)); }
+        render();
+      } else if (act === 'copy') {
+        await navigator.clipboard.writeText(btn.dataset.link).then(() => toast('Đã sao chép link mời'), () => toast('Không sao chép được, chọn và copy tay', true));
+      } else if (act === 'member-remove') {
+        if (!window.confirm('Gỡ thành viên này khỏi dự án? Frame đã giao cho họ sẽ thành chưa giao.')) return;
+        await api(`/${encodeURIComponent(pid)}/members/${encodeURIComponent(btn.dataset.user)}`, { method: 'DELETE' });
+        await loadTeam(pid);
+        render();
+      } else if (act === 'split' || act === 'split-reset') {
+        const ids = [...card.querySelectorAll('[data-split]:checked')].map((c) => c.dataset.split);
+        if (!ids.length) { toast('Tick ít nhất một thành viên để chia việc', true); return; }
+        const r = await api(`/${encodeURIComponent(pid)}/split`, { method: 'POST', body: { user_ids: ids, keep_existing: act === 'split' } });
+        toast(`Đã chia ${Object.keys(r.assignments).length} frame cho ${ids.length} người`);
+        await loadTeam(pid);
+        render();
+      } else if (act === 'run') {
         await api(`/${encodeURIComponent(pid)}/run`, { method: 'POST' });
         toast('Đã xếp hàng chạy lại pipeline');
         load();
@@ -480,6 +574,34 @@ if (itemsContainer) {
     }
   });
 }
+
+if (itemsContainer) {
+  itemsContainer.addEventListener('submit', async (e) => {
+    const form = e.target.closest('[data-invite]');
+    if (!form) return;
+    e.preventDefault();
+    const pid = form.closest('.project-card-full').dataset.id;
+    try {
+      const r = await api(`/${encodeURIComponent(pid)}/invites`, { method: 'POST', body: { email: form.email.value.trim(), role: form.role.value } });
+      toast(r.emailed ? `Đã gửi mail mời ${r.email}` : `Đã tạo link mời cho ${r.email}: gửi link cho họ`);
+      await loadTeam(pid);
+      teamCache[pid].lastInvite = r;
+      render();
+    } catch (err) { toast(err.message, true); }
+  });
+  itemsContainer.addEventListener('change', async (e) => {
+    const sel = e.target.closest('[data-role]');
+    if (!sel) return;
+    const pid = sel.closest('.project-card-full').dataset.id;
+    try {
+      await api(`/${encodeURIComponent(pid)}/members`, { method: 'POST', body: { user_id: sel.dataset.role, role: sel.value } });
+      toast('Đã đổi vai trò');
+      await loadTeam(pid);
+      render();
+    } catch (err) { toast(err.message, true); }
+  });
+}
+loadMe();
 
 // Kiểm tra môi trường hệ thống
 async function checkEnv() {

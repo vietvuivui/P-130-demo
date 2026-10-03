@@ -13,6 +13,14 @@ HumanAction = Literal["KEEP", "DELETE", "CHANGE_CLASS", "EDIT_BOX", "ADD_BOX", "
 ObjectSource = Literal["model", "track", "human", "propagated"]
 
 
+class GroundBox(BaseModel):
+    """Hình chiếu của box 3D lên mặt đường, hệ ego tại thời điểm ảnh (x trước, y trái, z lên; gốc dưới trục sau)."""
+
+    center: list[float] = Field(..., min_length=3, max_length=3)
+    size: list[float] = Field(..., min_length=3, max_length=3)  # rộng, dài, cao (m)
+    yaw: float  # rad, 0 = cùng hướng xe mình
+
+
 class Detection(BaseModel):
     """Một box 2D do model (hoặc tracking) sinh ra, [x1, y1, x2, y2] theo pixel."""
 
@@ -27,6 +35,8 @@ class Detection(BaseModel):
     mask: list[float] | None = None
     # Score gốc của detector khi `score` đã được tính lại theo các sweep lân cận (temporal_fusion.py)
     det_score: float | None = None
+    # Box 3D của mô hình LiDAR mà box này được chiếu từ đó (src/services/lidar2d.py); UI vẽ đúng hướng vật trên BEV
+    box3d: GroundBox | None = None
 
 
 class QAIssue(BaseModel):
@@ -85,10 +95,14 @@ class LabelObject(BaseModel):
     alternatives: dict[str, float] = Field(default_factory=dict)
     # Score gốc của detector khi `score` đã được tính lại theo các sweep lân cận
     det_score: float | None = None
+    # Box 3D nguồn (lidar2d.py), chỉ còn đúng khi box chưa bị sửa / lan truyền
+    box3d: GroundBox | None = None
     # Mask sơ bộ từ detector (đa giác phẳng [x1, y1, ...]); bỏ khi người sửa box (không còn khớp), FR-04
     mask: list[float] | None = None
     # Box của cùng object ở các sweep lân cận, key là offset ("-2", "-1", "1", "2")
     track: dict[str, list[float] | None] = Field(default_factory=dict)
+    # Vật mang từ keyframe trước bằng tracker lúc gán nhãn (src/services/carry.py): "frame#object (score)"
+    carried_from: str | None = None
     qa: QAResult | None = None
     review: ReviewState = Field(default_factory=ReviewState)
 
@@ -116,6 +130,8 @@ class SweepInfo(ImageInfo):
     offset: int
     # Detection máy sinh (giữ nguyên, không sửa)
     detections: list[Detection] = Field(default_factory=list)
+    # Detection score thấp hơn ngưỡng giữ (>= qa.temporal.recover_weak_min_score), chỉ để làm bằng chứng
+    weak: list[Detection] = Field(default_factory=list)
     # Bản người đã sửa: tạo từ detections ở lần sửa đầu tiên; None = chưa ai sửa sweep này
     boxes: list[SweepBox] | None = None
 
@@ -170,6 +186,8 @@ class FrameRecord(BaseModel):
     image: ImageInfo
     intrinsic: list[list[float]]
     sweeps: list[SweepInfo] = Field(default_factory=list)
+    # Detection keyframe bị bỏ vì score dưới ngưỡng giữ (>= recover_weak_min_score): để tính lại RECOVERED_BY_TRACK
+    weak: list[Detection] = Field(default_factory=list)
     detectors: list[str] = Field(default_factory=list)
     has_lidar: bool = True
     status: Literal["auto", "editing", "approved", "rejected"] = "auto"
@@ -219,7 +237,18 @@ class ReviewActionRequest(BaseModel):
     object_id: str | None = None
     label: str | None = None
     bbox: list[float] | None = Field(default=None, min_length=4, max_length=4)
+    # ADD_BOX từ công cụ bấm-để-chọn-vật: đa giác viền mask [x1, y1, x2, y2, ...] (pixel ảnh gốc)
+    mask: list[float] | None = Field(default=None, min_length=6, max_length=400)
     reviewer: str | None = None
+
+
+class SegmentRequest(BaseModel):
+    # Điểm bấm trên ảnh (pixel ảnh gốc); labels: 1 = thuộc vật, 0 = không thuộc (mặc định mọi điểm = 1)
+    points: list[list[float]] = Field(default_factory=list, max_length=20)
+    labels: list[int] | None = None
+    # Box thô quanh vật [x1, y1, x2, y2] (kéo chuột): SAM bó mask sát vật trong box. Cần ít nhất một điểm hoặc box
+    box: list[float] | None = Field(default=None, min_length=4, max_length=4)
+    offset: int = Field(default=0, ge=-5, le=5)  # 0 = keyframe, khác 0 = sweep
 
 
 class ReviewerRequest(BaseModel):
@@ -235,6 +264,9 @@ class RejectRequest(BaseModel):
 class PropagateRequest(BaseModel):
     # Số keyframe tối đa đi tới; None = theo config
     max_frames: int | None = Field(default=None, ge=1, le=200)
+    # Luồng lan truyền cho lần này (src/services/sequence.py: ENGINES): default = theo Cài đặt của workspace;
+    # dam4sam = SAM 2.1 + BoT-SORT (GPU, chậm, chạy nền qua POST /frames/{id}/propagate-async)
+    engine: Literal["default", "dam4sam"] = "default"
 
 
 class PropagateSkip(BaseModel):

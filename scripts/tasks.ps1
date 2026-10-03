@@ -17,16 +17,25 @@
 #               dev (3 scene demo) và held-out (-Scenes, mặc định 20 scene val có đủ dữ liệu); detect chạy GPU, có cache
 #   rescore     bật / tắt tính lại score keyframe theo sweep trong configs/autolabel.yaml: -Mode off | mean | linked
 #               (trên web: tab ⚙ Cài đặt làm được việc này và evaltemporal cho từng workspace / dự án, không cần terminal)
+#   trackeval   HOTA / MOTA / IDF1 (chuẩn TrackEval) của nhãn lan truyền 2D + box 3D trong workspace (-Workspace),
+#               ghi MOTChallenge và chạy TrackEval chính thức nếu đã cài
+#   dam4sam     lan truyền box/mask bằng DAM4SAM (SAM 2.1, GPU) từ keyframe đã duyệt và so với tracker hiện tại
+#               (-Scenes; cần clone repo DAM4SAM + checkpoint, hướng dẫn ở đầu tools2d/dam4sam.py)
+#   improve     đo 4 cải tiến (10/2026) bằng số: detector ở 1920 / lưới ô cho vật nhỏ; không hạ điểm vật ngoài tầm LiDAR
+#               khi gộp 3D; giữ box detector thấy mờ khi sweep hai bên thấy; mang nhãn frame trước bằng tracker.
+#               Kết quả: eval\results\improve\*.json (+ bảng in ra). GPU ~10 phút cho detector, còn lại CPU ~20 phút
+#   trackall    MỘT LỆNH cho mọi phép đo tracking trên dev (3 scene, hoặc -Scenes a,b): tự detect ảnh 12 Hz thiếu, đo tăng
+#               tốc DAM4SAM, so 5 cấu hình, in bảng + khuyến nghị vào eval\results\trackall\dam4sam.md
 #   push        đẩy nhánh hiện tại lên GitHub
 #   all         check -> test -> eval3d -> label3d -> eval2d
 #
 # Tuỳ chọn: -Dataroot ..\v1.0-trainval  -Scene scene-0035  -Weights weights\yoloe-26l-nuimages.pt  -NoTta  -Port 8000
-#           -Scenes scene-0003 scene-0016 (held-out cho evaltemporal)  -Mode mean (cho rescore)
+#           -Scenes scene-0003,scene-0016 (dấu phẩy; held-out cho evaltemporal)  -Mode mean (cho rescore)
 
 param(
     [Parameter(Position = 0)]
     [ValidateSet("check", "install", "serve", "test", "demozip", "eval3d", "label3d", "eval2d", "evaltemporal", "rescore", "profile", "evalprop3d",
-        "push", "all")]
+        "push", "trackeval", "dam4sam", "trackall", "improve", "all")]
     [string]$Task = "check",
     [string]$Dataroot = "..\v1.0-trainval",
     [string]$Scene = "scene-0035",
@@ -34,6 +43,8 @@ param(
     [switch]$NoTta,
     [int]$Port = 8000,
     [string[]]$Scenes = @(),
+    [string]$Model = "sam21pp-L",   # DAM4SAM: sam21pp-L | -B | -S | -T (nhỏ hơn = nhanh hơn)
+    [int]$Stride = 1,               # DAM4SAM: chỉ xử lý mỗi ảnh thứ k giữa hai keyframe (3 nhanh gấp ~3, 6 = chỉ keyframe)
     [string]$Workspace = "",
     [int]$Limit = 10,
     [ValidateSet("off", "mean", "linked")]
@@ -191,6 +202,55 @@ function EvalProp3d {
     Run "python" @("tools3d\eval_propagation3d.py", "--dataroot", $Dataroot)
 }
 
+function TrackEval {
+    Step "HOTA / MOTA / IDF1 của nhãn 2D (track_id) và box 3D so với nhãn gốc"
+    $saved = $env:WORKSPACE_DIR
+    try {
+        if ($Workspace) { $env:WORKSPACE_DIR = $Workspace }
+        Run "python" @("-m", "src.cli", "trackeval", "--export-mot")
+    } finally { $env:WORKSPACE_DIR = $saved }
+}
+
+function Dam4Sam {
+    Step "DAM4SAM (SAM 2.1) lan truyền từ keyframe đã duyệt, so với tracker flow + BoT-SORT"
+    $args_ = @("tools2d\dam4sam.py", "--dataroot", $Dataroot)
+    if ($Workspace) { $args_ += @("--workspace", $Workspace) }
+    if ($Scenes.Count) { $args_ += @("--scenes") + $Scenes }
+    Run "python" $args_
+}
+
+function TrackAll {
+    # Một lệnh cho mọi phép đo tracking trên dev: tự detect ảnh 12 Hz còn thiếu, đo tăng tốc DAM4SAM, chạy 5 cấu hình
+    # (flow / DAM4SAM x ByteTrack / BoT-SORT / không ghép), in bảng HOTA / MOTA / IDF1 và khuyến nghị
+    $dev = if ($Scenes.Count) { $Scenes } else { @("scene-0035", "scene-0097", "scene-0101") }
+    $ws = if ($Workspace) { $Workspace } else { "data\eval_temporal\ws_dev" }
+    Step "So sánh tracker trên $($dev -join ', ') ($ws)"
+    # Biến thể nhanh (-Model sam21pp-T, -Stride 3 ...) ghi vào thư mục riêng để không đè kết quả của cấu hình gốc
+    $out = "eval\results\trackall"
+    $extra = @("--model", $Model, "--stride", $Stride)
+    if ($Model -ne "sam21pp-L" -or $Stride -ne 1) { $out = "${out}_$($Model.Split('-')[-1])_k$Stride" } else { $extra += "--bench" }
+    Run "python" (@("tools2d\dam4sam.py", "--dataroot", $Dataroot, "--workspace", $ws, "--out", $out) + $extra + @("--scenes") + $dev)
+}
+
+function Improve {
+    $out = "eval\results\improve"
+    New-Item -ItemType Directory -Force -Path $out | Out-Null
+    $w = "weights\yoloe-26l-nuimages-lp-1280.pt"
+    Step "1/4 Detector: 1280 (mặc định) / 1920 / 1280 + lưới ô 2x2 — mAP50, recall theo cỡ vật (GPU)"
+    Run "python" @("tools2d\eval2d.py", "--dataroot", $Dataroot, "--weights", $w, "--out", "$out\det2d.json")
+    Run "python" @("tools2d\eval2d.py", "--dataroot", $Dataroot, "--weights", $w, "--imgsz", "1920", "--out", "$out\det2d.json")
+    Run "python" @("tools2d\eval2d.py", "--dataroot", $Dataroot, "--weights", $w, "--tiles", "2", "--out", "$out\det2d.json")
+    Step "2/4 Gộp box 3D vào nhãn 2D: hạ điểm box chỉ camera thấy (0.5) so với không hạ khi box không có điểm LiDAR (CPU)"
+    Run "python" @("tools2d\eval_lidar2d.py", "--dataroot", $Dataroot, "--out", "$out\lidar2d.json")
+    foreach ($split in @(@("dev", "data\eval_temporal\ws_dev"), @("heldout", "data\eval_temporal\ws_heldout"))) {
+        $name, $ws = $split[0], $split[1]
+        Step "3-4/4 QA temporal trên $name ($ws): noweak (trước 02/10) / weak (giữ box thấy mờ) / carry (+ mang nhãn frame trước) (CPU)"
+        Run "python" @("tools2d\eval_temporal.py", "--dataroot", $Dataroot, "--workspace", $ws, "--out", "$out\temporal_$name",
+            "--variants", "noweak", "weak", "carry", "carry-only", "--no-propagation")
+    }
+    Write-Host "Xong. Gửi: $out\det2d.json, lidar2d.json, temporal_dev\temporal_eval.json, temporal_heldout\temporal_eval.json (hoặc chép bảng in ra)." -ForegroundColor Green
+}
+
 function Push {
     Step "git push"
     $branch = (git rev-parse --abbrev-ref HEAD).Trim()
@@ -211,6 +271,10 @@ switch ($Task) {
     "rescore" { Rescore }
     "profile" { Profile }
     "evalprop3d" { EvalProp3d }
+    "trackeval" { TrackEval }
+    "dam4sam" { Dam4Sam }
+    "trackall" { TrackAll }
+    "improve" { Improve }
     "push" { Push }
     "all" { Check; Test; Eval3d; Label3d; Eval2d }
 }

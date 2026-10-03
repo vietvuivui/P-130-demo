@@ -31,11 +31,13 @@ graph LR
     N --> M4
     FU --> Q
     N -->|LiDAR chiếu lên ảnh| Q
-    Q --> UI[4. UI review by exception<br/>Ảnh · Video · 3D · BEV]
+    Q --> UI[4. UI review by exception<br/>Ảnh · Video · 3D]
+    US[Tài khoản · link mời · vai trò<br/>chia việc · khoá frame đang mở] --> UI
+    SG[Chọn vật: SAM 2.1 ONNX<br/>bấm điểm / khung thô → mask + box] --> UI
     VF --> UI
-    UI -->|approve keyframe| PR[Lan truyền nhãn<br/>2D: optical flow + ByteTrack<br/>3D: vận tốc mô hình + ego pose]
+    UI -->|approve keyframe| PR[Lan truyền nhãn<br/>2D nhanh: optical flow + ByteTrack<br/>2D chính xác: DAM4SAM<br/>3D: vận tốc mô hình + ego pose]
     PR -->|box ↦ ở keyframe sau| UI
-    UI --> LOG[5. Correction log · Metrics]
+    UI --> LOG[5. Correction log · Metrics<br/>TrackEval: HOTA / IDF1]
     UI --> DS[6. Xuất COCO / nuScenes / KITTI<br/>chỉ frame đã approve]
 ```
 
@@ -43,7 +45,7 @@ Số đo của từng khối (so với nhãn gốc, tập test):
 
 - Detector 2D: mAP50 0.366.
 - 3D ensemble: mAP 0.668 / NDS 0.713.
-- Lan truyền 2D: 77% box ghi ra đúng vật.
+- Lan truyền 2D: 77% box ghi ra đúng vật; HOTA 0.563 (luồng Nhanh) / 0.573 (DAM4SAM) trên 20 scene held-out.
 - Lan truyền 3D: 94% box đúng vật.
 
 Chi tiết và so sánh từng phương pháp: [eval/results/bang-so-sanh.md](../eval/results/bang-so-sanh.md).
@@ -81,7 +83,11 @@ Agent deterministic, không gọi LLM.
 | UI | `src/web/` | HTML/JS thuần, FastAPI phục vụ ở `/ui/` |
 | Lan truyền 2D | `src/services/propagation.py`, `flow.py`, `sequence.py` | Track qua mọi ảnh 12 Hz giữa hai keyframe: dự đoán box bằng optical flow (OpenCV DIS), ghép detection hai lượt kiểu ByteTrack |
 | Lan truyền 3D | `src/services/propagation3d.py` | Track box 3D đã duyệt theo vận tốc mô hình + ego pose, giữ track qua 4 keyframe bị che |
-| BEV | `src/services/bev.py` | Ảnh mặt đường nhìn từ trên: ghép 6 camera và ±4 keyframe theo ego pose, mặt đường theo LiDAR |
+| Chọn vật | `src/services/segment.py` | Bấm điểm / kéo khung thô → mask + box: SAM 2.1 ONNX (CPU được), lùi về SAM PyTorch rồi GrabCut |
+| Luồng lan truyền | `src/services/sequence.py`, `dam4sam.py`, `botsort.py` | Người dùng chọn "Nhanh" (flow + ByteTrack) hoặc "Chính xác" (DAM4SAM); BoT-SORT là tuỳ chọn ghép |
+| TrackEval | `src/services/trackeval.py`, `tools2d/dam4sam.py` | HOTA / DetA / AssA / MOTA / IDF1 / IDSW; so sánh các cấu hình tracker |
+| Nhiều người dùng | `src/services/users.py`, `src/api/auth_routes.py`, `auth_middleware.py` | Tài khoản, link mời, vai trò, chia việc, khoá frame (409 `FRAME_LOCKED`) |
+| BEV (3D) | `src/services/bev.py` | Ảnh mặt đường nhìn từ trên: ghép 6 camera và ±4 keyframe theo ego pose, mặt đường theo LiDAR |
 | Dự án end-user | `src/services/projects.py`, `ingest/`, `jobs.py` | Tải lên, đổi định dạng sang nuScenes, chạy 2D / 3D nền, xuất zip |
 | Cài đặt trên UI | `src/services/ui_settings.py`, `relabel.py`, `temporal_eval.py` | Chỉnh tham số theo workspace, áp dụng lại, chạy đánh giá trước / sau |
 

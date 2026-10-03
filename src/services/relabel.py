@@ -73,6 +73,7 @@ def relabel_auto_frames(
                 sweeps={s.offset: ImageInfo(**s.model_dump(include=set(ImageInfo.model_fields))) for s in f.sweeps},
                 image_file=store.resolve,
                 intrinsic=f.intrinsic,
+                prev=store.load_frame(f"{f.scene}_{f.index - 1:03d}", copy=False) if f.index > 0 else None,
             )
             record.autolabel_s, record.autolabel_run = round(time.perf_counter() - t0, 3), run_id
             store.save_frame(record)

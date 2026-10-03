@@ -381,6 +381,8 @@ def verify_boxes(boxes: list[Box], cams: list[CamInput], lidar_pts: np.ndarray) 
                 visible=round(v["vis"], 3) if v else None,
                 occlusion=round(v["occ"], 3) if v else None,
                 clarity=round(v["clarity"], 3) if v else None,
+                visible_by_cam={c: round(views[c][i]["vis"], 3) for c in views if i in views[c]},
+                occlusion_by_cam={c: round(views[c][i]["occ"], 3) for c in views if i in views[c]},
                 lidar_points=n_pts,
                 distance_m=round(float(np.hypot(b.center[0], b.center[1])), 1),
                 det_label=d["label"] if d else None,

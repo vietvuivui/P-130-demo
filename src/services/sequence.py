@@ -19,6 +19,7 @@ import numpy as np
 
 from src.models.qa_config import AutoLabelConfig
 from src.models.schemas import Detection, FrameRecord, LabelObject, PropagateResponse, PropagateSkip, ReviewState
+from src.services import trackeval
 from src.services.detectors import DetectorEnsemble
 from src.services.flow import FlowProvider
 from src.services.geometry import iou
@@ -49,6 +50,45 @@ def _motion(source, cfg) -> FlowProvider | None:
     if cfg.flow == "off" or image_file is None:
         return None
     return FlowProvider(image_file, cfg.flow_scale)
+
+
+ENGINES = {
+    # Luồng lan truyền người dùng chọn cho từng lần bấm (giống chọn model): ghi đè propagation.flow / association
+    "default": None,  # theo tab ⚙ Cài đặt của workspace (mặc định: optical flow + ByteTrack, chạy CPU, ~1 s)
+    # SAM 2.1 phân đoạn từng vật + BoT-SORT; GPU, chậm. stride 3: cấu hình đã đo (eval/results/tracking.md)
+    "dam4sam": {"flow": "dam4sam", "association": "botsort", "dam4sam_stride": 3},
+}
+
+
+def with_engine(config: AutoLabelConfig, engine: str | None) -> AutoLabelConfig:
+    over = ENGINES.get(engine or "default")
+    if not over:
+        return config
+    cfg = config.model_copy(deep=True)
+    for k, v in over.items():
+        setattr(cfg.propagation, k, v)
+    return cfg
+
+
+def _dam4sam(source, cfg) -> dict:
+    """Dam4SamPredictor khi propagation.flow == dam4sam (src/services/dam4sam.py; cần GPU + repo DAM4SAM)."""
+    image_file = getattr(source, "image_file", None)
+    if cfg.flow not in ("dam4sam", "flow+dam4sam") or image_file is None:
+        return {}
+    from src.services.dam4sam import Dam4SamPredictor
+
+    return {"predictor": Dam4SamPredictor(image_file, cfg.dam4sam_model, share_encoder=cfg.dam4sam_share_encoder,
+                                          autocast=cfg.dam4sam_autocast)}  # fmt: skip
+
+
+def _botsort(source, cfg) -> dict:
+    """Appearance + GMC cho tracker khi propagation.association == botsort (src/services/botsort.py)."""
+    image_file = getattr(source, "image_file", None)
+    if cfg.association != "botsort" or image_file is None:
+        return {}
+    from src.services.botsort import Appearance, GlobalMotion
+
+    return {"appearance": Appearance(image_file, cfg.flow_scale), "gmc": GlobalMotion(image_file, cfg.flow_scale)}
 
 
 class NuScenesSequenceSource:
@@ -118,6 +158,20 @@ def sweep_overrides(frames: list[FrameRecord]) -> dict[str, list[Detection]]:
     return {s.sd_token: effective_detections(s) for f in frames for s in f.sweeps if s.boxes is not None}
 
 
+def thin_timeline(images: list[TimelineImage], cfg) -> list[TimelineImage]:
+    """propagation.dam4sam_stride = k > 1 (chỉ khi flow == dam4sam): giữ mọi keyframe và mỗi ảnh sweep thứ k tính từ
+    keyframe gần nhất, để DAM4SAM (chậm, mỗi vật một lần chạy trên mỗi ảnh) xử lý ít ảnh hơn."""
+    k = getattr(cfg, "dam4sam_stride", 1)
+    if cfg.flow != "dam4sam" or k <= 1:
+        return images
+    out, since = [], 0
+    for im in images:
+        since = 0 if im.is_keyframe else since + 1
+        if im.is_keyframe or since % k == 0:
+            out.append(im)
+    return out
+
+
 def _timeline_after(source: SequenceSource, keyframe: FrameRecord) -> list[TimelineImage]:
     timeline = source.timeline(keyframe.scene, keyframe.camera)
     idx = next((i for i, im in enumerate(timeline) if im.sd_token == keyframe.image.sd_token), None)
@@ -162,11 +216,12 @@ def propagate_from(
     frame_of_sample = {f.sample_token: f.frame_id for f in scene_frames}
     overrides = sweep_overrides(scene_frames)
     tracker = Tracker(
-        tracks, cfg, keyframe.image.width, keyframe.image.height, _motion(source, cfg), keyframe.image.path
-    )
+        tracks, cfg, keyframe.image.width, keyframe.image.height, _motion(source, cfg), keyframe.image.path,
+        **_botsort(source, cfg), **_dam4sam(source, cfg),
+    )  # fmt: skip
     at = now_iso()
     hops = 0
-    for image in images:
+    for image in thin_timeline(images, cfg):
         dets = overrides[image.sd_token] if image.sd_token in overrides else source.detections(image.sd_token)
         tracker.step(image, dets)
         if not image.is_keyframe:
@@ -266,6 +321,10 @@ def evaluate_propagation(
     calib = {"correct": [], "wrong": []}
     n_scenes = n_tracks = 0
 
+    # Chuỗi cho TrackEval (HOTA / MOTA / IDF1, src/services/trackeval.py): mỗi lần bắt đầu là một chuỗi riêng; GT chỉ gồm
+    # các vật có ở keyframe gốc (đúng bài toán lan truyền: không chấm việc phát hiện vật mới xuất hiện)
+    te_frames: list = []
+
     runs = []
     for _scene, scene_frames in sorted(by_scene.items()):
         scene_frames.sort(key=lambda f: f.index)
@@ -282,9 +341,10 @@ def evaluate_propagation(
         n_scenes += 1
         n_tracks += len(tracks)
         frame_of_sample = {f.sample_token: f for f in scene_frames}
-        tracker = Tracker(tracks, cfg, first.image.width, first.image.height, _motion(source, cfg), first.image.path)
+        tracker = Tracker(tracks, cfg, first.image.width, first.image.height, _motion(source, cfg), first.image.path,
+                          **_botsort(source, cfg), **_dam4sam(source, cfg))  # fmt: skip
         hops = 0
-        for image in _timeline_after(source, first):
+        for image in thin_timeline(_timeline_after(source, first), cfg):
             tracker.step(image, source.detections(image.sd_token))
             if not image.is_keyframe:
                 continue
@@ -294,6 +354,19 @@ def evaluate_propagation(
                 gts = [g for g in (store.load_aux("gt", frame.frame_id) or []) if not g["ignore"]]
                 uv, _ = lidar_arrays(store.load_aux("lidar", frame.frame_id))
                 _score_hop(per_hop[hops], calib, tracker.tracks, gts, uv, cfg, thr)
+                run_id = f"{first.frame_id}>"
+                started = {t.track_id for t in tracker.tracks if t.kind == "keep"}
+                gt_obs = [
+                    trackeval.Obs(run_id + g["instance_token"], g["label"], g["bbox"], ignore=bool(g.get("ignore")))
+                    for g in (store.load_aux("gt", frame.frame_id) or [])
+                    if g.get("instance_token") in started
+                ]
+                pr_obs = [
+                    trackeval.Obs(run_id + t.track_id, t.label, t.output_box())
+                    for t in tracker.tracks
+                    if t.alive and t.kind == "keep"
+                ]
+                te_frames.append((run_id + frame.frame_id, gt_obs, pr_obs))
             if not tracker.alive or hops >= max_frames:
                 break
 
@@ -325,8 +398,15 @@ def evaluate_propagation(
         "tracks_started": n_tracks,
         "per_hop": rows,
         "calibration": _calibration(calib, cfg.flag_below),
+        "trackeval": _trackeval_summary(te_frames, thr),
         "config": cfg.model_dump(),
     }
+
+
+def _trackeval_summary(te_frames: list, thr: float) -> dict:
+    r = trackeval.evaluate_tracks(te_frames, trackeval.iou_sim, thr)
+    return {k: (round(r[k], 4) if isinstance(r.get(k), float) else r.get(k))
+            for k in ("HOTA", "DetA", "AssA", "MOTA", "IDF1", "IDSW", "FP", "FN", "frames", "num_gt_dets", "num_pred_dets")}  # fmt: skip
 
 
 def _score_hop(

@@ -9,8 +9,8 @@
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="ui-flow.css">
-  <link rel="stylesheet" href="styles.css?v=3d8">
+  <link rel="stylesheet" href="ui-flow.css?v=3d23merge">
+  <link rel="stylesheet" href="styles.css?v=3d23merge">
 </head>
 
 <body class="workspace-page">
@@ -107,7 +107,7 @@
       <button class="tool-btn" id="tool-rect" title="Vẽ bounding box hình chữ nhật (B)">
         <i class="ri-checkbox-blank-line"></i>
       </button>
-      <button class="tool-btn" id="tool-poly" title="Vẽ hình đa giác (Polygon)">
+      <button class="tool-btn" id="tool-poly" title="Bấm vào vật để tự tách mask + box (M)">
         <i class="ri-pentagon-line"></i>
       </button>
       <div class="tool-divider"></div>
@@ -179,17 +179,17 @@
           <label class="toggle" title="Mask segmentation sơ bộ của model (tô mờ trong box)"><input type="checkbox" id="show-mask" checked> Mask</label>
           <label class="toggle score-filter" title="Ẩn box của model có score dưới ngưỡng (chỉ đổi cách xem; box ẩn vẫn phải duyệt trước khi approve)">Score ≥
             <input type="range" id="min-score" min="0" max="1" step="0.05" value="0"><span id="min-score-val" class="mono">0.00</span><span id="min-score-count" class="muted"></span></label>
-          <label class="toggle" title="Nhìn từ trên xuống: ảnh camera chiếu xuống mặt đường (homography), box đặt lên mặt đường theo LiDAR hoặc chân vật"><input type="checkbox" id="show-bev2d"> BEV <kbd>V</kbd></label>
           <span class="zoom-controls" title="Phóng to/thu nhỏ: lăn chuột trên ảnh, phím + / − ; phím 0 về vừa khung. Khi phóng to, kéo vùng trống để di chuyển ảnh">
             <button id="btn-zoom-out" class="btn btn-ghost btn-sm" aria-label="Thu nhỏ">−</button>
             <button id="btn-zoom-reset" class="btn btn-ghost btn-sm zoom-level" aria-label="Vừa khung">100%</button>
             <button id="btn-zoom-in" class="btn btn-ghost btn-sm" aria-label="Phóng to">+</button>
           </span>
+          <button id="btn-click" class="btn btn-ghost" title="Bấm vào vật để tự tách (SAM 2.1) thay vì kéo vẽ box (M)">✨ Chọn vật <kbd>M</kbd></button>
           <button id="btn-add" class="btn btn-ghost" title="Vẽ box mới (B)">＋ Box <kbd>B</kbd></button>
         </div>
       </div>
 
-      <!-- Canvas Wrap & BEV Row -->
+      <!-- Canvas -->
       <div class="stage-row" id="stage-row">
         <div class="canvas-wrap" id="canvas-wrap">
           <div id="drop-hint" class="drop-hint hidden">Thả frame vào đây để gán nhãn</div>
@@ -204,17 +204,6 @@
             <p>Chưa có frame nào trong workspace.</p>
           </div>
         </div>
-
-        <div class="bev2d-wrap hidden" id="bev2d-wrap">
-          <div class="bev2d-head">
-            <strong>BEV</strong>
-            <label class="toggle"><input type="checkbox" id="bev2d-img" checked> Ảnh</label>
-            <label class="toggle"><input type="checkbox" id="bev2d-pts" checked> LiDAR</label>
-          </div>
-          <canvas id="bev2d-canvas"></canvas>
-          <div class="bev2d-foot"><span id="bev2d-note" class="muted"></span>
-            <span class="muted">nét liền: vị trí theo LiDAR · nét đứt: theo chân vật</span></div>
-        </div>
       </div>
 
       <!-- Video Timeline (for scene mode) -->
@@ -227,18 +216,20 @@
             <button id="btn-play" class="btn btn-ghost btn-sm" title="Phát (Space)">▶ Phát</button>
             <button id="btn-next" class="btn btn-ghost btn-sm" title="Frame sau (N)">▶|</button>
             <label class="toggle"><input type="checkbox" id="auto-prop" checked> Lan truyền khi approve</label>
+            <select id="prop-engine" class="prop-engine" title="Luồng lan truyền cho lần bấm này"></select>
             <button id="btn-propagate" class="btn btn-ghost btn-sm" disabled>↦ Lan truyền <kbd>T</kbd></button>
+            <span id="prop-job" class="prop-job hidden" role="status"></span>
           </span>
         </div>
         <div class="timeline" id="timeline"></div>
       </section>
 
       <!-- Filmstrip (temporal consistency) -->
-      <div class="filmstrip-head" id="filmstrip-head" style="display: none;">
+      <div class="filmstrip-head" id="filmstrip-head">
         <span>Tính nhất quán thời gian</span>
         <span class="muted" id="film-caption">Chọn một đối tượng để theo dõi</span>
       </div>
-      <div class="filmstrip" id="filmstrip" style="display: none;"></div>
+      <div class="filmstrip" id="filmstrip"></div>
     </section>
 
     <!-- Right Sidebar: Objects, Labels, Issues & Actions -->
@@ -391,7 +382,7 @@
           </span>
         </div>
         <div class="shortcuts">
-          <kbd>↑</kbd><kbd>↓</kbd> chọn object · click ô t±1/t±2 bên dưới để sửa sweep (<kbd>Esc</kbd> quay về) · <kbd>K</kbd> keep · <kbd>D</kbd> delete · <kbd>C</kbd> đổi lớp · <kbd>E</kbd> sửa box · <kbd>V</kbd> BEV · <kbd>T</kbd> lan truyền · <kbd>Space</kbd> phát video · <kbd>N</kbd>/<kbd>P</kbd> frame kế · <kbd>Ctrl</kbd>+<kbd>Z</kbd>/<kbd>Y</kbd> hoàn tác / làm lại · <kbd>R</kbd> trả lại · lăn chuột, <kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>0</kbd> vừa khung
+          <kbd>↑</kbd><kbd>↓</kbd> chọn object · click ô t±1/t±2 bên dưới để sửa sweep (<kbd>Esc</kbd> quay về) · <kbd>K</kbd> keep · <kbd>D</kbd> delete · <kbd>C</kbd> đổi lớp · <kbd>E</kbd> sửa box · <kbd>T</kbd> lan truyền · <kbd>Space</kbd> phát video · <kbd>N</kbd>/<kbd>P</kbd> frame kế · <kbd>Ctrl</kbd>+<kbd>Z</kbd>/<kbd>Y</kbd> hoàn tác / làm lại · <kbd>R</kbd> trả lại · lăn chuột, <kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>0</kbd> vừa khung
         </div>
       </div>
 
@@ -673,6 +664,11 @@
         <div class="table-wrap"><table class="data-table" id="infer-table"></table></div>
       </section>
 
+      <section class="card">
+        <h3>Tracking (chuẩn TrackEval)</h3>
+        <p class="muted">Nhãn 2D theo <code>track_id</code> so với nhãn gốc nuScenes (IoU ≥ 0.5): HOTA = √(DetA · AssA); MOTA phạt sót, thừa và đổi ID; IDF1 theo ghép ID toàn cục. Chạy đủ cả 3D: <code>python -m src.cli trackeval</code>.</p>
+        <div class="table-wrap"><table class="data-table" id="track-table"></table></div>
+      </section>
       <section id="metrics3d" class="hidden">
         <div class="page-head"><h2>So sánh mô hình 3D</h2></div>
         <section class="card">
@@ -788,9 +784,8 @@
     }, 500);
   </script>
 
-  <script src="app.js?v=3d7"></script>
-  <script type="module" src="bev2d.js?v=3d7"></script>
-  <script type="module" src="app3d.js?v=3d7"></script>
+  <script src="app.js?v=3d23merge"></script>
+  <script type="module" src="app3d.js?v=3d23merge"></script>
 
   <script>
     // ---------- Left Toolbar Interaction Controller ----------
@@ -831,9 +826,8 @@
           showMask.checked = true;
           showMask.dispatchEvent(new Event('change'));
         }
-        const btnAdd = document.getElementById('btn-add');
-        if (btnAdd) btnAdd.click();
-        if (!silent && typeof toast === 'function') toast('Chế độ đa giác / Mask: Kéo vùng để AI nhận diện đa giác segmentation');
+        // Chế độ "Chọn vật" (SAM 2.1: bấm điểm hoặc kéo khung thô) do app.js bật / tắt qua cùng nút này (startClick);
+        // không bấm btn-add ở đây, nếu không hai chế độ vẽ box và chọn vật cùng bật
       }
     }
 

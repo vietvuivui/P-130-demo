@@ -41,6 +41,9 @@ class YoloeCfg(BaseModel):
     imgsz: int = 1280
     # Chạy thêm ảnh lật ngang rồi gộp (augment=True của Ultralytics không có tác dụng với YOLOE): ~2x thời gian
     tta_flip: bool = False
+    # Chạy thêm trên lưới ô tiles x tiles (chồng mép 15%) rồi gộp với lượt ảnh đầy đủ: vật nhỏ / ở xa được nhìn ở độ
+    # phân giải cao hơn (ảnh 1600x900 ở imgsz 1280 -> ô 920x520 phóng lên 1280, lớn gấp ~1.7). 1 = tắt. Thời gian ~x(1 + tiles²)
+    tiles: int = Field(default=1, ge=1, le=4)
     # Lưu mask segmentation sơ bộ của model -seg (đa giác đã đơn giản hoá), FR-04
     masks: bool = True
 
@@ -68,8 +71,14 @@ class Lidar3DCfg(BaseModel):
 
     enabled: bool = True
     min_score: float = 0.05  # box 3D yếu hơn không chiếu
-    match_iou: float = 0.5  # box 2D trùng hình chiếu box 3D cùng lớp từ ngưỡng này: lấy box 3D
+    # Box 2D trùng hình chiếu box 3D cùng lớp từ ngưỡng này: lấy box 3D. 0.4 chọn trên dev trong {0.5, 0.4, 0.3}: vật nhỏ
+    # (cọc tiêu, người) hai nguồn lệch vài px nên 0.5 để sót nhiều cặp trùng; 0.3 ghép nhầm sang cọc bên cạnh.
+    match_iou: float = 0.4
     camera_only_scale: float = 0.5  # hệ số điểm của box chỉ detector ảnh thấy
+    # Box chỉ camera thấy mà trong box không có điểm LiDAR (vật ngoài tầm LiDAR / bị che): LiDAR không có cơ hội thấy nó,
+    # nên không nên hạ điểm như camera_only_scale. None = hạ như thường (cách cũ); 1.0 = giữ nguyên điểm detector.
+    no_lidar_scale: float | None = None
+    no_lidar_max_points: int = 2  # "không có điểm LiDAR" = số điểm trong box <= ngần này
 
 
 class DetectionCfg(BaseModel):
@@ -109,6 +118,15 @@ class TemporalCfg(BaseModel):
     match_iou: float = 0.3
     min_support: int = 2
     recover_min_score: float = 0.35
+    # Detector thấy vật ở keyframe nhưng score dưới ngưỡng giữ (detection.min_score) -> box bị bỏ. Nếu sweep trước VÀ sau
+    # đều có box cùng lớp trùng vị trí (score >= ngưỡng này) thì giữ lại box của detector, gắn RECOVERED_BY_TRACK để
+    # người xác nhận (như lượt ghép score thấp của ByteTrack, nhưng ở ngay lúc gán nhãn). None = tắt.
+    recover_weak_min_score: float | None = 0.2
+    # Mang nhãn máy của keyframe TRƯỚC sang keyframe này bằng tracker lan truyền (flow + ByteTrack, qua các ảnh 12 Hz ở
+    # giữa) ngay lúc gán nhãn: vật mà detector thấy mờ ở keyframe này (dưới ngưỡng giữ) nhưng tracker theo được từ
+    # frame trước thì giữ box của detector, gắn RECOVERED_BY_TRACK. Tốn thêm optical flow cho ~4 cặp ảnh mỗi keyframe.
+    carry_prev: bool = False
+    carry_min_score: float = 0.3  # chỉ mang vật có score >= ngưỡng này (hoặc người đã giữ) ở frame trước
     # Dời box của sweep về thời điểm keyframe bằng optical flow trước khi so khớp (src/services/flow.py)
     flow: bool = False
     flow_scale: float = 0.5
@@ -172,14 +190,37 @@ class PropagationCfg(BaseModel):
     # Track không khớp detection ở chính keyframe đích (đang "trôi" theo vận tốc) có được ghi ra không
     emit_coasting: bool = False
     # Optical flow cho tracker lan truyền: off (dự đoán theo vận tốc) | missing (chỉ ảnh chưa có detection) | always
-    flow: Literal["off", "missing", "always"] = "always"
+    # dam4sam: thay flow bằng DAM4SAM (SAM 2.1, cần GPU; src/services/dam4sam.py): mỗi vật được phân đoạn ở từng ảnh,
+    # box dự đoán = hộp bao mask; detection vẫn dùng để ghép / dừng track như thường
+    # flow+dam4sam: lai — optical flow cho mọi track ở mọi ảnh như "always"; DAM4SAM chỉ được gọi cho track vừa mất
+    # detection (misses > 0, thường là đang bị che) để bắc cầu qua đoạn che khuất. Rẻ hơn nhiều so với dam4sam vì SAM
+    # chỉ chạy cho vài vật, và giữ được box đầy đủ của người duyệt khi vật vẫn được detector thấy.
+    flow: Literal["off", "missing", "always", "dam4sam", "flow+dam4sam"] = "always"
     flow_scale: float = 0.5
+    dam4sam_model: str = "sam21pp-L"
+    # Tăng tốc DAM4SAM (src/services/dam4sam.py): mã hoá ảnh một lần cho mọi vật trong ảnh thay vì mỗi vật một lần, và
+    # chạy autocast (float16) như script gốc của DAM4SAM. Tắt để so tốc độ / kiểm tra kết quả không đổi.
+    dam4sam_share_encoder: bool = True
+    # Chỉ cho DAM4SAM xử lý mỗi ảnh thứ k giữa hai keyframe (keyframe luôn được xử lý): 1 = mọi ảnh 12 Hz (như cũ),
+    # 3 = khoảng 2 ảnh mỗi keyframe (nhanh gấp ~3), 6 = chỉ keyframe 2 Hz (nhanh gấp ~6). SAM 2.1 bám theo bộ nhớ ngoại
+    # hình chứ không theo chuyển động nên chịu được bước nhảy dài hơn optical flow.
+    dam4sam_stride: int = Field(default=1, ge=1)
+    dam4sam_autocast: bool = True
     # Ghép track với detection: single = một lượt với mọi box ≥ score_threshold (như trước) | byte = hai lượt kiểu
     # ByteTrack (Zhang et al. 2022): box score ≥ byte_high_score trước, box score thấp chỉ cho track còn thiếu (IoU chặt
     # hơn byte_low_iou), để box score thấp nằm gần không "cướp" track của vật có box rõ
-    association: Literal["single", "byte"] = "byte"
+    # none: không ghép với detection (chỉ có nghĩa khi flow = dam4sam): box ghi ra là hộp bao mask của SAM, track dừng
+    # khi SAM không còn thấy vật — "DAM4SAM thuần", để so với việc ghép thêm detector
+    association: Literal["single", "byte", "botsort", "none"] = "byte"
     byte_high_score: float = 0.3
     byte_low_iou: float = 0.5
+    # BoT-SORT (Aharon et al. 2022, src/services/botsort.py) = ByteTrack + bù chuyển động camera (GMC, chỉ dùng khi
+    # không có optical flow) + ngoại hình: chi phí = min(1 - IoU, khoảng cách ngoại hình), ngoại hình chỉ tính khi hai
+    # box gần nhau (1 - IoU <= botsort_proximity) và đủ giống (<= botsort_appearance); đặc trưng track cập nhật EMA
+    botsort_gmc: bool = True
+    botsort_proximity: float = 0.5
+    botsort_appearance: float = 0.3
+    botsort_alpha: float = 0.9
     # OC-SORT (Cao et al., CVPR 2023) — chỉ dựa vào quan sát thật (detection đã khớp), không vào box dự đoán lúc bị che:
     # - oc_recover (OCR): sau các lượt ghép, track đang mất ghép thêm với detection còn thừa theo box quan sát cuối
     #   (và box quan sát cuối dời theo vận tốc quan sát); cho track sống tới oc_max_lost ảnh thay vì max_coast_images
@@ -251,6 +292,8 @@ class QCCfg(BaseModel):
     cross_class_allowed: list[tuple[str, str]] = [("pedestrian", "bicycle"), ("pedestrian", "motorcycle")]
     quick_check: QuickCheckCfg = QuickCheckCfg()
     audit: AuditCfg = AuditCfg()
+
+
 class Verify3DCfg(BaseModel):
     # Box 3D dưới ngưỡng điểm này không đưa vào duyệt (như ngưỡng 0.3 nhóm 3D dùng)
     min_score: float = 0.3

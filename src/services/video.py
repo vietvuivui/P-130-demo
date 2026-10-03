@@ -264,6 +264,7 @@ def _process_video(store: WorkspaceStore, ensemble: DetectorEnsemble, config: Au
                     sweeps=sweeps,
                     image_file=store.resolve,
                     intrinsic=intrinsic,
+                    prev=store.load_frame(f"{video_id}_{k - 1:03d}", copy=False) if k > 0 else None,
                 )
                 record.autolabel_s, record.autolabel_run = round(time.perf_counter() - t_start, 3), run_id
                 store.save_frame(record)
@@ -321,6 +322,45 @@ def list_videos(store: WorkspaceStore) -> list[VideoSummary]:
         (v for v in out if v.source == "upload"), key=lambda v: records[v.video_id].created_at or "", reverse=True
     )
     return uploads + [v for v in out if v.source == "nuscenes"]
+
+
+def _play_box(o, bbox: list[float]) -> dict:
+    return {
+        "id": o.object_id, "bbox": bbox, "label": o.review.final_label or o.label, "source": o.source,
+        "level": o.qa.level if o.qa else "low", "pending": o.review.status == "pending",
+    }  # fmt: skip
+
+
+def playback(store: WorkspaceStore, video_id: str) -> list[dict] | None:
+    """Chuỗi ảnh để phát video mượt trên UI: keyframe + các sweep quanh nó (mặc định t-2 … t+2 ở 10 fps, phủ kín khoảng
+    giữa hai keyframe 2 fps), sắp theo thời gian, kèm box cần vẽ ở từng ảnh. Một lần gọi thay cho việc mở từng frame.
+
+    Box ở keyframe là nhãn cuối; ở sweep: box người đã sửa ở sweep đó nếu có, không thì track của detector ở sweep,
+    thiếu track thì giữ box keyframe. Ảnh lấy qua GET /frames/{frame_id}/image?offset=…"""
+    frames = sorted((f for f in store.list_frames() if f.scene == video_id), key=lambda f: f.index)
+    if not frames:
+        return None
+    t0 = min([frames[0].image.timestamp, *(s.timestamp for s in frames[0].sweeps)])
+    items: dict[str, dict] = {}
+    for f in frames:
+        objs = [o for o in f.objects if o.review.status != "deleted"]
+        items[f.image.sd_token] = {
+            "t": (f.image.timestamp - t0) / 1e6, "frame_id": f.frame_id, "offset": 0,
+            "boxes": [_play_box(o, o.review.final_bbox or o.bbox) for o in objs],
+        }  # fmt: skip
+        for s in f.sweeps:
+            if s.sd_token in items and items[s.sd_token]["offset"] == 0:
+                continue  # ảnh này là keyframe của frame khác: giữ nhãn keyframe
+            if s.boxes is not None:
+                boxes = [
+                    {"id": b.box_id, "bbox": b.review.final_bbox or b.bbox, "label": b.review.final_label or b.label,
+                     "source": "human", "level": "low", "pending": False}
+                    for b in s.boxes if b.review.status != "deleted"
+                ]  # fmt: skip
+            else:
+                boxes = [_play_box(o, o.track.get(str(s.offset)) or o.review.final_bbox or o.bbox) for o in objs]
+            items[s.sd_token] = {"t": (s.timestamp - t0) / 1e6, "frame_id": f.frame_id, "offset": s.offset, "boxes": boxes}
+    return sorted(items.values(), key=lambda x: x["t"])
 
 
 def video_detail(store: WorkspaceStore, video_id: str) -> VideoDetail | None:

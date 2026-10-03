@@ -174,8 +174,8 @@ def requalify_frame(
     for o, d in zip(models, scored, strict=True):
         o.score, o.det_score = d.score, d.det_score
 
-    state = {o: sweep_state(sweeps[o].timestamp, sweep_dets[o], warped.get(o)) for o in sweeps}
-    results, recovered = check_temporal(models, state, frame.image.timestamp, config)
+    state = {o: sweep_state(sweeps[o].timestamp, sweep_dets[o], warped.get(o), sweeps[o].weak) for o in sweeps}
+    results, recovered = check_temporal(models, state, frame.image.timestamp, config, frame.weak)
     fy, (w, h) = frame.intrinsic[1][1], (frame.image.width, frame.image.height)
 
     def lidar_of(obj):

@@ -66,7 +66,8 @@ def apply_action(frame: FrameRecord, req: ReviewActionRequest, reviewer: str, co
         if bbox is None or req.label is None:
             raise ReviewError("ADD_BOX cần bbox và label")
         n = sum(o.source == "human" for o in frame.objects) + 1
-        obj = LabelObject(object_id=f"h{n}", bbox=bbox, label=req.label, score=1.0, source="human")
+        obj = LabelObject(object_id=f"h{n}", bbox=bbox, label=req.label, score=1.0, source="human",
+                          mask=[round(v, 1) for v in req.mask] if req.mask else None)  # fmt: skip
         frame.objects.append(obj)
     else:
         obj = _find(frame, req.object_id)
