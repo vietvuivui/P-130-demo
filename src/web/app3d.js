@@ -29,7 +29,7 @@ const OCC_DASH = 0.5, VIS_DASH = 0.4; // ngưỡng vẽ nét đứt trên ảnh 
 const HINT = 'Kéo chuột trái: xoay · lăn chuột: zoom · chuột phải: di chuyển · bấm vào box (ở đây hoặc trên ảnh camera) để chọn';
 
 const T = {
-  active: false, models: [], model: null, queue: [], sort: 'risk', frame: null, points: null, gt: [],
+  active: false, models: [], model: null, queue: [], sort: 'order', frame: null, points: null, gt: [],
   selected: null, cam: 'CAM_FRONT', camImg: {}, showGt: false, showLow: true, minScore: 0, color: 'height', bev: false,
   timerStart: null, classes: [], showBevImg: true, showPoints: true, groundZ: -1.84,
   tool: 'select', edit: null, // edit: {mode: 'add' | 'edit', oid, label, box: {center, size, yaw}}

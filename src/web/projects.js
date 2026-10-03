@@ -195,12 +195,12 @@ function stepHtml(p, s) {
   return `<li class="pipeline-step ${s.status}">
     <div class="step-head">
       <span class="step-dot" aria-hidden="true"></span>
-      <span class="step-name">${esc(s.label)}</span>
+      <span class="step-name">${esc(String(s.label).replace(/\s*\(ensemble\)/, ''))}</span>
       <span class="step-status">${STEP_STATUS[s.status] || s.status}${s.status === 'running' ? ` · ${pct}%` : ''}</span>
       ${hasLog ? `<button class="step-log-btn" data-log="${esc(key)}">${openLogs.has(key) ? 'Ẩn log' : 'Xem log'}</button>` : ''}
     </div>
     ${s.status === 'running' ? `<div class="step-progress-bar"><div class="step-progress-fill" style="width:${pct}%"></div></div>` : ''}
-    ${s.message ? `<div class="step-msg">${esc(s.message)}</div>` : ''}
+    ${s.message && s.status !== 'done' ? `<div class="step-msg">${esc(s.message)}</div>` : ''}
     ${openLogs.has(key) ? `<pre class="step-log-box" data-logbox="${esc(key)}">Đang tải log…</pre>` : ''}
   </li>`;
 }

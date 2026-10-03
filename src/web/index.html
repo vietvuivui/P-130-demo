@@ -9,8 +9,8 @@
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="ui-flow.css?v=3d23merge">
-  <link rel="stylesheet" href="styles.css?v=3d23merge">
+  <link rel="stylesheet" href="ui-flow.css?v=3d27">
+  <link rel="stylesheet" href="styles.css?v=3d27">
 </head>
 
 <body class="workspace-page">
@@ -134,8 +134,8 @@
         </div>
         <div class="mt-2 flex gap-1">
           <select id="queue-sort" class="form-select-sm" title="Sắp xếp danh sách">
-            <option value="risk">Khó nhất trước</option>
             <option value="order">Theo thứ tự</option>
+            <option value="risk">Khó nhất trước</option>
           </select>
         </div>
       </div>
@@ -249,8 +249,8 @@
         <div class="sort-wrap">
           <span>Sắp xếp</span>
           <select id="objSortSelect" class="sidebar-select">
-            <option value="risk">Mức độ rủi ro</option>
             <option value="id-asc">ID - tăng dần</option>
+            <option value="risk">Mức độ rủi ro</option>
             <option value="id-desc">ID - giảm dần</option>
           </select>
         </div>
@@ -315,7 +315,7 @@
         <div class="appearance-head" onclick="toggleAppearanceBox()">
           <div class="flex align-center gap-1">
             <i class="ri-arrow-down-s-line" id="appearanceArrowIcon"></i>
-            <strong>Hiển thị (Appearance)</strong>
+            <strong>Hiển thị</strong>
           </div>
         </div>
         <div class="appearance-content" id="appearanceContent">
@@ -330,7 +330,7 @@
 
           <div class="slider-field">
             <div class="flex justify-between text-xs text-gray mb-1">
-              <span>Độ mờ (Opacity)</span>
+              <span>Độ mờ</span>
               <span id="opacityVal" class="mono">20%</span>
             </div>
             <input type="range" min="0" max="100" value="20" class="range-slider" id="opacitySlider">
@@ -400,8 +400,8 @@
       <div class="panel-head">
         <h2>Keyframe</h2>
         <select id="m3-sort" title="Sắp xếp">
-          <option value="risk">Khó nhất trước</option>
           <option value="order">Theo thứ tự</option>
+          <option value="risk">Khó nhất trước</option>
         </select>
       </div>
       <ul id="m3-queue" class="queue-list"></ul>
@@ -509,7 +509,7 @@
   <main id="tab-log" class="tab-panel hidden">
     <div class="page" style="padding: 16px;">
       <div class="page-head" style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px;">
-        <h2>Nhật ký chỉnh sửa (Correction Log)</h2>
+        <h2>Nhật ký chỉnh sửa</h2>
         <input id="log-frame" type="text" placeholder="Mã Frame ID">
         <button id="log-refresh" class="btn btn-ghost btn-sm">Tải lại</button>
       </div>
@@ -553,7 +553,7 @@
           <p class="muted">Object duyệt theo lô không ai xem riêng. Lấy mẫu ngẫu nhiên để người xem lại từng cái, ước lượng tỉ lệ lỗi còn lọt (khoảng tin cậy Wilson 95%). Mẫu sai thì frame được mở lại để sửa.</p>
           <div class="qc-actions">
             <button id="audit-sample-object" class="btn btn-ghost btn-sm">＋ Mẫu object duyệt theo lô</button>
-            <button id="audit-sample-frame" class="btn btn-ghost btn-sm">＋ Mẫu frame (kiểm vật bị sót)</button>
+            <button id="audit-sample-frame" class="btn btn-ghost btn-sm">＋ Mẫu frame</button>
           </div>
           <table class="data-table qc-audit-table" id="audit-table"></table>
           <div id="audit-viewer" class="audit-viewer hidden">
@@ -606,19 +606,19 @@
             <button id="settings-save" class="btn btn-primary btn-sm" type="button" disabled>Lưu</button>
           </span>
         </div>
-        <p class="muted">Lưu riêng cho workspace / dự án này (không cần sửa file config). Mặc định lấy từ <code>configs/autolabel.yaml</code>.</p>
+        <p class="muted">Lưu riêng cho dự án này. Rê chuột vào <i class="ri-information-line"></i> để xem số liệu.</p>
         <form id="settings-form" class="settings-form" autocomplete="off"></form>
       </section>
       <div class="two-col">
         <section class="card">
-          <h3>Áp dụng lại cho frame chưa ai mở</h3>
-          <p class="muted">Chạy lại QA / score / ngưỡng theo cài đặt hiện tại, dùng detection đã lưu nên nhanh. Không đụng frame đã mở, đã duyệt, đã nhận nhãn lan truyền hoặc có sweep đã sửa.</p>
+          <h3>Áp dụng lại</h3>
+          <p class="muted" title="Chạy lại QA / score / ngưỡng theo cài đặt hiện tại, dùng detection đã lưu nên nhanh. Không đụng frame đã mở, đã duyệt, đã nhận nhãn lan truyền hoặc có sweep đã sửa.">Áp cài đặt mới cho các frame chưa ai mở.</p>
           <button id="relabel-run" class="btn btn-primary btn-sm" type="button">↻ Áp dụng lại</button>
           <div class="job-status" id="relabel-status"></div>
         </section>
         <section class="card">
-          <h3>So sánh trước / sau optical flow</h3>
-          <p class="muted">Chạy mọi cách xử lý trên các frame có nhãn gốc (GT) của workspace này, cùng một detection, rồi so mAP, việc của người duyệt và độ chính xác lan truyền. Vài phút; chạy nền, có thể tiếp tục duyệt.</p>
+          <h3>Đánh giá</h3>
+          <p class="muted" title="Chạy mọi cách xử lý trên các frame có nhãn gốc (GT) của workspace này, cùng một detection, rồi so mAP, việc của người duyệt và độ chính xác lan truyền. Vài phút; chạy nền, có thể tiếp tục duyệt.">So các cách xử lý trên frame có nhãn gốc. Vài phút, chạy nền.</p>
           <button id="eval-run" class="btn btn-primary btn-sm" type="button">▶ Chạy đánh giá</button>
           <div class="job-status" id="eval-status"></div>
         </section>
@@ -635,7 +635,7 @@
   <main id="tab-metrics" class="tab-panel hidden">
     <div class="page" style="padding: 16px;">
       <div class="page-head" style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px;">
-        <h2>Chỉ số đánh giá (Metrics)</h2>
+        <h2>Chỉ số đánh giá</h2>
         <button id="metrics-refresh" class="btn btn-ghost btn-sm">Tải lại</button>
       </div>
       <div class="tiles" id="tiles"></div>
@@ -784,8 +784,8 @@
     }, 500);
   </script>
 
-  <script src="app.js?v=3d23merge"></script>
-  <script type="module" src="app3d.js?v=3d23merge"></script>
+  <script src="app.js?v=3d27"></script>
+  <script type="module" src="app3d.js?v=3d27"></script>
 
   <script>
     // ---------- Left Toolbar Interaction Controller ----------

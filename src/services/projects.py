@@ -41,7 +41,7 @@ StepStatus = Literal["pending", "running", "done", "skipped", "error"]
 STEP_LABEL = {
     "ingest": "Nhận dữ liệu",
     "label2d": "Gán nhãn 2D + QA",
-    "predict3d": "Dự đoán 3D (ensemble)",
+    "predict3d": "Dự đoán 3D",
     "fuse2d": "Gộp box 3D vào nhãn 2D",
     "verify3d": "Kiểm chứng 3D bằng camera",
 }
@@ -185,6 +185,18 @@ class ProjectManager:
             names.append(dest.name)
         p = Project(id=pid, name=name.strip() or pid, kind=None if kind in (None, "auto") else kind,
                     created_at=now_iso(), options=options or ProjectOptions(), uploads=names)  # fmt: skip
+        self.save(p)
+        return p
+
+    def rename(self, pid: str, name: str) -> Project:
+        """Đổi tên hiển thị. Không đổi khi dự án đang xử lý: tiến trình nền giữ bản Project riêng và sẽ ghi đè tên."""
+        name = " ".join(name.split())
+        if not name:
+            raise ProjectError("BAD_NAME", "Tên dự án không được để trống", 422)
+        p = self.get(pid)
+        if p.status in ("queued", "processing"):
+            raise ProjectError("PROJECT_BUSY", "Dự án đang xử lý, chờ xong rồi đổi tên", 409)
+        p.name = name
         self.save(p)
         return p
 
@@ -458,7 +470,9 @@ class ProjectManager:
             code = proc.wait()
         if code != 0 or not out.exists():
             raise RuntimeError("run3d.py predict lỗi:\n" + "\n".join(tail[-8:]))
-        return ("done", warn) if warn else None
+        if warn:  # chỉ ghi log (nút "Xem log"), không hiện trên thẻ dự án
+            log.warning("%s: %s", p.id, warn)
+        return None
 
     # ---- bước 3b: box 3D chiếu xuống ảnh, gộp vào nhãn 2D của các frame chưa ai duyệt (src/services/lidar2d.py)
     def _do_fuse2d(self, p: Project, config: AutoLabelConfig):
