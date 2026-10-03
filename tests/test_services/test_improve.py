@@ -85,3 +85,35 @@ def test_carry_promotes_weak_detection_tracked_from_previous_keyframe(config, tm
     # Detector đã giữ box (score cao) thì không đề xuất gì
     key_dets[0] = Detection(bbox=[2030, 420, 2080, 480], label="bicycle", score=0.6)
     assert carry_from_prev(prev, image, sweeps, key_dets, sweep_dets, lambda p: tmp_path / p, cfg) == []
+
+
+def test_dedup_bev_drops_second_box_of_same_long_truck_and_keeps_other_class_as_alt():
+    from src.services.lidar2d import bev_overlap, dedup_bev
+
+    def item(label, score, center, size, yaw, bbox):
+        return {"label": label, "score": score, "bbox": bbox, "box3d": {"center": center, "size": size, "yaw": yaw}}
+
+    # scene-0035_023: một xe tải, ensemble cho hai box lệch nhau 7.6 m dọc thân xe dài 10 m
+    t1 = item("truck", 0.4561, [46.21, -11.675, 2.146], [2.855, 9.488, 3.806], 2.9408, [1112, 404, 1213, 526])
+    t2 = item("truck", 0.3223, [38.665, -10.396, 2.06], [2.908, 10.335, 3.784], 2.9291, [1125, 387, 1255, 539])
+    assert 0.15 <= bev_overlap(t1["box3d"], t2["box3d"]) < 0.4
+    # cùng chỗ nhưng khác lớp: car 0.36 và truck 0.24
+    c = item("car", 0.3592, [44.558, 15.579, 1.314], [2.019, 4.8, 1.864], -1.4311, [282, 462, 442, 518])
+    t3 = item("truck", 0.238, [44.575, 15.795, 1.328], [2.154, 5.35, 2.055], 1.6943, [266, 458, 445, 521])
+    # hai xe đỗ cạnh nhau (cách 2.6 m ngang) và đầu kéo + rơ-moóc: không phải trùng
+    side = item("car", 0.9, [47.2, 15.6, 1.3], [1.9, 4.6, 1.7], -1.43, [100, 462, 260, 518])
+    trailer = item("trailer", 0.3, [40.0, -10.6, 2.0], [2.9, 10.0, 3.8], 2.93, [1125, 387, 1255, 539])
+    ped = item("pedestrian", 0.5, [44.6, 15.6, 1.0], [0.7, 0.7, 1.8], 0.0, [300, 460, 320, 520])
+    kept = dedup_bev([t1, t2, c, t3, side, trailer, ped], 0.15)
+    labels = sorted((k["label"], k["score"]) for k in kept)
+    assert labels == [("car", 0.3592), ("car", 0.9), ("pedestrian", 0.5), ("trailer", 0.3), ("truck", 0.4561)]
+    assert next(k for k in kept if k["score"] == 0.3592)["alt"] == {"truck": 0.238}
+
+
+def test_merge_matches_camera_box_through_alt_label():
+    # Box 3D "car" (0.36) có lớp phụ truck; detector ảnh thấy truck 0.667 ở cùng chỗ -> một box, lớp truck, phụ car
+    p = {"label": "car", "score": 0.3592, "bbox": [282, 462, 442, 518], "alt": {"truck": 0.238}}
+    d = Detection(bbox=[266, 458, 445, 521], label="truck", score=0.667, models={"yoloe": 0.667})
+    (out,) = merge_detections([d], [p], 0.4, 0.5)
+    assert out.label == "truck" and out.score == 0.667 and out.bbox == [282, 462, 442, 518]
+    assert out.alternatives == {"car": 0.3592}

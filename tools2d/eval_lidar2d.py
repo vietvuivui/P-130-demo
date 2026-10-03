@@ -8,7 +8,8 @@ scripts\\tasks.ps1 eval3d sinh) -> gộp + tinh chỉnh theo track (tools3d/refi
 test (các scene val còn lại có dự đoán 3D). In mAP50 / P / R / F1 và số box phải sửa cho từng cấu hình:
 
     yoloe            : chỉ detector ảnh
-    fuse (0.5)       : gộp, box chỉ camera thấy x0.5 (mặc định hiện tại)
+    fuse, không khử trùng : gộp, box chỉ camera thấy x0.5, giữ mọi box 3D (cách cũ)
+    fuse (mặc định)  : như trên + bỏ box 3D trùng của cùng một xe (chồng nhau trên mặt đường)
     fuse nolidar=1.0 : như trên nhưng box chỉ camera thấy mà KHÔNG có điểm LiDAR trong box (ngoài tầm / bị che) giữ nguyên điểm
     fuse nolidar=0.7 : ... x0.7
 """
@@ -32,7 +33,8 @@ LIDAR_MODELS = ["centerpoint_voxel", "centerpoint_pillar", "ssn", "pointpillars"
 DEV = ["scene-0035", "scene-0097", "scene-0101"]
 VARIANTS = {
     "yoloe": None,
-    "fuse (0.5)": dict(no_lidar_scale=None),
+    "fuse, không khử trùng": dict(no_lidar_scale=None, dedup=None),
+    "fuse (mặc định)": dict(no_lidar_scale=None),  # khử box 3D trùng của cùng một xe (lidar3d.dedup_bev_overlap)
     "fuse nolidar=1.0": dict(no_lidar_scale=1.0),
     "fuse nolidar=0.7": dict(no_lidar_scale=0.7),
 }
@@ -81,7 +83,7 @@ def main() -> None:
 
     from src.models.qa_config import load_autolabel_config
     from src.services.detectors import DetectorEnsemble
-    from src.services.lidar2d import merge_detections, project_boxes
+    from src.services.lidar2d import dedup_bev, merge_detections, project_boxes
     from src.services.nuscenes_data import NuScenesMini
 
     cfg = load_autolabel_config(args.config)
@@ -107,20 +109,22 @@ def main() -> None:
             preds[tok], data.cam_from_global(f.image.sd_token), f.intrinsic, f.image.width, f.image.height, l3.min_score,
             ego_from_global=np.linalg.inv(data._global_from_ego(f.image.sd_token)),
         )  # fmt: skip
+        boxes3d = (boxes3d, dedup_bev(boxes3d, l3.dedup_bev_overlap) if l3.dedup_bev_overlap is not None else boxes3d)
         uv, _ = data.lidar_in_image(f, cfg.qa.lidar.min_depth_m) if f.lidar_sd_token else (None, None)
         splits["dev" if scene in DEV else "test"].append((dets, boxes3d, uv, gt))
     print({k: len(v) for k, v in splits.items()}, f"keyframe ({time.time() - t0:.0f}s)", flush=True)
 
     res = {"_run": {"work": str(args.work), "models": LIDAR_MODELS, "camera_only_scale": l3.camera_only_scale,
                     "match_iou": l3.match_iou, "no_lidar_max_points": l3.no_lidar_max_points}}  # fmt: skip
-    print(f"{'cấu hình':<18} {'tập':<5} {'mAP50':>6} {'P':>6} {'R':>6} {'F1':>6} {'TP':>5} {'FP':>5} {'FN':>5} {'phải sửa':>9}")
+    print(f"{'cấu hình':<22} {'tập':<5} {'mAP50':>6} {'P':>6} {'R':>6} {'F1':>6} {'TP':>5} {'FP':>5} {'FN':>5} {'phải sửa':>9}")
     for name, opt in VARIANTS.items():
         for split, items in sorted(splits.items()):
             per_img = []
-            for dets, boxes3d, uv, _ in items:
+            for dets, (raw3d, dedup3d), uv, _ in items:
                 if opt is None:
                     per_img.append(dets)
                 else:
+                    boxes3d = [dict(b) for b in (raw3d if "dedup" in opt else dedup3d)]
                     per_img.append(merge_detections(dets, boxes3d, l3.match_iou, l3.camera_only_scale, uv=uv,
                                                     no_lidar_scale=opt["no_lidar_scale"],
                                                     no_lidar_max_points=l3.no_lidar_max_points))  # fmt: skip
@@ -131,7 +135,7 @@ def main() -> None:
             fn = n_gt - tp
             r.update(TP=tp, FP=fp, FN=fn, fix=fp + fn)
             res[f"{name}:{split}"] = r
-            print(f"{name:<18} {split:<5} {r['mAP50']:>6.3f} {r['P']:>6.3f} {r['R']:>6.3f} {r['F1']:>6.3f} "
+            print(f"{name:<22} {split:<5} {r['mAP50']:>6.3f} {r['P']:>6.3f} {r['R']:>6.3f} {r['F1']:>6.3f} "
                   f"{tp:>5} {fp:>5} {fn:>5} {fp + fn:>9}", flush=True)  # fmt: skip
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(res, indent=1, ensure_ascii=False), encoding="utf-8")

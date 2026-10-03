@@ -85,6 +85,7 @@ class AutoLabelPipeline:
                 self.preds3d.get(sample_token, []), self.data.cam_from_global(frame.image.sd_token), frame.intrinsic,
                 frame.image.width, frame.image.height, l3d.min_score,
                 ego_from_global=np.linalg.inv(self.data._global_from_ego(frame.image.sd_token)),
+                dedup_overlap=l3d.dedup_bev_overlap,
             )  # fmt: skip
 
         t0 = time.perf_counter()
