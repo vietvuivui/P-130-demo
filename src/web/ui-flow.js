@@ -398,7 +398,20 @@ async function initFramesPage() {
   if (titleEl) {
     if (projectId) {  // tên thật từ server (tên trong URL có thể đã cũ sau khi đổi)
       fetch(`/api/v1/projects/${encodeURIComponent(projectId)}`).then((r) => (r.ok ? r.json() : null))
-        .then((p) => { if (p?.name && !titleEl.isContentEditable) titleEl.innerText = p.name; }).catch(() => { });
+        .then(async (p) => {
+          if (!p) return;
+          if (p.name && !titleEl.isContentEditable) titleEl.innerText = p.name;
+          const meta = document.getElementById("projectMetaDisplay");
+          if (!meta) return;
+          const day = p.created_at ? new Date(p.created_at).toLocaleDateString("vi-VN") : "";
+          let owner = "";
+          const ownerId = (p.members || []).find((m) => m.role === "owner")?.user_id;
+          if (ownerId) {
+            const t = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/members`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+            owner = t?.members?.find((m) => m.user_id === ownerId)?.name || "";
+          }
+          meta.textContent = [day && `Tạo ngày ${day}`, owner].filter(Boolean).join(" · ");
+        }).catch(() => { });
     }
     let before = "";
     const startEdit = () => {
@@ -621,7 +634,7 @@ async function initFramesPage() {
     const btnResetRaw = document.getElementById("btnResetRawLabels");
     if (btnResetRaw) {
       btnResetRaw.onclick = () => {
-        if (confirm("Đặt lại toàn bộ danh mục nhãn xe tự hành về mặc định?")) {
+        if (confirm("Đặt lại toàn bộ danh mục nhãn về mặc định?")) {
           taxonomy = { ...DEFAULT_DRIVING_TAXONOMY };
           saveTaxonomy();
           rawTextarea.value = JSON.stringify(taxonomy, null, 2);
@@ -770,7 +783,7 @@ async function initFramesPage() {
     frames = [
       {
         task_id: "#1256538",
-        title: "street_demo_001.mp4 (Traffic Frame 01)",
+        title: "street_demo_001.mp4",
         frame_id: "scene-0061_000",
         created: "12 tháng 03 năm 2025",
         updated: "8 ngày trước",
@@ -782,7 +795,7 @@ async function initFramesPage() {
       },
       {
         task_id: "#1247397",
-        title: "street_demo_002.mp4 (Traffic Frame 02)",
+        title: "street_demo_002.mp4",
         frame_id: "scene-0061_001",
         created: "07 tháng 03 năm 2025",
         updated: "2 tháng trước",
@@ -798,7 +811,7 @@ async function initFramesPage() {
   // -------------------------------------------------------------
   // Filtering & Sorting State
   // -------------------------------------------------------------
-  let currentSort = "risk"; // 'risk' | 'order' | 'objects'
+  let currentSort = "order"; // 'order' (mặc định) | 'risk' | 'objects'
   let currentStatusFilter = "all"; // 'all' | 'auto' | 'approved' | 'editing'
   let currentClassFilter = "all";
   let currentSearchQuery = "";
@@ -1023,12 +1036,12 @@ async function initFramesPage() {
   const btnClearFilters = document.getElementById("btnClearAllFilters");
   if (btnClearFilters) {
     btnClearFilters.onclick = () => {
-      currentSort = "risk";
+      currentSort = "order";
       currentStatusFilter = "all";
       currentClassFilter = "all";
       currentSearchQuery = "";
       if (searchInput) searchInput.value = "";
-      if (sortBtnLabel) sortBtnLabel.innerText = "Sắp xếp: Rủi ro QA";
+      if (sortBtnLabel) sortBtnLabel.innerText = "Sắp xếp: ID frame";
       if (quickFilterLabel) quickFilterLabel.innerText = "Lọc nhanh: Tất cả";
       if (filterClassLabel) filterClassLabel.innerText = "Lọc theo nhãn";
       applyFiltersAndRender();

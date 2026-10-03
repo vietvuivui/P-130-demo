@@ -9,8 +9,8 @@
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="ui-flow.css?v=3d25">
-  <link rel="stylesheet" href="styles.css?v=3d25">
+  <link rel="stylesheet" href="ui-flow.css?v=3d26">
+  <link rel="stylesheet" href="styles.css?v=3d26">
 </head>
 
 <body class="workspace-page">
@@ -134,8 +134,8 @@
         </div>
         <div class="mt-2 flex gap-1">
           <select id="queue-sort" class="form-select-sm" title="Sắp xếp danh sách">
-            <option value="risk">Khó nhất trước</option>
             <option value="order">Theo thứ tự</option>
+            <option value="risk">Khó nhất trước</option>
           </select>
         </div>
       </div>
@@ -249,8 +249,8 @@
         <div class="sort-wrap">
           <span>Sắp xếp</span>
           <select id="objSortSelect" class="sidebar-select">
-            <option value="risk">Mức độ rủi ro</option>
             <option value="id-asc">ID - tăng dần</option>
+            <option value="risk">Mức độ rủi ro</option>
             <option value="id-desc">ID - giảm dần</option>
           </select>
         </div>
@@ -400,8 +400,8 @@
       <div class="panel-head">
         <h2>Keyframe</h2>
         <select id="m3-sort" title="Sắp xếp">
-          <option value="risk">Khó nhất trước</option>
           <option value="order">Theo thứ tự</option>
+          <option value="risk">Khó nhất trước</option>
         </select>
       </div>
       <ul id="m3-queue" class="queue-list"></ul>
@@ -553,7 +553,7 @@
           <p class="muted">Object duyệt theo lô không ai xem riêng. Lấy mẫu ngẫu nhiên để người xem lại từng cái, ước lượng tỉ lệ lỗi còn lọt (khoảng tin cậy Wilson 95%). Mẫu sai thì frame được mở lại để sửa.</p>
           <div class="qc-actions">
             <button id="audit-sample-object" class="btn btn-ghost btn-sm">＋ Mẫu object duyệt theo lô</button>
-            <button id="audit-sample-frame" class="btn btn-ghost btn-sm">＋ Mẫu frame (kiểm vật bị sót)</button>
+            <button id="audit-sample-frame" class="btn btn-ghost btn-sm">＋ Mẫu frame</button>
           </div>
           <table class="data-table qc-audit-table" id="audit-table"></table>
           <div id="audit-viewer" class="audit-viewer hidden">
@@ -606,7 +606,7 @@
             <button id="settings-save" class="btn btn-primary btn-sm" type="button" disabled>Lưu</button>
           </span>
         </div>
-        <p class="muted">Lưu riêng cho dự án này. Rê chuột vào ⓘ để xem số liệu.</p>
+        <p class="muted">Lưu riêng cho dự án này. Rê chuột vào <i class="ri-information-line"></i> để xem số liệu.</p>
         <form id="settings-form" class="settings-form" autocomplete="off"></form>
       </section>
       <div class="two-col">
@@ -784,8 +784,8 @@
     }, 500);
   </script>
 
-  <script src="app.js?v=3d25"></script>
-  <script type="module" src="app3d.js?v=3d25"></script>
+  <script src="app.js?v=3d26"></script>
+  <script type="module" src="app3d.js?v=3d26"></script>
 
   <script>
     // ---------- Left Toolbar Interaction Controller ----------

@@ -9,7 +9,7 @@
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="ui-flow.css?v=3d25">
+  <link rel="stylesheet" href="ui-flow.css?v=3d26">
 </head>
 
 <body>
@@ -40,14 +40,14 @@
   <main class="page-wrap" style="max-width: 800px;">
     <div class="project-header-card" style="margin-top: 12px;">
       <div class="modal-header" style="font-size: 18px; margin-bottom: 4px;">Xuất tập dữ liệu gán nhãn</div>
-      <div class="modal-sub">Xuất các frame và bounding box đã qua kiểm duyệt sang định dạng chuẩn (COCO, KITTI, YOLO,
-        nuScenes).</div>
+      <div class="modal-sub">Xuất các frame và bounding box đã qua kiểm duyệt sang định dạng chuẩn COCO, KITTI, YOLO,
+        nuScenes.</div>
 
       <div class="form-item">
         <label class="form-label">Định dạng xuất dữ liệu</label>
         <select id="exportFormatSelect" class="form-control">
           <option value="KITTI">KITTI 3D / 2D bounding boxes</option>
-          <option value="COCO" selected>COCO 1.0 (2D Boxes + Phân lớp)</option>
+          <option value="COCO" selected>COCO 1.0</option>
           <option value="nuScenes">nuScenes JSON format</option>
           <option value="YOLO">YOLOv8 txt annotations</option>
         </select>
@@ -56,8 +56,8 @@
       <div class="form-item">
         <label class="form-label">Bao gồm frame chưa duyệt</label>
         <select class="form-control">
-          <option value="no" selected>Không (Chỉ xuất các frame đã Approve)</option>
-          <option value="yes">Có (Xuất toàn bộ kèm điểm rủi ro QA)</option>
+          <option value="no" selected>Không</option>
+          <option value="yes">Có</option>
         </select>
       </div>
 
@@ -87,7 +87,7 @@
   </main>
 
   <div id="toastContainer" class="toast-container"></div>
-  <script src="ui-flow.js?v=3d25"></script>
+  <script src="ui-flow.js?v=3d26"></script>
 </body>
 
 </html>

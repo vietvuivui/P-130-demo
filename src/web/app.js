@@ -14,7 +14,8 @@ const STATUS_TEXT = { auto: 'Chưa mở', editing: 'Đang sửa', approved: 'Đ�
 const S = {
   cfg: null,
   queue: [],
-  sort: 'risk',
+  sort: 'order', // mặc định theo thứ tự frame; 'risk' = khó nhất trước
+  objSort: 'id-asc',
   statusFilter: '',
   frame: null,
   img: null,
@@ -1061,7 +1062,7 @@ async function loadEngines() {
     S.engines = await api('/propagation/engines');
   } catch { S.engines = [{ id: 'default', label: 'Nhanh', available: true, detail: '' }]; }
   const saved = storageGet('propEngine', 'default');
-  sel.innerHTML = S.engines.map((e) => `<option value="${esc(e.id)}" ${e.available ? '' : 'disabled'} title="${esc(e.detail)}${e.reason ? '\nChưa dùng được: ' + esc(e.reason) : ''}">${e.id === 'default' ? '⚡' : '🎯'} ${esc(e.label)}${e.available ? '' : ' (chưa cài)'}</option>`).join('');
+  sel.innerHTML = S.engines.map((e) => `<option value="${esc(e.id)}" ${e.available ? '' : 'disabled'} title="${esc(e.detail)}${e.reason ? '\nChưa dùng được: ' + esc(e.reason) : ''}">${e.id === 'default' ? '⚡' : '🎯'} ${esc(e.label)}</option>`).join('');
   sel.value = S.engines.some((e) => e.id === saved && e.available) ? saved : 'default';
   sel.title = engineInfo().detail || '';
   resumePropJob();
@@ -2279,9 +2280,9 @@ function settingRow(f, i, all) {
     control = `<input type="number" id="${id}" data-path="${esc(f.path)}" value="${f.value}" min="${f.min}" max="${f.max}" step="${f.step || 1}">`;
   }
   const group = f.group && (!i || all[i - 1].group !== f.group) ? `<h4 class="set-group">${esc(f.group)}</h4>` : '';
-  const info = f.detail ? `<span class="set-info" tabindex="0" title="${esc(f.detail)}">ⓘ</span>` : '';
-  const tags = (f.changed ? `<span class="set-meta changed" title="Mặc định: ${esc(fmtSetting(f, f.default))}">đã đổi</span>` : '')
-    + (f.applies === 'relabel' ? '<span class="set-meta" title="Có hiệu lực với frame gán nhãn mới; frame cũ chưa ai mở: bấm Áp dụng lại">cần Áp dụng lại</span>' : '');
+  const info = f.detail ? `<span class="set-info tip" tabindex="0" data-tip="${esc(f.detail)}"><i class="ri-information-line"></i></span>` : '';
+  const tags = (f.changed ? `<span class="set-meta changed tip" data-tip="Mặc định: ${esc(fmtSetting(f, f.default))}">đã đổi</span>` : '')
+    + (f.applies === 'relabel' ? '<span class="set-meta tip" data-tip="Có hiệu lực với frame gán nhãn mới. Frame cũ chưa ai mở: bấm Áp dụng lại.">cần Áp dụng lại</span>' : '');
   return `${group}<div class="set-row">
     <div class="set-name"><label for="${id}">${esc(f.label)}</label>${info}${tags}${f.help ? `<span class="set-help">${esc(f.help)}</span>` : ''}</div>
     <div>${control}</div>

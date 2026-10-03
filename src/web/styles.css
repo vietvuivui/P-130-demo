@@ -2626,3 +2626,18 @@ body.readonly .oc-btns, body.readonly #btn-approve-low, body.readonly #btn-appro
 .set-row .set-info:hover, .set-row .set-info:focus { color: var(--accent); outline: none; }
 .set-row .set-meta { margin-left: 0; padding: 1px 6px; border-radius: 999px; background: var(--surface-2); font-size: 11px; }
 .set-row .set-control { font-weight: 400; display: inline-flex; align-items: center; gap: 6px; }
+
+/* Chú giải khi rê chuột / focus (thay tooltip mặc định của trình duyệt): thẻ trắng, viền mảnh, cùng kiểu với giao diện */
+.tip { position: relative; }
+.tip::after {
+  content: attr(data-tip); position: absolute; left: 0; top: calc(100% + 6px); z-index: 60;
+  width: max-content; max-width: min(360px, 70vw); padding: 8px 10px;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, .12); font-size: 12px; font-weight: 400; line-height: 1.45; text-transform: none;
+  letter-spacing: 0; white-space: normal; pointer-events: none; opacity: 0; transform: translateY(-2px);
+  transition: opacity .12s ease, transform .12s ease;
+}
+.tip:hover::after, .tip:focus::after { opacity: 1; transform: none; }
+.set-row .set-info { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; font-size: 14px; color: var(--muted); cursor: help; }
+.set-row .set-info:hover, .set-row .set-info:focus { color: var(--accent); background: var(--accent-soft); }
+.set-row .set-meta.tip { cursor: help; }
