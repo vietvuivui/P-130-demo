@@ -40,6 +40,8 @@ VARIANTS = {
     "fuse khử trùng 0.30": dict(no_lidar_scale=None, dedup=0.30),
     "fuse khử trùng 0.50": dict(no_lidar_scale=None, dedup=0.50),
     "fuse khử khác lớp 0.50": dict(no_lidar_scale=None, dedup=0.50, cross_only=True),
+    # Cặp box khác lớp ở cùng chỗ: lấy lớp của detector ảnh khi nó có box ở đó (thay vì lớp có điểm cao hơn)
+    "fuse 0.15, lớp theo camera": dict(no_lidar_scale=None, dedup=0.15, camera_label=True),
 }
 
 
@@ -121,7 +123,7 @@ def main() -> None:
 
     res = {"_run": {"work": str(args.work), "models": LIDAR_MODELS, "camera_only_scale": l3.camera_only_scale,
                     "match_iou": l3.match_iou, "no_lidar_max_points": l3.no_lidar_max_points}}  # fmt: skip
-    print(f"{'cấu hình':<22} {'tập':<5} {'mAP50':>6} {'P':>6} {'R':>6} {'F1':>6} {'TP':>5} {'FP':>5} {'FN':>5} {'phải sửa':>9}")
+    print(f"{'cấu hình':<27} {'tập':<5} {'mAP50':>6} {'P':>6} {'R':>6} {'F1':>6} {'TP':>5} {'FP':>5} {'FN':>5} {'phải sửa':>9}")
     for name, opt in VARIANTS.items():
         for split, items in sorted(splits.items()):
             per_img = []
@@ -135,6 +137,7 @@ def main() -> None:
                         boxes3d = [dict(b) for b in (raw3d if "dedup" in opt else dedup3d)]
                     per_img.append(merge_detections(dets, boxes3d, l3.match_iou, l3.camera_only_scale, uv=uv,
                                                     no_lidar_scale=opt["no_lidar_scale"],
+                                                    camera_label_wins=opt.get("camera_label", False),
                                                     no_lidar_max_points=l3.no_lidar_max_points))  # fmt: skip
             r = evaluate(per_img, [g for *_, g in items], cfg.detection.min_score)
             n_gt = sum(r["n_gt"].values())
@@ -143,7 +146,7 @@ def main() -> None:
             fn = n_gt - tp
             r.update(TP=tp, FP=fp, FN=fn, fix=fp + fn)
             res[f"{name}:{split}"] = r
-            print(f"{name:<22} {split:<5} {r['mAP50']:>6.3f} {r['P']:>6.3f} {r['R']:>6.3f} {r['F1']:>6.3f} "
+            print(f"{name:<27} {split:<5} {r['mAP50']:>6.3f} {r['P']:>6.3f} {r['R']:>6.3f} {r['F1']:>6.3f} "
                   f"{tp:>5} {fp:>5} {fn:>5} {fp + fn:>9}", flush=True)  # fmt: skip
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(res, indent=1, ensure_ascii=False), encoding="utf-8")

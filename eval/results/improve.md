@@ -1,4 +1,4 @@
-# Bốn cải tiến cho vật nhỏ / thấy mờ — đo ngày 03/10/2026
+# Các cải tiến sau khi test demo (vật nhỏ / thấy mờ / nhãn trùng) — đo ngày 03/10/2026
 
 Xuất phát từ hai lỗi thấy khi test demo: xe đạp có nhãn (0.34) ở frame này rồi biến mất ở frame sau (detector chỉ còn
 0.20, dưới ngưỡng giữ 0.30), và ô tô ở xa được detector thấy 0.58 nhưng bị hạ còn 0.29 khi gộp với 3D (không có box 3D)
@@ -10,6 +10,7 @@ YOLOE-26-L fine-tune nuImages; số liệu thô: `improve/*.json`). Chọn trên
 | 1 | Detector nhìn vật nhỏ tốt hơn: chạy ở 1920, hoặc thêm lưới ô 2×2 | 1920 **kém hơn** (model học ở 1280). Lưới ô bắt thêm 4% vật (vật < 32 px: 37% → 46%) nhưng box sai tăng 60%, việc phải sửa tăng 32% | tắt |
 | 2 | Không hạ điểm box chỉ camera thấy khi trong box không có điểm LiDAR | Sót giảm 8% nhưng box sai **tăng gấp đôi**: phần lớn box kiểu này là box sai thật | giữ hạ 0.5 |
 | 3 | Giữ box detector thấy mờ khi sweep trước và sau đều thấy (RECOVERED_BY_TRACK) | Bù được thêm 73 vật sót trên held-out (gấp 3 lần trước), nhưng chỉ 11% đề xuất trúng vật; mỗi frame thêm ~0.8 box nét đứt phải bấm bỏ | bật (0.2), xem ghi chú |
+| 5 | Khử box 3D trùng của cùng một xe trước khi gộp vào nhãn 2D | Việc phải sửa 3743 → 3696 (−1,3%), mAP50 −0.010 (do giữ nhầm lớp ở cặp car + truck) | bật (0.15) |
 | 4 | Mang nhãn frame trước bằng tracker lúc gán nhãn | Thêm 28 vật bù được nữa, cùng tỉ lệ trúng 11%, tốn thêm 0.26 s/frame (optical flow) | tắt |
 
 ## 1. Detector: độ phân giải và lưới ô (`tools2d/eval2d.py --imgsz / --tiles`)
@@ -75,6 +76,33 @@ Dev 119 keyframe (vật sót 395): đề xuất 58 / 225 / 276 / 156, đúng 11 
   định; bật bằng `qa.temporal.carry_prev: true` khi cần recall tối đa (video tải lên không có LiDAR).
 - Ghi chú: tỉ lệ trúng có thể bị đánh giá thấp vì vật khuất > 60% / không có điểm LiDAR bị bỏ khỏi nhãn gốc khi chấm,
   mà đề xuất hay rơi đúng vào vật kiểu đó. Chưa đo riêng.
+
+## 5. Một xe có hai nhãn 2D: khử box 3D trùng trước khi gộp (`lidar3d.dedup_bev_overlap`, đo 03/10)
+
+Lỗi thấy ở scene-0035_023: một xe tải dài 10 m có hai nhãn. Ensemble 3D cho hai box lệch nhau 7,6 m dọc thân xe (bộ gộp
+chỉ nhập box có tâm cách nhau dưới 1,5 m), và ở xe bên cạnh là hai box khác lớp (car + truck) cùng một chỗ. Sửa: hai box
+3D của xe 4 bánh trở lên chồng nhau trên mặt đường từ ngưỡng (phần chồng / box nhỏ hơn) là một xe, giữ box điểm cao hơn,
+lớp kia thành lớp phụ. Test 957 keyframe, ngưỡng giữ 0.30:
+
+| Cấu hình | mAP50 | P | R | Đúng | Thừa (xoá) | Sót (vẽ) | Phải sửa |
+|---|---|---|---|---|---|---|---|
+| Không khử trùng (trước) | 0.628 | 0.718 | 0.731 | 4924 | 1934 | 1809 | 3743 |
+| **Khử trùng, ngưỡng 0.15 (mặc định)** | 0.618 | 0.726 | 0.725 | 4878 | 1841 | 1855 | **3696** |
+| Ngưỡng 0.20 | 0.618 | 0.726 | 0.725 | 4879 | 1842 | 1854 | 3696 |
+| Ngưỡng 0.30 | 0.618 | 0.725 | 0.725 | 4879 | 1848 | 1854 | 3702 |
+| Ngưỡng 0.50 | 0.619 | 0.723 | 0.725 | 4880 | 1867 | 1853 | 3720 |
+| Chỉ cặp khác lớp, ngưỡng 0.50 | 0.620 | 0.723 | 0.725 | 4881 | 1872 | 1852 | 3724 |
+
+Dev: phải sửa 637 → 634, mAP50 0.702 → 0.693.
+
+- **Ngưỡng gần như không quan trọng** (0.15 → 0.50 chỉ khác 26 box thừa): box trùng thật thì chồng nhau rất nhiều.
+- **Cặp cùng lớp** (xe tải dài): bỏ 31 box thừa, mất 3 box đúng. Lợi rõ.
+- **Cặp khác lớp** (car + truck cùng chỗ): bỏ 62 box thừa nhưng mất 43 box đúng — khi giữ box điểm 3D cao hơn thì khoảng
+  40% trường hợp giữ nhầm lớp. Đây là toàn bộ lý do mAP50 giảm 0.010. Với người duyệt thì vẫn lợi: trước là 105 lần xoá
+  box thừa, sau là khoảng 43 lần đổi lớp (chỉ số "phải sửa" tính một box sai lớp thành hai lỗi, thừa + sót, nên nói quá
+  phần thiệt).
+- Việc tiếp: chọn lớp cho cặp khác lớp theo detector ảnh thay vì theo điểm 3D (cấu hình `lớp theo camera` trong
+  `tools2d/eval_lidar2d.py`, chưa có số).
 
 ## Việc còn lại
 

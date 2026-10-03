@@ -149,6 +149,7 @@ def merge_boxes(boxes3d: Sequence[dict], boxes2d: Sequence[dict], match_iou: flo
 def merge_detections(
     dets: list, boxes3d: Sequence[dict], match_iou: float = 0.4, camera_only_scale: float = 0.5,
     uv: np.ndarray | None = None, no_lidar_scale: float | None = None, no_lidar_max_points: int = 2,
+    camera_label_wins: bool = False,
 ) -> list:  # fmt: skip
     """Gộp Detection của detector 2D với box 3D đã chiếu. Box lấy từ 3D bỏ mask (mask của detector không còn khớp).
 
@@ -175,7 +176,8 @@ def merge_detections(
             alts = {**d.alternatives, **{k: v for k, v in p.get("alt", {}).items()}}
             label = p["label"]
             if d.label != p["label"]:  # detector ảnh khớp qua lớp phụ của box 3D: lấy lớp có điểm cao hơn, lớp kia thành phụ
-                label = d.label if d.score >= p["score"] else p["label"]
+                # camera_label_wins: luôn lấy lớp của detector ảnh (camera phân biệt car / truck theo hình dạng tốt hơn LiDAR)
+                label = d.label if camera_label_wins or d.score >= p["score"] else p["label"]
                 alts[p["label"] if label == d.label else d.label] = round(min(p["score"], d.score), 4)
             alts.pop(label, None)
             out.append(Detection(bbox=p["bbox"], label=label, score=score, alternatives=alts,
