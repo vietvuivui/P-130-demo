@@ -21,6 +21,8 @@ FIELDS: dict[str, dict] = {
         "label": "Lan truyền nhãn: dự đoán chuyển động",
         "choices": {
             "always": "Optical flow ở mọi ảnh (khuyên dùng)",
+            "dam4sam": "DAM4SAM (SAM 2.1) phân đoạn từng vật — cần GPU và repo DAM4SAM",
+            "flow+dam4sam": "Lai: optical flow, DAM4SAM chỉ cho vật đang mất detection — cần GPU và repo DAM4SAM",
             "missing": "Optical flow chỉ ở ảnh chưa detect",
             "off": "Đoán theo vận tốc không đổi (cách cũ)",
         },
@@ -33,6 +35,7 @@ FIELDS: dict[str, dict] = {
         "label": "Lan truyền nhãn: cách ghép với detection",
         "choices": {
             "byte": "Hai lượt kiểu ByteTrack — box rõ trước (khuyên dùng)",
+            "botsort": "BoT-SORT — ByteTrack + ngoại hình (màu) + bù chuyển động camera",
             "single": "Một lượt với mọi box (cách cũ)",
         },
         "help": "Box score thấp nằm gần không còn 'cướp' track của vật có box rõ. Dev: box lan truyền sai 224 → 203, "

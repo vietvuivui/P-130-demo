@@ -31,6 +31,7 @@ Object có issue luôn ≥ 0.30 nên không bao giờ bị duyệt theo lô. M�
 
 ```bash
 pip install -r requirements.txt
+python scripts/download_sam_onnx.py   # tuỳ chọn, 117 MB: SAM 2.1 cho nút "✨ Chọn vật" (không có vẫn chạy, dùng GrabCut)
 python -m src.demo            # hoặc: make demo
 # mở http://localhost:8000 → chọn 🎞 Video trên thanh trên cùng
 ```
@@ -38,13 +39,21 @@ python -m src.demo            # hoặc: make demo
 Lệnh này sinh một video đường phố tổng hợp 16 giây (`data/demo/street_demo.mp4`), cho nó đi qua đúng đường xử lý
 của video tải lên (cắt frame 10 fps, keyframe 2 fps, detect, QA Agent) bằng một detector demo tìm vật thể theo
 màu, rồi mở UI trên workspace riêng `data/demo/workspace` (không đụng dữ liệu thật). Kịch bản trình diễn từng
-bước: [docs/demo-script.md](docs/demo-script.md). `python -m src.demo --reset` để sinh lại từ đầu.
+bước: [docs/demo-script.md](docs/demo-script.md); kịch bản video MVP 3 phút: [docs/demo-g2.md](docs/demo-g2.md); sơ đồ
+kiến trúc: [docs/architecture_diagram.md](docs/architecture_diagram.md). `python -m src.demo --reset` để sinh lại từ đầu.
 
 ## Web cho end-user: Dự án (tải dữ liệu lên → gán nhãn → duyệt → xuất)
 
 ```bash
 uvicorn src.main:app --port 8000      # mở http://localhost:8000 → trang Dự án
 ```
+
+**Làm việc nhiều người** (kiểu CVAT / Google Docs, `src/services/users.py`): đăng ký ở `/ui/login.html` (người đầu tiên là
+admin); ở thẻ dự án bấm **Thành viên** → nhập email, chọn vai trò → **Tạo link mời** (gửi mail nếu có `SMTP_*`, không thì
+copy link gửi tay); người được mời mở link, tạo tài khoản là vào dự án; **Chia việc** chia đều frame chưa duyệt cho các
+thành viên đã tick. Trong trang gán nhãn: chip **Của tôi** lọc frame được giao, tên người duyệt lấy theo tài khoản, ai đang
+mở frame nào hiện 🔒 ở hàng đợi; frame người khác đang mở chỉ xem được (có "Lấy quyền sửa"). Vai trò: owner mời / chia việc,
+reviewer duyệt / trả lại / chia việc, annotator gán nhãn. Bật `AUTH_REQUIRED=1` để bắt buộc đăng nhập.
 
 Mỗi dự án có một thư mục riêng `data/projects/<id>/`, gồm:
 
@@ -161,7 +170,9 @@ Thanh trên cùng có ba chế độ:
 Chế độ Ảnh:
 
 - **Hàng đợi frame** sắp theo frame risk (khó nhất lên đầu), lọc theo trạng thái.
-- **Canvas**: box tô màu theo risk (xanh/vàng/đỏ, luôn có nhãn chữ), box `RECOVERED_BY_TRACK` nét đứt,
+- **Canvas**: box tô màu theo risk (xanh/vàng/đỏ, luôn có nhãn chữ), box `RECOVERED_BY_TRACK` nét đứt (detector sót
+  hoặc thấy mờ ở keyframe nhưng sweep trước và sau đều thấy; phải xác nhận, không vào nhóm duyệt theo lô; held-out: bù
+  được 108 vật sót / 795 keyframe nhưng 88% đề xuất sai, xem [eval/results/improve.md](eval/results/improve.md)),
   bật overlay điểm LiDAR (màu theo độ sâu) và GT để đối chiếu.
   Box GT (nét đứt trắng, chữ `GT <lớp>`) = box 3D của nuScenes chiếu xuống ảnh (hình chữ nhật bao 8 đỉnh) nên thường
   rộng hơn box detector; box GT mờ không chữ = vật hiển thị 0–40% hoặc không có điểm LiDAR/radar, bỏ qua khi đánh giá.
@@ -186,14 +197,18 @@ Chế độ Video:
 - **Tải lên mp4**: server cắt frame ngay, auto-label + QA chạy nền; danh sách hiện tiến độ và báo khi xong.
   Video không có LiDAR/calibration nên các check LiDAR tự bỏ qua, risk dựa trên score, temporal và hình học.
 
-**BEV** (`V`, cả chế độ Ảnh và Video): khung bên phải nhìn từ trên xuống. Ảnh camera được chiếu xuống mặt đường bằng
-homography (nuScenes: ngoại tham số thật của camera, mặt đường theo LiDAR, ghép thêm các keyframe lân cận như ảnh BEV
-3D; video tải lên: giả định camera cao 1.5 m, nhìn thẳng), trên đó là
-điểm LiDAR và từng box 2D đặt lên mặt đường: có điểm LiDAR trong box thì theo độ sâu LiDAR (nét liền), không thì theo
-chân vật chạm đường (nét đứt); bề ngang theo box, chiều dài theo cỡ trung bình của lớp. Bấm box trên BEV để chọn, sửa
-box trên ảnh thì BEV cập nhật ngay; kéo để di chuyển, lăn chuột để zoom.
+**✨ Chọn vật** (`M`, cả chế độ Ảnh và Video): thay vì kéo vẽ box, bấm vào vật để SAM 2.1 tự tách mask + box. Bấm thêm
+để mở rộng vùng, chuột phải (hoặc `Shift` + bấm) để loại vùng thừa, hoặc kéo một khung thô quanh vật; rồi bấm *Lưu box*. Mặc
+định chạy SAM 2.1 bản ONNX, không cần GPU (tải model một lần: `python scripts/download_sam_onnx.py`, 117 MB): lần
+bấm đầu trên mỗi ảnh khoảng 2 giây trên CPU, các lần sau khoảng 0,1 giây. Chưa tải model thì tự lùi về GrabCut.
 
-Phím tắt: `↑/↓` chọn object · `K` keep · `D` delete · `C` đổi lớp · `E` sửa box · `B` vẽ box mới ·
+**Luồng lan truyền** (ô chọn cạnh nút *↦ Lan truyền*): người dùng tự chọn như chọn mô hình. **Nhanh** (mặc định) = optical
+flow + ByteTrack trên box của YOLO, chạy CPU, vài giây một video. **Chính xác** = DAM4SAM (SAM 2.1 + bộ nhớ nhận biết vật
+gây nhiễu) bám từng vật đã duyệt, ghép kiểu BoT-SORT (cần GPU và `tools2d/DAM4SAM`, chạy nền có thanh tiến độ). Trên 20
+scene held-out, luồng Chính xác cho thêm 7% nhãn đúng và mất dấu ít hơn 25%, đổi lại box sai nhiều hơn 13% và chậm hơn
+3–12 lần: [eval/results/tracking.md](eval/results/tracking.md).
+
+Phím tắt: `↑/↓` chọn object · `K` keep · `D` delete · `C` đổi lớp · `E` sửa box · `B` vẽ box mới · `M` chọn vật ·
 `A` approve low-risk · `Enter` approve frame · `N/P` frame kế/trước · `L` LiDAR · `G` GT; chế độ Video thêm
 `T` lan truyền · `Space` phát/dừng.
 
@@ -270,6 +285,12 @@ Bảng so sánh mọi phương pháp đã dùng (2D, 3D, có / không dùng thì
 0.366 (zero-shot 0.312). Xem thêm [eval/results/autolabel2d_eval.md](eval/results/autolabel2d_eval.md). Optical flow cho lan truyền và QA
 temporal (trước / sau, dev + held-out): [eval/results/temporal/report.md](eval/results/temporal/report.md).
 
+**Tracking 2D** ([eval/results/tracking.md](eval/results/tracking.md)): từng thuật toán (vận tốc không đổi, optical flow,
+ByteTrack, OC-SORT, BoT-SORT, DAM4SAM) và các tổ hợp, ghi rõ thuật toán nào làm bước dự đoán / bước ghép; chấm bằng
+TrackEval (HOTA / IDF1 / đổi ID). Held-out 20 scene (795 keyframe): optical flow + ByteTrack (mặc định) HOTA 0.563 / IDF1
+0.705; DAM4SAM + BoT-SORT **0.573 / 0.725** (nhãn đúng +7%, mất dấu −25%, box sai +13%, thời gian ×3.4). OC-SORT và
+BoT-SORT thêm vào optical flow không đổi gì đáng kể; DAM4SAM thuần (bỏ YOLO) kém nhất.
+
 **3D trên tập test** ([eval/results/det3d_heldout.md](eval/results/det3d_heldout.md)): 24 scene val chưa dùng để chọn
 cấu hình (957 keyframe), so với nhãn gốc nuScenes. Mô hình đơn tốt nhất CenterPoint voxel mAP 0.578 / NDS 0.655; gộp 4 mô
 hình LiDAR + tinh chỉnh theo track (mặc định) **mAP 0.668 / NDS 0.713**. Thử ý tưởng VESPA (box 3D từ box 2D + LiDAR,
@@ -302,7 +323,14 @@ vẫn chạy được bản demo.
 | `PROJECTS_DIR` | `./data/projects` | Dự án của end-user, mỗi dự án một thư mục con |
 | `AUTOLABEL_CONFIG` | `./configs/autolabel.yaml` | Mô hình, ngưỡng, trọng số QA Agent, lan truyền |
 | `REVIEWER_NAME` | `annotator` | Tên ghi vào correction log |
+| `SAM_ONNX_DIR` | `./weights/sam2-onnx` | Thư mục model SAM 2.1 ONNX của nút "Chọn vật" (`scripts/download_sam_onnx.py` tải về đây) |
+| `SAM_ONNX_PROVIDERS` | `CUDAExecutionProvider,CPUExecutionProvider` | Thứ tự backend ONNX Runtime; không có GPU thì tự dùng CPU |
+| `DAM4SAM_DIR` | `./tools2d/DAM4SAM` | Bản clone DAM4SAM cho luồng lan truyền "Chính xác" và `scripts\tasks.ps1 dam4sam` |
 | `MM3D_PYTHON` | (tự tìm `.venv-mm3d`) | Python của môi trường MMDetection3D cho bước 3D |
+| `AUTH_REQUIRED` | `false` | `true`: phải đăng nhập mới dùng API / UI (tài khoản ở `USERS_FILE`, mặc định `./data/users.json`) |
+| `AUTH_OPEN_SIGNUP` | `false` | Cho tự đăng ký sau người đầu tiên (mặc định chỉ vào qua link mời) |
+| `PUBLIC_URL` | (lấy từ request) | Gốc của link mời gửi cho người khác, vd `http://192.168.1.10:8000` |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | — | Gửi mail mời; chưa có thì UI hiện link để gửi tay |
 | `APP_HOST`, `APP_PORT`, `APP_ENV`, `LOG_LEVEL`, `CORS_ORIGINS` | `0.0.0.0`, `8000`, `development`, `INFO`, `http://localhost:3000` | Web server |
 | `AI_LOG_SERVER`, `AI_LOG_API_KEY`, `AI_LOG_DIR` | — | Hook ghi log AI khi commit / push (giảng viên cấp key) |
 | `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT`, `LANGCHAIN_TRACING_V2` | — | Tuỳ chọn: trace QA Agent lên LangSmith |

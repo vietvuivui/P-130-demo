@@ -88,9 +88,17 @@ theo mô hình, khung 3D / BEV, ảnh camera có box chiếu xuống, card từn
    bằng `global_from_lidar`, mỗi lần nhìn chấm theo độ nét (1/(1+(ρ/8)²)⁶, ρ = khoảng cách tới camera) nên lần nhìn gần
    thắng hẳn; bỏ vùng quanh thân xe (camera thấy cốp / capô của chính xe), dọn mảnh vụn, tô lỗ < 3 m². Cache PNG theo
    frame ở `workspace/bev3d/`.
-7. BEV của chế độ Ảnh / Video (`bev2d.js`): một camera; ảnh nuScenes dùng LiDAR và ghép keyframe lân cận (ego pose) như
-   ảnh BEV 3D, video tải lên dùng mặt đường z = 0 của hệ ego; `/frames/{id}/bev/meta` trả
-   cam_from_ego + homography, trình duyệt đổi điểm LiDAR (u, v, độ sâu) về hệ ego và đặt box 2D lên mặt đường.
+7. Chọn vật (`segment.py`, nút ✨ ở chế độ Ảnh / Video): người dùng bấm điểm hoặc kéo khung thô, server trả mask + box.
+   Engine theo thứ tự: SAM 2.1 ONNX (ONNX Runtime; encoder chạy một lần mỗi ảnh và cache 8 ảnh gần nhất, decoder chạy
+   lại theo từng lần bấm) → SAM 2.1 PyTorch (dùng chung bản clone DAM4SAM) → GrabCut của OpenCV.
+8. Luồng lan truyền (`sequence.py: ENGINES`): "Nhanh" = optical flow + ByteTrack trên box YOLO; "Chính xác" = DAM4SAM
+   (`dam4sam.py`), mỗi vật đã duyệt một tracker, dùng chung image encoder trong cùng ảnh; chạy nền qua
+   `/frames/{id}/propagate-async`. BoT-SORT (`botsort.py`: bù chuyển động camera + ngoại hình) là tuỳ chọn ghép.
+9. Nhiều người dùng (`users.py`, `auth_routes.py`, `auth_middleware.py`): tài khoản (PBKDF2), phiên cookie, mời vào dự
+   án bằng link, vai trò owner / reviewer / annotator, chia frame, khoá frame đang mở (hết hạn sau 90 giây, API trả
+   409 `FRAME_LOCKED` cho người khác). Không dùng WebSocket: UI hỏi `/presence` mỗi 15 giây.
+10. TrackEval (`trackeval.py`): HOTA / DetA / AssA / MOTA / IDF1 / IDSW cho nhãn 2D theo `track_id` và box 3D, đã đối
+    chiếu với bộ TrackEval chính thức.
 
 ## QA Agent
 

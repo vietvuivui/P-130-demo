@@ -70,36 +70,98 @@
         <div class="login-sub">Hệ thống gán nhãn thị giác máy tính &amp; LiDAR</div>
       </div>
 
-      <form id="loginForm">
+      <p id="inviteNote" class="login-sub" style="display:none; margin-bottom: 14px; color: var(--primary);"></p>
+      <form id="loginForm" autocomplete="on">
         <div class="form-item">
-          <label class="form-label" for="loginEmail">Email / Tên tài khoản</label>
-          <input type="text" id="loginEmail" class="form-control" value="annotator@autolabel.ai" required>
+          <label class="form-label" for="loginEmail">Email</label>
+          <input type="email" id="loginEmail" class="form-control" placeholder="ban@vidu.vn" required autocomplete="username">
         </div>
-
+        <div class="form-item" id="nameItem" style="display:none">
+          <label class="form-label" for="loginName">Tên hiển thị</label>
+          <input type="text" id="loginName" class="form-control" maxlength="60" placeholder="Tên của bạn (hiện trong lịch sử sửa nhãn)">
+        </div>
         <div class="form-item">
           <label class="form-label" for="loginPassword">Mật khẩu</label>
           <div class="input-wrap">
-            <input type="password" id="loginPassword" class="form-control" value="password123" required>
+            <input type="password" id="loginPassword" class="form-control" minlength="6" required autocomplete="current-password">
             <i class="ri-eye-off-line pw-toggle" id="togglePasswordBtn" title="Hiện/Ẩn mật khẩu"></i>
           </div>
         </div>
-
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; font-size: 13px;">
-          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-secondary);">
-            <input type="checkbox" checked>
-            <span>Ghi nhớ đăng nhập</span>
-          </label>
-          <a href="javascript:void(0)" onclick="showToast('Vui lòng liên hệ quản trị viên để cấp lại mật khẩu', 'info')" style="color: var(--primary);">Quên mật khẩu?</a>
-        </div>
-
-        <button type="submit" class="btn-primary" style="width: 100%; height: 38px; font-size: 14px;">
-          Đăng nhập
-        </button>
+        <p id="loginError" style="display:none; color: #ef4444; font-size: 13px; margin: -6px 0 12px;"></p>
+        <button type="submit" id="loginSubmit" class="btn-primary" style="width: 100%; height: 38px; font-size: 14px;">Đăng nhập</button>
+        <p style="font-size: 13px; margin-top: 14px; color: var(--text-secondary); text-align: center;">
+          <span id="modeHint">Chưa có tài khoản?</span>
+          <a href="javascript:void(0)" id="modeSwitch" style="color: var(--primary);">Tạo tài khoản</a>
+        </p>
+        <p style="font-size: 12px; margin-top: 10px; color: var(--text-secondary); text-align: center;">
+          <a href="/ui/projects.html" style="color: var(--text-secondary);">Vào không cần đăng nhập</a>
+          <span id="guestNote"> (nếu máy chủ không bắt buộc)</span>
+        </p>
       </form>
     </div>
   </div>
 
   <div id="toastContainer" class="toast-container"></div>
-  <script src="ui-flow.js"></script>
+  <script>
+    // Đăng nhập / tạo tài khoản thật (API /api/v1/auth, src/api/auth_routes.py). ?invite=<token>: nhận lời mời vào dự án.
+    (() => {
+      const $ = (id) => document.getElementById(id);
+      const params = new URLSearchParams(location.search);
+      const invite = params.get('invite');
+      let mode = 'login';
+      const err = (m) => { $('loginError').textContent = m || ''; $('loginError').style.display = m ? '' : 'none'; };
+      const setMode = (m) => {
+        mode = m;
+        $('nameItem').style.display = m === 'register' ? '' : 'none';
+        $('loginSubmit').textContent = m === 'register' ? 'Tạo tài khoản' : 'Đăng nhập';
+        $('modeHint').textContent = m === 'register' ? 'Đã có tài khoản?' : 'Chưa có tài khoản?';
+        $('modeSwitch').textContent = m === 'register' ? 'Đăng nhập' : 'Tạo tài khoản';
+        $('loginPassword').autocomplete = m === 'register' ? 'new-password' : 'current-password';
+        err('');
+      };
+      $('modeSwitch').addEventListener('click', () => setMode(mode === 'login' ? 'register' : 'login'));
+      $('togglePasswordBtn').addEventListener('click', () => {
+        const i = $('loginPassword'); i.type = i.type === 'password' ? 'text' : 'password';
+        $('togglePasswordBtn').className = i.type === 'password' ? 'ri-eye-off-line pw-toggle' : 'ri-eye-line pw-toggle';
+      });
+      const post = async (path, body) => {
+        const r = await fetch('/api/v1' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.detail?.message || r.statusText);
+        return d;
+      };
+      let inviteInfo = null;
+      const start = async () => {
+        const me = await fetch('/api/v1/auth/me').then((r) => r.json()).catch(() => ({}));
+        if (!me.auth_required) $('guestNote').textContent = ' (máy chủ đang cho vào tự do)';
+        if (!me.has_users) { setMode('register'); $('inviteNote').style.display = ''; $('inviteNote').textContent = 'Chưa có tài khoản nào: tài khoản đầu tiên sẽ là quản trị viên.'; }
+        if (invite) {
+          try {
+            inviteInfo = await fetch('/api/v1/invites/' + encodeURIComponent(invite)).then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.detail?.message); return d; });
+            $('inviteNote').style.display = '';
+            $('inviteNote').textContent = `Bạn được mời vào dự án “${inviteInfo.project}” với vai trò ${inviteInfo.role}.`;
+            $('loginEmail').value = inviteInfo.email;
+            setMode(inviteInfo.has_account ? 'login' : 'register');
+            if (me.user && me.user.email === inviteInfo.email) { await post('/invites/' + encodeURIComponent(invite) + '/accept', {}); location.href = '/ui/projects.html'; }
+          } catch (e) { err('Link mời: ' + e.message); }
+        } else if (me.user) location.href = '/ui/projects.html';
+      };
+      $('loginForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        err('');
+        $('loginSubmit').disabled = true;
+        try {
+          const email = $('loginEmail').value.trim(), password = $('loginPassword').value;
+          if (mode === 'register') await post('/auth/register', { email, password, name: $('loginName').value.trim(), invite: invite || undefined });
+          else {
+            await post('/auth/login', { email, password });
+            if (invite) await post('/invites/' + encodeURIComponent(invite) + '/accept', {});
+          }
+          location.href = '/ui/projects.html';
+        } catch (ex) { err(ex.message); } finally { $('loginSubmit').disabled = false; }
+      });
+      start();
+    })();
+  </script>
 </body>
 </html>

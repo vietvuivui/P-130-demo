@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     # Python của môi trường MMDetection3D (tools3d/setup.ps1); để trống = tự tìm .venv-mm3d trong repo
     mm3d_python: str = ""
 
+    # Nhiều người dùng (src/services/users.py): tài khoản + phiên + lời mời; AUTH_REQUIRED=1 bắt đăng nhập mới dùng API
+    users_file: str = "./data/users.json"
+    auth_required: bool = False
+    auth_open_signup: bool = False  # cho đăng ký tự do (không cần link mời) sau người đầu tiên
+    public_url: str = ""  # gốc của link mời gửi cho người khác, vd http://192.168.1.10:8000; trống = lấy từ request
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -2,6 +2,7 @@ import logging
 import os
 import shutil
 import tempfile
+import threading
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -27,16 +28,23 @@ from src.models.schemas import (
     RejectRequest,
     ReviewActionRequest,
     ReviewerRequest,
+    SegmentRequest,
     SweepActionRequest,
     VideoDetail,
     VideoSummary,
 )
-from src.services import history, qc, review
+from src.services import history, jobs, qc, review
 from src.services import video as video_service
 from src.services.detectors import DetectorEnsemble
 from src.services.exporter import EXPORT_FILES, NothingToExportError, NotReadyError, export_dataset
 from src.services.pipeline import image_path
-from src.services.sequence import PropagationError, SequenceSource, WorkspaceSequenceSource, propagate_from
+from src.services.sequence import (
+    PropagationError,
+    SequenceSource,
+    WorkspaceSequenceSource,
+    propagate_from,
+    with_engine,
+)
 from src.services.store import WorkspaceStore
 
 router = APIRouter()
@@ -755,10 +763,119 @@ def propagate(
 ):
     """Lan truyền quyết định của người ở frame đã approve sang các keyframe sau còn "auto"."""
     _load(store, frame_id)
+    _check_engine(req.engine, config)
     try:
-        return propagate_from(store, source, config, frame_id, req.max_frames)
+        return propagate_from(store, source, with_engine(config, req.engine), frame_id, req.max_frames)
     except PropagationError as e:
         raise _error(e.status, e.code, str(e)) from e
+
+
+def _engines(config: AutoLabelConfig) -> list[dict]:
+    from src.services import dam4sam
+
+    p = config.propagation
+    problems = dam4sam.check_install(p.dam4sam_model)
+    return [
+        {"id": "default", "label": "Nhanh", "available": True, "reason": None,
+         "detail": f"Theo ⚙ Cài đặt: flow {p.flow} + ghép {p.association}. Chạy CPU, khoảng 1 giây."},
+        {"id": "dam4sam", "label": "Chính xác", "available": not problems, "reason": "; ".join(problems) or None,
+         "detail": "DAM4SAM (SAM 2.1) phân đoạn từng vật + BoT-SORT. Cần GPU, chậm hơn 3–12 lần, chạy nền. Trên 20 scene "
+                   "held-out: nhãn đúng +7%, mất dấu −25%, HOTA 0.573 so với 0.563 của luồng Nhanh; box sai +13%."},
+    ]  # fmt: skip
+
+
+def _check_engine(engine: str, config: AutoLabelConfig) -> None:
+    if engine == "default":
+        return
+    e = next(x for x in _engines(config) if x["id"] == engine)
+    if not e["available"]:
+        raise _error(409, "ENGINE_UNAVAILABLE", f"Luồng {e['label']} chưa dùng được trên máy chủ này: {e['reason']}")
+
+
+@router.get("/segment/info")
+def segment_info():
+    """Công cụ bấm-để-chọn-vật đang dùng SAM 2.1 hay GrabCut (dự phòng CPU), kèm lý do nếu SAM chưa dùng được."""
+    from src.services import segment
+
+    return segment.engine_info()
+
+
+@router.post("/frames/{frame_id}/segment/preload")
+def segment_preload(
+    frame_id: str,
+    offset: int = Query(0, ge=-5, le=5),
+    store: WorkspaceStore = Depends(get_store),
+    dataroot: Path = Depends(get_dataroot),
+):
+    """Mã hoá ảnh trước ở luồng nền (SAM ONNX) để lần bấm đầu không phải chờ."""
+    from src.services import segment
+
+    frame = _load(store, frame_id)
+    try:
+        path = image_path(dataroot, frame, offset, workspace=store.root)
+    except KeyError:
+        return {"preloading": False}
+    return {"preloading": segment.preload(path)}
+
+
+@router.post("/frames/{frame_id}/segment")
+def segment_object(
+    frame_id: str,
+    req: SegmentRequest,
+    store: WorkspaceStore = Depends(get_store),
+    dataroot: Path = Depends(get_dataroot),
+):
+    """Bấm điểm lên vật -> box + đa giác mask (không ghi gì vào frame; UI gửi ADD_BOX khi người dùng chọn lớp)."""
+    from src.services import segment
+
+    frame = _load(store, frame_id)
+    try:
+        path = image_path(dataroot, frame, req.offset, workspace=store.root)
+    except KeyError as e:
+        raise _error(404, "SWEEP_NOT_FOUND", f"Frame không có sweep offset {req.offset}") from e
+    w, h = frame.image.width, frame.image.height
+    if any(len(p) != 2 or not (0 <= p[0] <= w and 0 <= p[1] <= h) for p in req.points):
+        raise _error(422, "POINT_OUTSIDE", "Điểm bấm nằm ngoài ảnh")
+    if not req.points and req.box is None:
+        raise _error(422, "NO_PROMPT", "Cần ít nhất một điểm hoặc một box")
+    try:
+        return segment.segment_points(path, req.points, req.labels, box=req.box)
+    except segment.SegmentError as e:
+        raise _error(422, "SEGMENT_FAILED", str(e)) from e
+
+
+@router.get("/propagation/engines")
+def propagation_engines(config: AutoLabelConfig = Depends(get_config)):
+    """Các luồng lan truyền người dùng chọn được ở giao diện, kèm lý do nếu máy chủ chưa chạy được."""
+    return _engines(config)
+
+
+@router.post("/frames/{frame_id}/propagate-async")
+def propagate_async(
+    frame_id: str,
+    req: PropagateRequest,
+    store: WorkspaceStore = Depends(get_store),
+    config: AutoLabelConfig = Depends(get_config),
+    source: SequenceSource = Depends(get_sequence_source),
+):
+    """Như /propagate nhưng chạy nền (cho luồng chậm như DAM4SAM); hỏi tiến độ ở GET /propagation/job."""
+    frame = _load(store, frame_id)
+    if frame.status != "approved":
+        raise _error(409, "NOT_APPROVED", "Chỉ lan truyền từ frame đã approve (mọi quyết định của người đã chốt)")
+    _check_engine(req.engine, config)
+    cfg = with_engine(config, req.engine)
+
+    def work(progress):
+        progress(0.05, f"Đang lan truyền từ {frame_id} ({req.engine})…")
+        return {"frame_id": frame_id, "engine": req.engine,
+                **propagate_from(store, source, cfg, frame_id, req.max_frames).model_dump()}  # fmt: skip
+
+    return jobs.start(_job_key(store, "propagate"), work)
+
+
+@router.get("/propagation/job")
+def propagation_job(store: WorkspaceStore = Depends(get_store)):
+    return jobs.status(_job_key(store, "propagate"))
 
 
 # ---- Video ----
@@ -776,6 +893,56 @@ def get_video(video_id: str, store: WorkspaceStore = Depends(get_store)):
     if detail is None:
         raise _error(404, "VIDEO_NOT_FOUND", f"Không có video {video_id}")
     return detail
+
+
+@router.get("/videos/{video_id}/playback")
+def get_video_playback(
+    video_id: str,
+    store: WorkspaceStore = Depends(get_store),
+    dataroot: Path = Depends(get_dataroot),
+    config: AutoLabelConfig = Depends(get_config),
+):
+    """Mọi ảnh của video theo thời gian (keyframe + sweep) kèm box, để UI phát liên tục không phải mở từng frame."""
+    items = video_service.playback(store, video_id)
+    if items is None:
+        raise _error(404, "VIDEO_NOT_FOUND", f"Không có video {video_id}")
+    _warm_anonymized(store, items, dataroot, config)
+    return {"video_id": video_id, "items": items}
+
+
+_WARMING: set[str] = set()
+
+
+def _warm_anonymized(store: WorkspaceStore, items: list[dict], dataroot: Path, config: AutoLabelConfig) -> None:
+    """Làm mờ mặt / biển số trước cho mọi ảnh sắp phát (chạy nền theo thứ tự thời gian), để lúc phát lần đầu
+    GET /image không phải làm mờ từng ảnh ngay trong request."""
+    if not config.privacy.enabled:
+        return
+    key = f"{store.root}|{items[0]['frame_id'] if items else ''}"
+    if key in _WARMING:
+        return
+    _WARMING.add(key)
+
+    def run():
+        from src.services.privacy import anonymized_path
+
+        try:
+            cache: dict[str, FrameRecord | None] = {}
+            for it in items:
+                fid = it["frame_id"]
+                if fid not in cache:
+                    cache[fid] = store.load_frame(fid)
+                frame = cache[fid]
+                if frame is None:
+                    continue
+                try:
+                    anonymized_path(store.root, image_path(dataroot, frame, it["offset"], workspace=store.root), config.privacy)
+                except (KeyError, OSError):
+                    continue
+        finally:
+            _WARMING.discard(key)
+
+    threading.Thread(target=run, daemon=True, name="warm-anon").start()
 
 
 @router.post("/videos/upload", response_model=VideoSummary)
@@ -834,6 +1001,70 @@ def corrections(
     frame_id: str | None = None, limit: int = Query(200, ge=1, le=5000), store: WorkspaceStore = Depends(get_store)
 ):
     return store.corrections(frame_id)[-limit:][::-1]
+
+
+# ---- Nhiều người dùng: ai đang mở frame nào, giữ / thả khoá (src/services/users.py) ----
+
+
+def _collab(store: WorkspaceStore):
+    from src.services.users import Collab
+
+    return Collab(store.root)
+
+
+@router.get("/presence")
+def presence(request: Request, store: WorkspaceStore = Depends(get_store)):
+    """Khoá đang giữ (ai mở frame nào), frame giao cho ai, và người đang đăng nhập."""
+    from src.api.auth_routes import current_user
+    from src.services.users import get_user_store
+
+    c = _collab(store)
+    us = get_user_store()
+    name = lambda uid: (us.get(uid).name if us.get(uid) else uid)  # noqa: E731
+    user = current_user(request)
+    return {
+        "me": user.public() if user else None,
+        "locks": {f: {**v, "name": name(v["user_id"])} for f, v in c.locks().items()},
+        "assignments": c.assignments(),
+        "users": {uid: name(uid) for uid in set(c.assignments().values())},
+    }
+
+
+@router.post("/frames/{frame_id}/lock")
+def lock_frame(frame_id: str, request: Request, force: bool = False, store: WorkspaceStore = Depends(get_store)):
+    """Giữ (hoặc gia hạn) khoá frame cho người đang đăng nhập; force=true để lấy lại khoá của người khác."""
+    from src.api.auth_routes import current_user
+    from src.services.users import AuthError
+
+    user = current_user(request)
+    if user is None:
+        return {"locked": False, "reason": "anonymous"}
+    _load(store, frame_id)
+    try:
+        v = _collab(store).acquire(frame_id, user.id, force=force)
+    except AuthError as e:
+        raise _error(e.status, e.code, str(e)) from e
+    return {"locked": True, **v}
+
+
+@router.delete("/frames/{frame_id}/lock")
+def unlock_frame(frame_id: str, request: Request, store: WorkspaceStore = Depends(get_store)):
+    from src.api.auth_routes import current_user
+
+    user = current_user(request)
+    if user is not None:
+        _collab(store).release(frame_id, user.id)
+    return {"locked": False}
+
+
+@router.get("/metrics/tracking")
+def metrics_tracking(store: WorkspaceStore = Depends(get_store)):
+    """HOTA / MOTA / IDF1 (chuẩn TrackEval) của nhãn 2D theo track_id so với nhãn gốc; chỉ scene có GT."""
+    from src.services import trackeval as te
+
+    r = te.evaluate_workspace(store, "2d")
+    o = r["overall"]
+    return {k: o.get(k) for k in ("HOTA", "DetA", "AssA", "MOTA", "IDF1", "IDSW", "FP", "FN", "frames", "num_gt_ids", "num_pred_ids")}
 
 
 @router.get("/metrics")

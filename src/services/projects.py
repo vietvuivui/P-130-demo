@@ -87,6 +87,8 @@ class Project(BaseModel):
     uploads: list[str] = Field(default_factory=list)
     steps: list[ProjectStep] = Field(default_factory=list)
     stats: dict = Field(default_factory=dict)  # frames, scenes, cameras, has_lidar, version, video_id...
+    # Nhiều người dùng: [{user_id, role}] (owner | reviewer | annotator); rỗng = dự án cũ, ai cũng vào được
+    members: list[dict] = Field(default_factory=list)
 
 
 class ProjectError(ValueError):

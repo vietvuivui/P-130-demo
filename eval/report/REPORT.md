@@ -1,6 +1,6 @@
 # Report đánh giá mô hình — AutoLabel 3D
 
-Cập nhật 2026-10-01 · nhóm P-130 · biểu đồ vẽ bằng matplotlib: `python eval/report/make_figures.py`
+Cập nhật 2026-10-03 · nhóm P-130 · biểu đồ: notebook [figures.ipynb](figures.ipynb) (matplotlib, hiện ngay trong notebook)
 
 Report gom mọi mô hình đã thử nghiệm, các chỉ số đánh giá và các phương pháp tối ưu cho hai phần:
 
@@ -25,6 +25,126 @@ So với điểm xuất phát:
 - **3D:** mAP tăng từ 0.578 lên 0.668 (+0.090) so với CenterPoint voxel, mô hình đơn tốt nhất.
 - **2D:** mAP50 tăng từ 0.312 lên 0.366 (+17%) so với YOLOE zero-shot.
 - **Lan truyền 2D:** nhãn đúng tăng 12% và đổi ID giảm 60% so với khi không có optical flow.
+
+## Luồng hệ thống hiện tại: mặc định và tuỳ chọn (cập nhật 2026-10-03)
+
+```
+Dữ liệu vào (video / bộ ảnh / nuScenes / KITTI)
+   │  cắt frame: keyframe 2 Hz + ảnh giữa 10–12 Hz (sweep)
+   ▼
+① Detector 2D ── YOLOE-26-L fine-tune, 1280 px, giữ box score ≥ 0.30
+   │                                   ┌─ ② Detector 3D (dự án có LiDAR): 4 mô hình LiDAR → gộp → tinh chỉnh theo track
+   ▼                                   ▼
+③ Gộp 2D + 3D ── box 3D chiếu xuống ảnh; box chỉ camera thấy bị hạ điểm ×0.5
+   ▼
+④ QA Agent ── confidence · LiDAR · temporal (so với sweep t−2…t+2) · hình học → rủi ro low / medium / high
+   │           + đề xuất RECOVERED_BY_TRACK (nét đứt) cho vật detector sót hoặc thấy mờ
+   ▼
+⑤ Người duyệt ── review by exception: xem box medium / high, duyệt theo lô box low, thêm box (vẽ hoặc bấm ✨ Chọn vật)
+   ▼
+⑥ Lan truyền ── nhãn đã duyệt sang các keyframe sau: optical flow dự đoán + ByteTrack ghép với box YOLO
+   ▼
+⑦ Xuất COCO / nuScenes / KITTI (chỉ frame đã duyệt) · Metrics · TrackEval
+```
+
+| Bước | Mặc định (đang chạy) | Tuỳ chọn (có sẵn, đang tắt hoặc người dùng tự chọn) | Vì sao chọn mặc định này |
+|---|---|---|---|
+| ① Detector 2D | YOLOE-26-L fine-tune nuImages, 1280 px, ngưỡng giữ 0.30 | YOLOE zero-shot (open-vocab, đổi được lớp bằng chữ), YOLO26, YOLO-World, Grounding DINO, Florence-2, gộp nhiều model; chạy 1920 px; lưới ô 2×2 (`yoloe.tiles`); lật ngang (`tta_flip`) | Fine-tune: mAP50 0.312 → 0.366. 1920 kém hơn (0.344). Lưới ô bắt thêm vật nhỏ nhưng box sai +60% (`improve.md`) |
+| ② Detector 3D | Gộp CenterPoint voxel + pillar + SSN + PointPillars, tinh chỉnh theo track | Một mô hình đơn; thêm lật trục (TTA, chậm ~4 lần); mô hình camera FCOS3D / PGD | mAP 0.578 (mô hình đơn tốt nhất) → 0.668 |
+| ③ Gộp 2D + 3D | Bật; ghép khi IoU ≥ 0.4; box chỉ camera thấy ×0.5 | Tắt gộp; không hạ điểm khi box không có điểm LiDAR (`no_lidar_scale`) | Gộp: việc phải sửa 6990 → 3748. Không hạ điểm: box sai gấp đôi |
+| ④ QA temporal | So box keyframe với 4 sweep trực tiếp; đề xuất vật sót (sweep ≥ 0.35) và vật thấy mờ (≥ 0.20, hai bên đều thấy) | Optical flow cho so khớp (`flow`); tính lại score theo sweep (`rescore: mean / linked`); mang nhãn frame trước bằng tracker (`carry_prev`) | Flow / rescore làm lỗi lọt qua duyệt lô tăng. Thấy mờ: bù 108 vật sót thay vì 35 trên held-out, đổi lại 88% đề xuất sai |
+| ⑤ Thêm box | Vẽ box, hoặc ✨ Chọn vật bằng SAM 2.1 ONNX (chạy CPU) | SAM 2.1 PyTorch (GPU); GrabCut khi chưa tải model | ONNX không cần GPU: ~2 s lần đầu mỗi ảnh, ~0.1 s các lần bấm sau |
+| ⑥ Lan truyền 2D: dự đoán | **Optical flow** ở mọi ảnh (luồng "Nhanh") | **DAM4SAM** (luồng "Chính xác", người dùng chọn trên UI, cần GPU); vận tốc không đổi; lai flow + DAM4SAM | Flow: +14% nhãn đúng so với vận tốc. DAM4SAM hơn flow 0.010 HOTA nhưng chậm 3,4 lần |
+| ⑥ Lan truyền 2D: ghép | **ByteTrack** (hai lượt theo score) | BoT-SORT (đi kèm luồng DAM4SAM); OC-SORT (OCR / ORU / OCM); IoU một lượt; không ghép | ByteTrack: box sai −10%. BoT-SORT / OC-SORT không đổi gì đáng kể khi đã có flow |
+| ⑥ Lan truyền 3D | Vận tốc của mô hình + ego pose, giữ track 4 keyframe | OC-SORT cho 3D | Giữ 4 keyframe: nhãn đúng +1.6% |
+| Nhiều người dùng | Tắt (một người, không đăng nhập) | `AUTH_REQUIRED=1`: tài khoản, link mời, vai trò, chia việc, khoá frame | Giữ cách chạy demo một lệnh |
+
+Hai luồng lan truyền 2D người dùng chọn trên giao diện (held-out 20 scene, chi tiết `eval/results/tracking.md`):
+
+| Luồng | Dự đoán | Ghép | HOTA | IDF1 | Nhãn đúng | Box sai | Mất dấu | Thời gian |
+|---|---|---|---|---|---|---|---|---|
+| Nhanh (mặc định) | optical flow | ByteTrack | 0.563 | 0.705 | 3438 | 1161 | 853 | ×1, CPU |
+| Chính xác | DAM4SAM (SAM 2.1, stride 3) | BoT-SORT | 0.573 | 0.725 | 3678 | 1315 | 639 | ×3,4, GPU |
+
+Trong cả hai luồng, YOLO không tham gia bước dự đoán: nó đã chạy từ bước ① và tracker chỉ đọc box của nó để ghép. Box
+ghi ra ở keyframe sau là box YOLO mang ID và lớp của vật đã duyệt.
+
+### Mô tả chi tiết từng bước
+
+**Bài toán và cách tiếp cận.** Xe tự lái cần dữ liệu đã gán nhãn: mỗi ảnh camera và mỗi lần quét LiDAR phải có hộp (box) bao từng
+xe, người, cọc tiêu… kèm tên lớp. Gán tay rất tốn công. AutoLabel 3D để máy gán trước, tự chấm xem box nào đáng ngờ,
+rồi người chỉ xem lại những box đáng ngờ đó ("review by exception") thay vì xem tất cả.
+
+**Thuật ngữ.**
+
+| Thuật ngữ | Nghĩa |
+|---|---|
+| Box 2D / box 3D | Hình chữ nhật trên ảnh / hình hộp trong không gian (có vị trí, kích thước, hướng) bao một vật |
+| LiDAR | Cảm biến quét laser quanh xe, cho ra đám mây điểm 3D; biết chính xác khoảng cách nhưng thưa dần ở xa |
+| Keyframe, sweep | Dữ liệu được ghi ~12 lần / giây. Keyframe là các thời điểm cách nhau 0,5 giây được chọn để gán nhãn; sweep là các ảnh ở giữa, không gán nhãn nhưng dùng làm bằng chứng |
+| Score | Độ tự tin của mô hình với một box, từ 0 đến 1 |
+| IoU | Mức chồng lấn của hai box (0 = rời nhau, 1 = trùng khít); dùng để quyết định hai box có phải cùng một vật |
+| Nhãn gốc (GT) | Nhãn do người của nuScenes gán, dùng làm đáp án để chấm |
+
+**① Detector 2D — tìm vật trên ảnh.** Một mô hình nhận diện (YOLOE-26-L) nhìn từng ảnh và vẽ box quanh vật thuộc 10
+lớp của nuScenes. Mô hình gốc được huấn luyện thêm ("fine-tune") trên bộ ảnh đường phố nuImages để quen với cảnh lái
+xe. Nó chạy trên cả keyframe lẫn 4 sweep quanh mỗi keyframe. Mọi box score ≥ 0.10 được lưu lại, nhưng chỉ box ≥ 0.30
+mới thành nhãn: ngưỡng thấp hơn thì bắt được nhiều vật hơn nhưng người phải xoá nhiều box sai hơn.
+
+**② Detector 3D — tìm vật trong đám mây điểm, rồi "gộp 4 mô hình".** Chỉ chạy khi dữ liệu có LiDAR.
+
+- *Vì sao 4 mô hình.* Mỗi mô hình 3D (CenterPoint voxel, CenterPoint pillar, SSN, PointPillars) chia không gian và học
+  theo cách khác nhau nên sai ở những chỗ khác nhau: cái giỏi xe lớn, cái giỏi vật nhỏ. Hỏi cả bốn rồi lấy ý kiến chung
+  thì chính xác hơn hỏi một.
+- *Gộp thế nào.* Với mỗi keyframe, các box cùng lớp của bốn mô hình có tâm cách nhau dưới một bán kính (xe con 1 m,
+  người 0,5 m, cọc tiêu 0,4 m…) được coi là cùng một vật; mỗi mô hình góp tối đa một box. Box gộp lấy vị trí, kích
+  thước, hướng, vận tốc là trung bình có trọng số theo score. Score mới = score trung bình × tỉ lệ mô hình đồng ý: vật
+  cả 4 mô hình cùng thấy giữ nguyên score, vật chỉ 1 mô hình thấy còn 1/4, nên box "một mình một ý" tự tụt xuống dưới.
+- *Tinh chỉnh theo track.* Một vật thật không đổi kích thước hay quay ngoắt 180° giữa hai keyframe. Nên các box của cùng
+  một vật qua các keyframe được nối thành chuỗi (track), rồi: kích thước lấy trung vị cả chuỗi; hướng bị ngược đầu đuôi
+  thì lật lại theo đa số; vận tốc tính lại từ quãng đường thật; keyframe bị hụt box ở giữa chuỗi thì nội suy thêm.
+- *Kết quả.* mAP (độ chính xác trung bình, thang 0–1) từ 0.578 của mô hình đơn tốt nhất lên 0.668, không phải huấn luyện
+  thêm gì. Giá phải trả là thời gian: chạy bốn mô hình thay vì một.
+
+**③ Gộp 2D + 3D — dùng LiDAR để sửa nhãn trên ảnh.** Box 3D được chiếu xuống ảnh camera thành box 2D. Box của camera
+trùng với box chiếu (IoU ≥ 0.4, cùng lớp) thì lấy box chiếu và score cao hơn trong hai. Box chỉ camera thấy, LiDAR không
+xác nhận, bị nhân score với 0.5, nên phần lớn rơi xuống dưới ngưỡng giữ. Lý do: LiDAR đo được khoảng cách thật nên ít
+"tưởng tượng" ra vật hơn camera. Trên tập test, số box người phải sửa (thừa + sót) giảm từ 6990 xuống 3748.
+
+**④ QA Agent — máy tự chấm box nào đáng ngờ.** Mỗi box đi qua bốn nhóm kiểm tra; mỗi kiểm tra không đạt sinh một mã
+lỗi kèm lời giải thích cho người duyệt:
+
+| Nhóm | Hỏi gì | Mã lỗi |
+|---|---|---|
+| Độ tự tin | Score có thấp không? Mô hình có phân vân giữa hai lớp không? | `LOW_CONFIDENCE`, `CLASS_CONFLICT` |
+| LiDAR | Trong box có điểm LiDAR không? Kích thước box có hợp với khoảng cách đo được không? | `NO_LIDAR_SUPPORT`, `SIZE_DEPTH_MISMATCH` |
+| Thời gian | Vật có xuất hiện lại ở các sweep ngay trước và sau không, hay chỉ loé lên một ảnh? | `FLICKER`, `RECOVERED_BY_TRACK` |
+| Hình học | Box có to bất thường, hay tỉ lệ rộng / cao lạ so với lớp không? | `BOX_TOO_LARGE`, `ASPECT_RATIO_ABNORMAL` |
+
+Bốn nhóm được cộng có trọng số thành một điểm rủi ro 0–1, chia ba mức: **low** (xanh, < 0.30), **medium** (vàng),
+**high** (đỏ, ≥ 0.60). Box có bất kỳ mã lỗi nào thì không bao giờ được xếp low. `RECOVERED_BY_TRACK` là trường hợp
+ngược: detector bỏ sót (hoặc thấy quá mờ) ở keyframe nhưng các sweep hai bên đều thấy, nên máy đề xuất một box nét đứt
+để người xác nhận.
+
+**⑤ Người duyệt.** Hàng đợi xếp frame khó nhất lên đầu. Trong mỗi frame, người duyệt xem box đỏ và vàng (giữ, xoá, đổi
+lớp, sửa box), rồi bấm một nút để duyệt cả nhóm box xanh. Vật máy sót thì vẽ box, hoặc bấm ✨ Chọn vật rồi bấm vào vật:
+mô hình SAM 2.1 tự tách vật ra và tạo box. Frame chỉ được duyệt khi không còn box nào chưa xử lý.
+
+**⑥ Lan truyền nhãn — không phải duyệt lại cùng một vật ở mọi frame.** Một chiếc xe có mặt liên tục vài giây, tức hàng
+chục keyframe. Sau khi người duyệt một keyframe, tracker mang từng nhãn sang các keyframe sau, qua hai bước lặp lại ở
+mỗi ảnh:
+
+- *Dự đoán:* vật này ở ảnh kế tiếp nằm đâu? Mặc định dùng **optical flow**: tính mỗi điểm ảnh dịch đi bao nhiêu giữa
+  hai ảnh liên tiếp rồi dời box theo. Tuỳ chọn **DAM4SAM**: mô hình SAM 2.1 nhớ hình dạng vật và tô lại vật ở ảnh mới.
+- *Ghép:* box dự đoán ứng với box nào detector vừa thấy ở ảnh đó? Mặc định dùng **ByteTrack**: ghép với box score cao
+  trước, box score thấp chỉ dùng cho vật chưa ghép được, để box mờ không "cướp" mất vật rõ.
+
+Nhãn lan truyền mang tag ↦ và một độ tin cậy riêng; vật không ghép được trong 6 ảnh liên tiếp thì ngừng theo dõi. Vật
+người đã xoá cũng được nhớ để tự xoá ở frame sau. Với 3D, vật được dời theo vận tốc mô hình đã đo và chuyển động của
+chính xe thu dữ liệu.
+
+**⑦ Xuất và đo.** Chỉ frame người đã duyệt mới được xuất (COCO, nuScenes, KITTI), kèm nhật ký mọi lần sửa. Từ nhật ký,
+hệ thống tính tỉ lệ nhãn máy phải sửa và thời gian duyệt mỗi frame, tức các số nói lên máy đã đỡ được bao nhiêu công.
 
 ## 1. Giao thức đánh giá và định nghĩa chỉ số
 
@@ -59,7 +179,7 @@ Tham số lấy theo mặc định của bài báo gốc, không dò trên nhãn
 
 Tất cả là trọng số MMDetection3D có sẵn, không train lại và không dùng TTA.
 
-![mAP và NDS của mô hình 3D](figures/fig01_3d_map_nds.png)
+Biểu đồ: [mAP và NDS của mô hình 3D](figures.ipynb) (mục 1 trong notebook).
 
 | Mô hình | Cảm biến | mAP | NDS | mATE (m) | mASE | mAOE (rad) | mAVE (m/s) | P | R | F1 | F1 tốt nhất (ngưỡng) | s / keyframe | VRAM |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -92,9 +212,9 @@ Nhận xét:
   track bù lại recall (0.788 → 0.809) và giảm sai số hướng (0.274 → 0.220 rad).
 - **Thêm 2 mô hình camera** tăng precision nhưng giảm mạnh recall, mAP giảm từ 0.668 xuống 0.662, và chậm gấp 3 lần.
 
-![Đánh đổi tốc độ – độ chính xác](figures/fig02_3d_speed_accuracy.png)
+Biểu đồ: [Đánh đổi tốc độ – độ chính xác](figures.ipynb) (mục 2 trong notebook).
 
-![Precision / Recall / F1 3D](figures/fig03_3d_precision_recall.png)
+Biểu đồ: [Precision / Recall / F1 3D](figures.ipynb) (mục 3 trong notebook).
 
 **AP từng lớp** (test 24 scene):
 
@@ -111,7 +231,7 @@ Nhận xét:
 | **Gộp 4 LiDAR + track (mặc định)** | **0.886** | **0.587** | 0.803 | **0.620** | **0.473** | 0.900 | 0.555 | 0.561 | 0.802 | 0.495 |
 | Gộp 4 LiDAR + 2 camera + track | 0.886 | 0.572 | **0.812** | 0.470 | 0.468 | **0.903** | **0.593** | **0.582** | **0.834** | **0.503** |
 
-![AP từng lớp 3D](figures/fig04_3d_ap_per_class.png)
+Biểu đồ: [AP từng lớp 3D](figures.ipynb) (mục 4 trong notebook).
 
 **Precision / recall từng lớp ở score ≥ 0.3** (test 20 scene):
 
@@ -127,7 +247,7 @@ cone, ensemble đổi recall lấy precision ở cùng ngưỡng score.
 
 ## 3. Detector 2D
 
-![Chọn detector 2D và fine-tune](figures/fig05_2d_detector.png)
+Biểu đồ: [Chọn detector 2D và fine-tune](figures.ipynb) (mục 5 trong notebook).
 
 | Detector | Tập | mAP50 | mAP70 | P | R | F1 | Thời gian / ảnh (1280 px) |
 |---|---|---|---|---|---|---|---|
@@ -146,7 +266,7 @@ Ghi chú:
   val (mAP50 0.509). Linear probe chỉ học lại đầu phân lớp, nên kiến trúc và tốc độ không đổi.
 - **Thời gian zero-shot trên GPU:** lần chấm đó đọc từ cache detection nên không có số riêng.
 
-![AP50 từng lớp 2D](figures/fig06_2d_ap_per_class.png)
+Biểu đồ: [AP50 từng lớp 2D](figures.ipynb) (mục 6 trong notebook).
 
 | Lớp | barrier | bicycle | bus | car | constr. | motorcycle | pedestrian | traffic cone | trailer | truck |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -187,7 +307,7 @@ Pipeline với model fine-tune chưa được chạy lại (xem mục 9).
 
 QA Agent chấm rủi ro cho từng box. Box rủi ro thấp được duyệt theo lô, còn người duyệt chỉ xem kỹ các box bị gắn cờ.
 
-![QA Agent](figures/fig10_qa_agent.png)
+Biểu đồ: [QA Agent](figures.ipynb) (mục 10 trong notebook).
 
 **QA 3D: kiểm chứng box bằng camera** (dev 3 scene, mỗi mô hình dùng ngưỡng điểm riêng):
 
@@ -221,12 +341,15 @@ xem tay từ 1707 xuống 648 nhưng làm sót thêm vật, nên chỉ để là
 
 ## 5. Lan truyền nhãn 2D: optical flow × ByteTrack × OC-SORT
 
+Bản đầy đủ hơn, gồm BoT-SORT, DAM4SAM, TrackEval (HOTA / IDF1) và vai trò từng thuật toán trong mỗi tổ hợp:
+[eval/results/tracking.md](../results/tracking.md). Mục này giữ số liệu đợt đo đầu (detector zero-shot).
+
 Test 20 scene, 154 lần lan truyền, dùng chung detection zero-shot. Chỉ đếm những box sản phẩm thật sự ghi ra.
 
 - P = đúng / box ghi ra.
 - R = đúng / (đúng + thiếu).
 
-![Lan truyền 2D](figures/fig07_2d_tracker.png)
+Biểu đồ: [Lan truyền 2D](figures.ipynb) (mục 7 trong notebook).
 
 | Optical flow | Ghép detection | Đúng | Sai | Đổi ID | Thiếu | P | R | F1 | Điểm |
 |---|---|---|---|---|---|---|---|---|---|
@@ -255,7 +378,7 @@ này chỉ dùng dự đoán có sẵn, không chạy lại mô hình.
 - P = tỉ lệ box đúng vật.
 - R = tỉ lệ vật còn trong tầm có nhãn lan truyền đúng.
 
-![Lan truyền 3D](figures/fig08_3d_propagation.png)
+Biểu đồ: [Lan truyền 3D](figures.ipynb) (mục 8 trong notebook).
 
 | Cấu hình (test 24 scene) | Box ghi ra | Đúng | Sai | Đổi ID | P | R | F1 | Sai số tâm | Điểm dev |
 |---|---|---|---|---|---|---|---|---|---|
@@ -281,7 +404,7 @@ có thể bật ở tab ⚙ Cài đặt.
 
 ## 7. Lịch sử tối ưu
 
-![Lịch sử tối ưu](figures/fig09_optimization_history.png)
+Biểu đồ: [Lịch sử tối ưu](figures.ipynb) (mục 9 trong notebook).
 
 | # | Phương pháp | Phần | Chỉ số quyết định | Trước | Sau | Thời gian thêm | Dùng? |
 |---|---|---|---|---|---|---|---|
@@ -307,7 +430,7 @@ có thể bật ở tab ⚙ Cài đặt.
 
 ## 8. Thời gian suy luận
 
-![Thời gian suy luận](figures/fig11_inference_time.png)
+Biểu đồ: [Thời gian suy luận](figures.ipynb) (mục 11 trong notebook).
 
 | Bước | GPU laptop (RTX 4050) | CPU |
 |---|---|---|

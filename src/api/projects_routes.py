@@ -9,7 +9,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from src.config import get_settings
@@ -34,12 +34,20 @@ def _get(pid: str) -> Project:
 
 
 @projects_router.get("", response_model=list[Project])
-def list_projects():
-    return get_manager().list()
+def list_projects(request: Request):
+    """Đã đăng nhập: chỉ dự án mình là thành viên (hoặc dự án chưa có thành viên); admin thấy hết."""
+    from src.api.auth_routes import current_user
+
+    user = current_user(request)
+    projects = get_manager().list()
+    if user is None or user.admin:
+        return projects
+    return [p for p in projects if not p.members or any(m.get("user_id") == user.id for m in p.members)]
 
 
 @projects_router.post("", response_model=Project)
 def create_project(
+    request: Request,
     files: list[UploadFile] = File(...),
     name: str = Form(""),
     kind: str = Form("auto"),
@@ -67,6 +75,12 @@ def create_project(
         m = get_manager()
         opts = ProjectOptions(tta=tta, sequential=sequential, max_frames=max_frames or None)
         project = m.create(name or Path(saved[0].name).stem, saved, kind, opts)
+        from src.api.auth_routes import current_user
+
+        user = current_user(request)
+        if user is not None:  # người tạo là owner của dự án (mời người, chia việc)
+            project.members = [{"user_id": user.id, "role": "owner"}]
+            m.save(project)
         return m.enqueue(project.id)
     except ProjectError as e:
         raise _err(e) from e

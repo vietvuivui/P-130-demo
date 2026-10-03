@@ -24,6 +24,13 @@ VARIANTS = {
     "low": dict(flow=False, rescore="off", sweep_min_score=0.1),
     "low+mean": dict(flow=False, rescore="mean", sweep_min_score=0.1),
     "low+flow+mean": dict(flow=True, rescore="mean", sweep_min_score=0.1),
+    # Cải thiện 10/2026 (eval/results/improve.md): "base" = mặc định hiện tại (đã có recover_weak 0.2)
+    "noweak": dict(flow=False, rescore="off", overrides={"qa.temporal.recover_weak_min_score": None}),  # trước 02/10
+    "weak": dict(flow=False, rescore="off", overrides={"qa.temporal.recover_weak_min_score": 0.2}),
+    "carry": dict(flow=False, rescore="off", overrides={"qa.temporal.recover_weak_min_score": 0.2,
+                                                        "qa.temporal.carry_prev": True}),  # fmt: skip
+    "carry-only": dict(flow=False, rescore="off", overrides={"qa.temporal.recover_weak_min_score": None,
+                                                             "qa.temporal.carry_prev": True}),  # fmt: skip
 }
 # Mặc định chỉ chạy 5 cấu hình chính (nút trên web); "low*" = nhận cả box sweep score ≥ 0.1 làm bằng chứng (kiểu
 # ByteTrack) — đã đo, làm lỗi lọt qua tăng (report.md mục 5), chạy thêm bằng --variants nếu cần.
@@ -34,6 +41,8 @@ PROP_MODES = {
     "missing": ("missing", "single"),
     "always": ("always", "single"),
     "always+byte": ("always", "byte"),
+    "always+botsort": ("always", "botsort"),
+    "off+botsort": ("off", "botsort"),  # BoT-SORT thuần: GMC thay flow + ngoại hình
 }
 
 
@@ -64,6 +73,7 @@ def metrics_2d(store) -> dict:
         "fn_recovered": qa["fn_recovered_by_track"],
         "track_proposals": qa["track_proposals"],
         "track_precision": qa["track_proposal_precision"],
+        "ap50_small": m50.get("ap_small"),
         "s_per_frame": round(float(np.mean(times)), 3) if times else None,
     }
 
@@ -85,6 +95,12 @@ def run_variant(name: str, opts: dict, data, base_ws: Path, out_ws: Path, config
     cfg.qa.temporal.flow = opts["flow"]
     cfg.qa.temporal.rescore = opts["rescore"]
     cfg.qa.temporal.sweep_min_score = opts.get("sweep_min_score")
+    for key, value in opts.get("overrides", {}).items():  # "a.b.c": v
+        node = cfg
+        *path, last = key.split(".")
+        for part in path:
+            node = getattr(node, part)
+        setattr(node, last, value)
     store = WorkspaceStore(out_ws)
     keys = sorted(
         (f.scene, f.index, f.sample_token)
@@ -140,7 +156,7 @@ def gt_frames(store) -> int:
 
 
 def evaluate(data, base_ws: Path, out_dir: Path, config, variants=None, scenes=None,
-             progress: Callable[[float, str], None] = lambda p, m: None) -> dict:  # fmt: skip
+             progress: Callable[[float, str], None] = lambda p, m: None, propagation: bool = True) -> dict:  # fmt: skip
     """Chạy mọi cấu hình 2D + lan truyền; ghi out_dir/temporal_eval.json; xoá workspace tạm."""
     from src.services.store import WorkspaceStore
 
@@ -154,10 +170,11 @@ def evaluate(data, base_ws: Path, out_dir: Path, config, variants=None, scenes=N
             progress(i / steps, f"2D: {name} ({i + 1}/{len(variants)})")
             result["variants"][name] = run_variant(name, VARIANTS[name], data, base_ws, out_dir / f"ws_{name}", config,
                                                    scenes)  # fmt: skip
-        progress(len(variants) / steps, "Lan truyền nhãn: off / missing / always")
-        if "base" not in variants:
-            run_variant("base", VARIANTS["base"], data, base_ws, out_dir / "ws_base", config, scenes)
-        result["propagation"] = run_propagation(data, out_dir / "ws_base", config, scenes)
+        if propagation:
+            progress(len(variants) / steps, "Lan truyền nhãn: off / missing / always")
+            if "base" not in variants:
+                run_variant("base", VARIANTS["base"], data, base_ws, out_dir / "ws_base", config, scenes)
+            result["propagation"] = run_propagation(data, out_dir / "ws_base", config, scenes)
     finally:
         for name in set(variants) | {"base"}:
             shutil.rmtree(out_dir / f"ws_{name}", ignore_errors=True)
@@ -171,8 +188,11 @@ def summary_rows(result: dict) -> dict:
     rows2d = []
     for name, v in result.get("variants", {}).items():
         low = round(v["objects"] * (v["low_risk_share"] or 0))
+        props = v.get("track_proposals") or 0
         rows2d.append({"name": name, "mAP50": v["mAP50"], "f1": v["f1"], "review": v["objects"] - low,
                        "slip": round(low * (v["low_risk_error_rate"] or 0)), "fn": v["fn"], "fp": v["fp"],
+                       "proposals": props, "proposals_ok": round(props * (v.get("track_precision") or 0)),
+                       "fn_recovered": v.get("fn_recovered") or 0,
                        "s_per_frame": v["s_per_frame"], "frames": v["frames"]})  # fmt: skip
     rows_prop = [{"mode": m, **{k: v[k] for k in ("correct", "outputs", "correct_rate", "id_switch", "lost", "mean_iou",
                                                   "seconds", "tracks_started")}}
@@ -184,13 +204,16 @@ def print_summary(result: dict) -> None:
     """Bảng ngắn: 2D (mAP, việc của người) và lan truyền, để đọc ngay trên terminal."""
     print("\n== 2D: cùng detection, khác xử lý sau detector ==")
     print(
-        f"{'cấu hình':<12} {'mAP50':>6} {'F1':>6} {'xem tay':>8} {'lọt lô':>7} {'vẽ thêm':>8} {'box sai':>8} {'s/frame':>8}"
+        f"{'cấu hình':<12} {'mAP50':>6} {'F1':>6} {'xem tay':>8} {'lọt lô':>7} {'vẽ thêm':>8} {'box sai':>8} "
+        f"{'đề xuất':>8} {'đúng':>5} {'bù sót':>7} {'s/frame':>8}"
     )
     rows = summary_rows(result)
     for r in rows["rows2d"]:
         print(f"{r['name']:<12} {r['mAP50'] or 0:>6.3f} {r['f1'] or 0:>6.3f} {r['review']:>8} {r['slip']:>7} "
-              f"{r['fn']:>8} {r['fp']:>8} {r['s_per_frame'] or 0:>8.2f}")  # fmt: skip
-    print("xem tay = box medium/high; lọt lô = box sai nằm trong nhóm low (duyệt theo lô); vẽ thêm = GT bị sót")
+              f"{r['fn']:>8} {r['fp']:>8} {r['proposals']:>8} {r['proposals_ok']:>5} {r['fn_recovered']:>7} "
+              f"{r['s_per_frame'] or 0:>8.2f}")  # fmt: skip
+    print("xem tay = box medium/high; lọt lô = box sai nằm trong nhóm low (duyệt theo lô); vẽ thêm = GT bị sót (chưa trừ "
+          "đề xuất); đề xuất = box RECOVERED_BY_TRACK nét đứt, đúng = trùng một GT, bù sót = trùng GT mà detector sót")
     print("\n== Lan truyền nhãn (GT keyframe 0, 5, 10… làm nhãn người; tối đa 10 keyframe) ==")
     print(f"{'flow':<8} {'đúng':>6} {'box ra':>7} {'tỉ lệ':>6} {'đổi ID':>7} {'mất dấu':>8} {'IoU TB':>7} {'giây':>6}")
     for v in rows["propagation"]:

@@ -25,7 +25,8 @@ const DEFAULT_SIZE = {
   bicycle: [0.6, 1.7, 1.3], traffic_cone: [0.41, 0.41, 1.07], barrier: [2.5, 0.5, 0.98],
 };
 const EDIT_HEX = 0x22d3ee, EDIT_CSS = '#22d3ee';
-const HINT = 'Kéo chuột trái: xoay · lăn chuột: zoom · chuột phải: di chuyển · bấm vào box để chọn';
+const OCC_DASH = 0.5, VIS_DASH = 0.4; // ngưỡng vẽ nét đứt trên ảnh camera: bị che >= 50% hoặc < 40% box nằm trong ảnh
+const HINT = 'Kéo chuột trái: xoay · lăn chuột: zoom · chuột phải: di chuyển · bấm vào box (ở đây hoặc trên ảnh camera) để chọn';
 
 const T = {
   active: false, models: [], model: null, queue: [], sort: 'risk', frame: null, points: null, gt: [],
@@ -393,6 +394,14 @@ function drawCamera() {
     ctx.stroke();
   };
   if (T.showGt) for (const g of T.gt) drawBox(g, 'rgba(226,232,240,.8)', 1, true);
+  // Box bị che >= 50% hoặc nằm ngoài ảnh > 60% trên camera này: nét đứt (vật không thấy rõ ở đây, chỉ là hình chiếu)
+  const hidden = (o) => {
+    const v = o.verify;
+    if (!v) return false;
+    const occ = v.occlusion_by_cam?.[T.cam] ?? (v.camera === T.cam ? v.occlusion : null);
+    const vis = v.visible_by_cam?.[T.cam] ?? (v.camera === T.cam ? v.visible : projVisible(o.box, cam));
+    return (occ != null && occ >= OCC_DASH) || (vis != null && vis < VIS_DASH);
+  };
   let selObj = null;
   for (const o of f.objects) {
     if (o.review.status === 'deleted' || o.object_id === T.edit?.oid) continue;
@@ -400,15 +409,15 @@ function drawCamera() {
     if (o.object_id === T.selected) { selObj = o; continue; }
     if (!T.showLow && levelOf(o) === 'low' && o.review.status === 'pending') continue;
     if (o.source !== 'human' && o.score < T.minScore && o.object_id !== T.selected) continue;
-    drawBox(o.box, CSS_COLOR[stateColor(o)], 1.5, false);
+    drawBox(o.box, CSS_COLOR[stateColor(o)], hidden(o) ? 1.2 : 1.5, hidden(o));
   }
   if (T.edit) {
     drawBox(T.edit.box, EDIT_CSS, 2.5 * 1.2, false);
     return;
   }
-  if (selObj && selObj.source === 'human') { drawBox(selObj.box, '#ffffff', 3, false); return; }
+  if (selObj && selObj.source === 'human') { drawBox(selObj.box, '#ffffff', 3, hidden(selObj)); return; }
   if (selObj) {
-    drawBox(selObj.box, '#ffffff', 3, false);
+    drawBox(selObj.box, '#ffffff', 3, hidden(selObj));
     const v = selObj.verify;
     if (v.det_bbox && v.det_camera === T.cam) { // box 2D của detector đã khớp
       const [x1, y1, x2, y2] = v.det_bbox;
@@ -418,13 +427,85 @@ function drawCamera() {
     const b = v.bbox2d[T.cam];
     ctx.setLineDash([]);
     ctx.font = `${12 * dpr}px system-ui`;
-    const label = `#${selObj.object_id} ${finalLabel(selObj)}${v.det_label && v.det_camera === T.cam ? ` · 2D: ${v.det_label} ${v.det_score?.toFixed(2)}` : ''}`;
+    const occ = v.occlusion_by_cam?.[T.cam] ?? (v.camera === T.cam ? v.occlusion : null);
+    const vis = v.visible_by_cam?.[T.cam] ?? (v.camera === T.cam ? v.visible : null);
+    const hid = occ != null && occ >= OCC_DASH ? ` · che ${Math.round(occ * 100)}%` : vis != null && vis < VIS_DASH ? ` · ngoài ảnh ${Math.round((1 - vis) * 100)}%` : '';
+    const label = `#${selObj.object_id} ${finalLabel(selObj)}${v.det_label && v.det_camera === T.cam ? ` · 2D: ${v.det_label} ${v.det_score?.toFixed(2)}` : ''}${hid}`;
     const tw = ctx.measureText(label).width + 8 * dpr;
     ctx.fillStyle = 'rgba(15,23,42,.85)';
     ctx.fillRect(ox + b[0] * s, Math.max(0, oy + b[1] * s - 18 * dpr), tw, 17 * dpr);
     ctx.fillStyle = '#fff';
     ctx.fillText(label, ox + b[0] * s + 4 * dpr, Math.max(13 * dpr, oy + b[1] * s - 5 * dpr));
   }
+}
+
+// ---------------------------------------------------------------- bấm box trên ảnh camera -> chọn box trong 3D
+// Vùng bấm của một box trên camera đang xem: hình chữ nhật bao 8 đỉnh chiếu xuống ảnh (pixel ảnh gốc)
+function camRect(o, cam) {
+  const b = o.verify?.bbox2d?.[T.cam];
+  if (b) return b;
+  const q = corners(o.box).map((p) => project(cam.intrinsic, cam.cam_from_lidar, p));
+  if (q.some((p) => p[2] < 0.1)) return null; // box cắt qua mặt phẳng camera: không bấm được trên ảnh này
+  const px = q.map((p) => toPixel(cam.intrinsic, p));
+  const xs = px.map((p) => p[0]), ys = px.map((p) => p[1]);
+  const r = [Math.max(0, Math.min(...xs)), Math.max(0, Math.min(...ys)), Math.min(cam.width, Math.max(...xs)), Math.min(cam.height, Math.max(...ys))];
+  return r[2] > r[0] && r[3] > r[1] ? r : null;
+}
+
+// Các box đang vẽ trên ảnh nằm dưới con trỏ, box nhỏ nhất trước (box nhỏ nằm trong box lớn vẫn bấm trúng)
+function camPick(ev) {
+  const cam = T.frame?.cameras[T.cam];
+  if (!cam || T.edit) return [];
+  const r = $('m3-cam-canvas').getBoundingClientRect();
+  const s = Math.min(r.width / cam.width, r.height / cam.height);
+  const u = (ev.clientX - r.left - (r.width - cam.width * s) / 2) / s;
+  const v = (ev.clientY - r.top - (r.height - cam.height * s) / 2) / s;
+  const pad = 4 / s;
+  const hits = [];
+  for (const o of T.frame.objects) {
+    if (o.review.status === 'deleted') continue;
+    if (o.object_id !== T.selected) { // cùng điều kiện ẩn / hiện với drawCamera
+      if (!T.showLow && levelOf(o) === 'low' && o.review.status === 'pending') continue;
+      if (o.source !== 'human' && o.score < T.minScore) continue;
+    }
+    if (o.source !== 'human' && !o.verify?.bbox2d?.[T.cam]) continue;
+    const b = camRect(o, cam);
+    if (!b || u < b[0] - pad || u > b[2] + pad || v < b[1] - pad || v > b[3] + pad) continue;
+    hits.push({ o, area: (b[2] - b[0]) * (b[3] - b[1]) });
+  }
+  return hits.sort((a, b) => a.area - b.area).map((h) => h.o);
+}
+
+// Đưa khung nhìn 3D / BEV tới box: tâm xoay đặt vào box, giữ nguyên hướng nhìn, kéo lại gần nếu đang ở xa
+function focusBox(o) {
+  const cam = V.controls.object;
+  const c = new THREE.Vector3(o.box.center[0], o.box.center[1], T.bev ? 0 : o.box.center[2]);
+  const off = cam.position.clone().sub(V.controls.target);
+  if (!T.bev && off.length() > 30) off.setLength(30);
+  V.controls.target.copy(c);
+  cam.position.copy(c).add(off);
+  V.controls.update();
+}
+
+function onCamClick(ev) {
+  const hits = camPick(ev);
+  if (!hits.length) return;
+  // bấm lại cùng chỗ: chuyển sang box chồng phía sau
+  const o = hits[(hits.findIndex((h) => h.object_id === T.selected) + 1) % hits.length];
+  select(o.object_id, false, true);
+  focusBox(o);
+}
+
+// Phần hình chiếu của box nằm trong ảnh (0..1), tính tại chỗ cho dữ liệu cũ chưa có visible_by_cam
+function projVisible(box, cam) {
+  const q = corners(box).map((p) => project(cam.intrinsic, cam.cam_from_lidar, p));
+  if (q.some((p) => p[2] < 0.1)) return null;
+  const px = q.map((p) => toPixel(cam.intrinsic, p));
+  const xs = px.map((p) => p[0]), ys = px.map((p) => p[1]);
+  const x1 = Math.min(...xs), y1 = Math.min(...ys), x2 = Math.max(...xs), y2 = Math.max(...ys);
+  const full = (x2 - x1) * (y2 - y1);
+  const cx1 = Math.max(0, x1), cy1 = Math.max(0, y1), cx2 = Math.min(cam.width, x2), cy2 = Math.min(cam.height, y2);
+  return full > 0 ? Math.max(0, cx2 - cx1) * Math.max(0, cy2 - cy1) / full : null;
 }
 
 function setCam(c) {
@@ -876,20 +957,25 @@ function renderAll() {
 function card(o) {
   const v = o.verify || {};
   const lv = levelOf(o);
+  const sel = o.object_id === T.selected;
   const opts = T.classes.map((c) => `<option value="${c}" ${c === finalLabel(o) ? 'selected' : ''}>${c}</option>`).join('');
-  return `<div class="obj-card ${lv} ${o.object_id === T.selected ? 'selected' : ''}" data-oid="${esc(o.object_id)}">
-    <div class="oc-title"><span>${esc(finalLabel(o))} <span class="oid">#${esc(o.object_id)}</span></span>
-      <span class="verdict ${lv}">${esc(VERDICT_VI[v.verdict] || v.verdict || '')}</span></div>
-    ${o.propagation ? `<div class="oc-stats prop-note">↦ lan truyền từ ${esc(o.propagation.keyframe_id)} (#${esc(o.propagation.keyframe_object_id)}) · lệch ${o.propagation.distance_m} m · lớp và kích thước theo người duyệt</div>` : ''}
-    <div class="oc-stats">score ${o.score.toFixed(2)} · ${v.distance_m ?? '?'} m · ${v.lidar_points ?? 0} điểm LiDAR${v.camera ? ` · ${esc(v.camera.replace('CAM_', ''))}` : ''}${v.occlusion != null ? ` · che ${Math.round(v.occlusion * 100)}%` : ''}</div>
-    <div class="m3-comment">${esc(v.comment || '')}</div>
-    <div class="oc-actions">
-      <button class="btn btn-keep btn-sm" data-act="KEEP">✓ Keep</button>
-      <button class="btn btn-del btn-sm" data-act="DELETE">🗑 Delete</button>
-      <select data-class>${opts}</select>
-      <button class="btn btn-class btn-sm" data-act="CHANGE_CLASS">Đổi lớp</button>
-      <button class="btn btn-ghost btn-sm" data-act="EDIT" title="Sửa vị trí / kích thước / hướng box (E)">✎ Sửa box</button>
+  const facts = [`<span title="Score mô hình">${o.score.toFixed(2)}</span>`, `<span title="Khoảng cách">${v.distance_m ?? '?'} m</span>`, `<span title="Điểm LiDAR trong box">${v.lidar_points ?? 0} pt</span>`];
+  if (v.camera) facts.push(`<span title="Camera thấy rõ nhất${v.occlusion != null ? `, bị che ${Math.round(v.occlusion * 100)}%` : ''}">${esc(v.camera.replace('CAM_', '').replace('_', '-').toLowerCase())}${v.occlusion >= 0.3 ? ` che ${Math.round(v.occlusion * 100)}%` : ''}</span>`);
+  if (v.det_label) facts.push(`<span title="Detector 2D thấy ở vị trí đó">2D ${esc(v.det_label)} ${v.det_score?.toFixed(2) ?? ''}</span>`);
+  if (o.propagation) facts.push(`<span class="prop-note" title="Lan truyền từ ${esc(o.propagation.keyframe_id)} (#${esc(o.propagation.keyframe_object_id)}), lệch ${o.propagation.distance_m} m; lớp và kích thước theo người duyệt">↦ ${o.propagation.distance_m} m</span>`);
+  return `<div class="obj-card ${lv} ${sel ? 'selected' : ''}" data-oid="${esc(o.object_id)}">
+    <div class="oc-row">
+      <span class="oid">#${esc(o.object_id)}</span>
+      <select data-class class="card-select" title="Đổi lớp (phím C)">${opts}</select>
+      <span class="verdict ${lv}" title="${esc(v.comment || '')}">${esc(VERDICT_VI[v.verdict] || v.verdict || '')}</span>
+      <span class="oc-btns">
+        <button class="ib keep" data-act="KEEP" title="Giữ (K)">✓</button>
+        <button class="ib del" data-act="DELETE" title="Xoá (D)">✕</button>
+        <button class="ib" data-act="EDIT" title="Sửa vị trí / kích thước / hướng (E)">✎</button>
+      </span>
     </div>
+    <div class="oc-row oc-meta">${facts.join('<i>·</i>')}</div>
+    ${sel && v.comment ? `<div class="m3-comment">${esc(v.comment)}</div>` : ''}
   </div>`;
 }
 
@@ -932,10 +1018,10 @@ function renderReview() {
   btn.innerHTML = f?.status === 'approved' ? 'Mở lại để sửa' : 'Approve frame <kbd>Enter</kbd>';
 }
 
-function select(oid, fromViewer = false) {
+function select(oid, fromViewer = false, keepCam = false) {
   T.selected = oid;
   const o = T.frame?.objects.find((x) => x.object_id === oid);
-  if (o?.verify?.camera && (fromViewer || o.verify.bbox2d?.[T.cam] == null || true)) T.cam = o.verify.camera;
+  if (!keepCam && o?.verify?.camera && (fromViewer || o.verify.bbox2d?.[T.cam] == null || true)) T.cam = o.verify.camera;
   renderAll();
   document.querySelector(`#tab-review3d .obj-card[data-oid="${CSS.escape(oid)}"]`)?.scrollIntoView({ block: 'nearest' });
 }
@@ -1094,6 +1180,9 @@ function bind() {
   $('m3-color').addEventListener('change', (e) => { T.color = e.target.value; storage.set('color', T.color); buildPoints(); });
   $('m3-view-3d').addEventListener('click', () => setView(false));
   $('m3-view-bev').addEventListener('click', () => setView(true));
+  $('m3-cam-canvas').addEventListener('click', onCamClick);
+  $('m3-cam-canvas').addEventListener('pointermove', (e) => { e.currentTarget.style.cursor = camPick(e).length ? 'pointer' : ''; });
+  $('m3-cam-canvas').title = 'Bấm vào box trên ảnh để chọn và đưa khung 3D tới box đó · bấm lại để chọn box chồng phía sau';
   $('m3-cam-strip').addEventListener('click', (e) => { const t = e.target.closest('[data-cam]'); if (t) setCam(t.dataset.cam); });
   $('m3-toggle-low').addEventListener('click', () => {
     const l = $('m3-list-low'); l.classList.toggle('collapsed');
@@ -1127,6 +1216,10 @@ function bind() {
       const label = btn.dataset.act === 'CHANGE_CLASS' ? row.querySelector('[data-class]').value : undefined;
       act(btn.dataset.act, row.dataset.oid, label);
     } else if (row && !e.target.closest('select') && !T.edit) select(row.dataset.oid);
+  });
+  panel.addEventListener('change', (e) => {
+    const row = e.target.closest('[data-oid]');
+    if (row && e.target.matches('[data-class]')) act('CHANGE_CLASS', row.dataset.oid, e.target.value);
   });
   $('m3-edit').addEventListener('input', onEditInput);
   $('m3-draw').addEventListener('click', toggleDraw);

@@ -1466,3 +1466,21 @@ a {
   to { transform: rotate(360deg); }
 }
 
+
+
+/* ---------- Trang Dự án: khung Thành viên (mời theo link, vai trò, chia việc) ---------- */
+.pj-user { gap: 8px; cursor: default; }
+.pj-user a.user-name { text-decoration: none; color: inherit; }
+.pj-team { margin-top: 12px; padding: 12px 14px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; display: grid; gap: 10px; font-size: 13px; }
+.pj-team-table { width: 100%; border-collapse: collapse; }
+.pj-team-table th { text-align: left; font-size: 12px; font-weight: 600; color: #64748b; padding: 4px 6px; border-bottom: 1px solid #e2e8f0; }
+.pj-team-table td { padding: 6px; border-bottom: 1px solid #eef2f7; vertical-align: middle; }
+.pj-team-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.pj-team-table select.form-control { width: auto; padding: 4px 8px; }
+.pj-team-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pj-invite { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.pj-invite input[type=email] { flex: 1 1 220px; width: auto; }
+.pj-invite select.form-control { width: auto; }
+.pj-invite-link { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.pj-invite-link input { flex: 1 1 320px; width: auto; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+.pj-team .linklike { background: none; border: none; padding: 0; color: #1677ff; cursor: pointer; font: inherit; }

@@ -1,6 +1,6 @@
 # Eval evidence — test case thủ công với output thực tế
 
-Ngày chạy: 2026-10-01. Mỗi test case ghi: mục tiêu, bước làm trên UI, lời gọi API tương đương (UI gọi đúng API này),
+Ngày chạy: 2026-10-01 (TC-01 → TC-11), 2026-10-02 (TC-12 → TC-14). Mỗi test case ghi: mục tiêu, bước làm trên UI, lời gọi API tương đương (UI gọi đúng API này),
 kết quả mong đợi, **output thực tế** (chép nguyên từ lần chạy), và kết luận.
 
 **Dữ liệu:** workspace `data/eval_temporal/ws_dev`, gồm 3 scene nuScenes (scene-0035, scene-0097, scene-0101) với 119
@@ -13,6 +13,8 @@ keyframe CAM_FRONT. Nhãn máy do YOLOE-26-L zero-shot + QA Agent sinh ra.
   trên UI và gọi API cho ra cùng một kết quả.
 - **TC-08 → TC-10:** dùng lệnh đánh giá trên tập test, so với nhãn gốc nuScenes.
 - **TC-11:** một lỗi đã tìm ra khi kiểm thử thủ công.
+- **TC-12, TC-13:** chạy trên workspace demo (`python -m src.demo`, clip dashcam 2560×1440 tải lên), máy không có GPU.
+- **TC-14:** `scripts\tasks.ps1 trackall` trên RTX 4050.
 
 | TC | Chức năng | Kết quả |
 |---|---|---|
@@ -27,6 +29,9 @@ keyframe CAM_FRONT. Nhãn máy do YOLOE-26-L zero-shot + QA Agent sinh ra.
 | TC-09 | Lan truyền nhãn 2D qua các keyframe sau | ✅ Đạt (77% box ghi ra đúng vật) |
 | TC-10 | Auto-label 3D trên tập test | ✅ Đạt (mAP 0.668 / NDS 0.713) |
 | TC-11 | Kiểm tra temporal với vật ở gần đang chạy nhanh qua ảnh | ⚠️ Lỗi đã biết |
+| TC-12 | Chọn vật: bấm điểm / kéo khung thô, SAM 2.1 ONNX trả mask + box | ✅ Đạt (bấm trúng một chi tiết thì chỉ ra chi tiết đó) |
+| TC-13 | Nhiều người dùng: bắt đăng nhập, khoá frame đang mở | ✅ Đạt |
+| TC-14 | So sánh tracker bằng TrackEval | ✅ Đạt (held-out: HOTA 0.563 mặc định, 0.573 với DAM4SAM + BoT-SORT) |
 
 ---
 
@@ -235,3 +240,66 @@ t+2 (+150 ms)  ghép với [1435, 533, 1525, 750] score 0.72; cone [1500, 641, 1
   - Bật optical flow cho QA temporal (đã có, IoU trung bình ở t±2 tăng từ 0.58 lên 0.83). Nhưng trên 20 scene test,
     lỗi lọt qua duyệt theo lô lại tăng (1632 → 2082), nên hiện để tắt.
   - Hoặc ghép theo chuỗi t → t±1 → t±2 với vận tốc không đổi. Việc này chưa làm.
+
+## TC-12 · Chọn vật bằng SAM 2.1 (bấm điểm / kéo khung thô)
+
+- **Bước trên UI:** mở frame `vid-dash3s-18b2fe_004` → `✨ Chọn vật` (`M`) → bấm vào thân xe tải, hoặc kéo một khung
+  thô quanh xe → *Lưu box*.
+- **API tương đương:** `POST /api/v1/frames/{id}/segment` với `{"points": [[x, y]]}` hoặc `{"points": [], "box": [...]}`.
+- **Mong đợi:** box ôm sát xe tải, không cần vẽ tay; lần bấm sau trên cùng ảnh trả về gần như tức thì.
+- **Output thực tế** (CPU, model `sam2.1_hiera_tiny`; lần đầu mỗi ảnh mã hoá khoảng 2 giây, sau đó dùng cache):
+
+```text
+điểm (900, 400)             -> bbox [659, 206, 996, 459]  score 0.87   engine sam2-onnx  0.07 s
+khung thô [700,180,1030,480] -> bbox [661, 208, 997, 457]  score 0.954  engine sam2-onnx  0.08 s
+điểm (800, 300)             -> bbox [684, 287, 839, 343]  score 0.958  engine sam2-onnx  0.07 s   (chỉ dòng chữ trên thùng xe)
+```
+
+- **Kết luận:** Đạt. Bấm điểm và kéo khung cho cùng một box (lệch ≤ 2 px). Bấm trúng một chi tiết của vật (dòng 3) thì
+  SAM chỉ tách chi tiết đó; khi ấy bấm thêm điểm thứ hai hoặc kéo khung thô.
+
+## TC-13 · Nhiều người dùng: đăng nhập và khoá frame
+
+- **Bước trên UI:** chạy server với `AUTH_REQUIRED=1` → Kien đăng ký (người đầu tiên là admin) và mở một frame → Huy
+  đăng nhập trên trình duyệt khác, mở cùng frame.
+- **Mong đợi:** chưa đăng nhập thì API từ chối; frame Kien đang mở thì Huy chỉ xem được, hàng đợi hiện 🔒 tên Kien.
+- **Output thực tế:**
+
+```text
+GET  /frames (chưa đăng nhập)          -> 401 {"code":"LOGIN_REQUIRED","message":"Cần đăng nhập"}
+POST /auth/register kien@example.com   -> {"id":"u-278450b6","name":"Kien","admin":true}
+POST /auth/register huy@example.com    -> {"id":"u-9c2c0128","name":"Huy","admin":false}
+POST /frames/vid-dash3s-18b2fe_004/lock (Kien) -> {"locked":true,"user_id":"u-278450b6"}
+POST /frames/vid-dash3s-18b2fe_004/lock (Huy)  -> 409 {"code":"FRAME_LOCKED","message":"Người khác đang mở frame này"}
+POST /frames/vid-dash3s-18b2fe_004/actions (Huy, keep) -> 409 {"code":"FRAME_LOCKED", ...}
+GET  /presence (Huy) -> "locks":{"vid-dash3s-18b2fe_004":{"user_id":"u-278450b6","name":"Kien"}}
+```
+
+- **Kết luận:** Đạt. Mời qua link, vai trò và chia việc được kiểm bằng test tự động (`tests/test_api/test_auth_api.py`).
+
+## TC-14 · So sánh tracker bằng TrackEval
+
+- **Lệnh:** `python tools2d\dam4sam.py ... --stride 3` (nhãn gốc ở keyframe đóng vai nhãn người, lan truyền tối đa 10
+  keyframe; lệnh đầy đủ ở cuối `eval/results/tracking.md`).
+- **Output thực tế** (3 scene dev, RTX 4050):
+
+```text
+flow + ByteTrack (mặc định)  đúng 846  sai 209  đổi ID 32  mất 201   HOTA 0.580  IDF1 0.757    62 s
+flow + BoT-SORT              đúng 846  sai 209  đổi ID 28  mất 203   HOTA 0.580  IDF1 0.758    98 s
+lai flow + DAM4SAM           đúng 859  sai 255  đổi ID 67  mất 173   HOTA 0.562  IDF1 0.730   506 s
+DAM4SAM + ByteTrack          đúng 849  sai 261  đổi ID 20  mất 200   HOTA 0.574  IDF1 0.740   848 s
+DAM4SAM + BoT-SORT           đúng 856  sai 248  đổi ID 18  mất 196   HOTA 0.578  IDF1 0.747   731 s
+DAM4SAM thuần                đúng 1007 sai 691  đổi ID 83  mất 0     HOTA 0.532  IDF1 0.685  1029 s
+```
+
+  Held-out 20 scene (795 keyframe):
+
+```text
+flow + ByteTrack (mặc định)  đúng 3438  sai 1161  đổi ID 171  mất 853   HOTA 0.563  IDF1 0.705    731 s
+flow + BoT-SORT              đúng 3460  sai 1146  đổi ID 161  mất 853   HOTA 0.564  IDF1 0.709   1090 s
+DAM4SAM + BoT-SORT           đúng 3678  sai 1315  đổi ID 155  mất 639   HOTA 0.573  IDF1 0.725   2456 s
+```
+
+- **Kết luận:** Đạt (phép đo chạy được và cho kết luận rõ). Mặc định giữ flow + ByteTrack (CPU, nhanh). DAM4SAM + BoT-SORT
+  hơn một chút trên held-out (HOTA +0.010, nhãn đúng +7%, mất dấu −25%, box sai +13%, thời gian ×3,4) nên là luồng
+  "Chính xác" người dùng tự chọn; trên dev hai luồng ngang nhau.

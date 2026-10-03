@@ -39,7 +39,11 @@ const S = {
   viewMode: 'image', // image | video
   videos: [],
   video: null, // VideoDetail đang mở
-  playTimer: null,
+  playback: null, // đang phát video: {items, i, imgs, ...}
+  me: null, // người đang đăng nhập ({id, name, email, admin}) hoặc null
+  presence: { locks: {}, assignments: {}, users: {} }, // ai đang mở frame nào, frame giao cho ai (GET /presence)
+  lockedBy: null, // frame đang mở bị người khác giữ -> chỉ xem
+  mineOnly: false, // hàng đợi: chỉ frame giao cho tôi
   videoPoll: null,
   uploads: new Set(), // video vừa tải lên, đang chờ auto-label xong để báo
   zoom: 1, // 1 = vừa khung; phóng to tới 8x
@@ -232,6 +236,7 @@ async function loadQueue() {
   const q = new URLSearchParams({ sort: S.sort });
   if (S.statusFilter) q.set('status', S.statusFilter);
   S.queue = await api('/frames?' + q);
+  if (S.mineOnly && S.me) S.queue = S.queue.filter((f) => S.presence.assignments[f.frame_id] === S.me.id);
   renderQueue();
   $('empty-state').classList.toggle('hidden', S.queue.length > 0 || !!S.frame);
 }
@@ -246,8 +251,14 @@ function renderQueue() {
   list.innerHTML = S.queue.map((f) => {
     const lv = riskLevel(f.frame_risk);
     const statusText = STATUS_TEXT[f.status];
+    const lock = S.presence.locks[f.frame_id];
+    const who = S.presence.assignments[f.frame_id];
+    const whoName = who ? (S.presence.users[who] || who) : '';
+    const tag = lock && lock.user_id !== S.me?.id
+      ? `<span class="qi-who" title="${esc(lock.name)} đang mở"><span class="av lock">🔒</span>${esc(lock.name)}</span>`
+      : who ? `<span class="qi-who" title="Giao cho ${esc(whoName)}"><span class="av ${who === S.me?.id ? 'me' : ''}">${esc(initials(whoName))}</span>${who === S.me?.id ? 'tôi' : esc(whoName)}</span>` : '';
     return `<li class="queue-item ${S.frame?.frame_id === f.frame_id ? 'active' : ''}" data-id="${esc(f.frame_id)}">
-      <div class="qi-top"><span class="qi-id">${esc(f.frame_id)}</span>${f.propagated_from && f.status === 'auto' ? `<span class="prop-tag" title="Nhãn lan truyền từ ${esc(f.propagated_from)}">↦</span>` : ''}<span class="status-pill ${f.status}">${statusText}</span></div>
+      <div class="qi-top"><span class="qi-id">${esc(f.frame_id)}</span>${tag}${f.propagated_from && f.status === 'auto' ? `<span class="prop-tag" title="Nhãn lan truyền từ ${esc(f.propagated_from)}">↦</span>` : ''}<span class="status-pill ${f.status}">${statusText}</span></div>
       <div class="risk-meter" title="Frame risk ${fx(f.frame_risk)} (${LEVEL_NAME[lv]})"><span style="width:${Math.max(4, f.frame_risk * 100)}%;background:${RISK_COLOR[lv]}"></span></div>
       <div class="qi-meta">
         <span class="lv" title="High"><span class="dot high"></span>${f.counts.high}</span>
@@ -256,6 +267,12 @@ function renderQueue() {
         <span style="margin-left:auto">${f.pending ? f.pending + ' chờ' : '✓'}</span>
       </div></li>`;
   }).join('');
+  // đổi frame (N/P, bấm filmstrip…) thì cuộn danh sách tới frame đang mở; không giật khi chỉ làm mới
+  const cur = S.frame?.frame_id || null;
+  if (cur !== S.queueShown) {
+    S.queueShown = cur;
+    list.querySelector('.queue-item.active')?.scrollIntoView({ block: 'nearest' });
+  }
 }
 
 // ---------- frame ----------
@@ -272,10 +289,12 @@ function elapsed() {
 }
 
 async function openFrame(id, { preview = false } = {}) {
-  if (!preview) stopPlay();
+  if (!preview) stopPlay({ reopen: false });
   stopTimer();
   const frame = await api(`/frames/${encodeURIComponent(id)}`);
   S.frame = frame;
+  if (!preview && S.lockedBy) { S.lockedBy = null; renderLockBanner(); }
+  if (!preview) acquireLock(id);
   S.img = null;
   S.lidar = S.gt = null;
   S.sweepImgs = {};
@@ -466,7 +485,8 @@ const belowScore = (o) => o.source !== 'human' && o.score < S.minScore;
 // Mask sơ bộ của model (FR-04): chỉ khi người chưa sửa / vẽ lại box (mask không còn khớp box mới)
 function drawMask(o, color, sel) {
   const m = o.mask;
-  if (!m || m.length < 6 || ['EDIT_BOX', 'ADD_BOX'].includes(o.review.action)) return;
+  // Box đã sửa tay thì mask cũ không còn khớp; box thêm bằng bấm-để-chọn-vật (ADD_BOX có mask) vẫn hiện mask
+  if (!m || m.length < 6 || o.review.action === 'EDIT_BOX') return;
   ctx.save();
   ctx.globalAlpha = sel ? 0.35 : 0.2;
   ctx.fillStyle = color;
@@ -521,12 +541,12 @@ function drawBox(b, color, { lw = 2, dash = null, label = null, alpha = 1, textC
 
 function draw() {
   drawCanvas();
-  window.bev2d?.draw(); // khung BEV (bev2d.js) theo cùng frame / box đang chọn / box đang sửa
 }
 
 function drawCanvas() {
   const f = S.frame;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (S.playback?.drawn) { drawPlayback(); return; }
   if (!f) return;
   const img = S.viewOffset === 0 ? S.img : S.sweepImgs[S.viewOffset];
   if (img) ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
@@ -561,6 +581,7 @@ function drawCanvas() {
         alpha: sel || !S.sweepSel ? 1 : 0.8,
       });
     }
+    drawClickPreview();
     if (S.editBox) drawBox(S.editBox, '#7c5cd6', { lw: 3, dash: S.mode === 'add' ? [6, 4] : null });
     if (S.editBox && S.mode === 'edit') {
       ctx.fillStyle = '#fff';
@@ -630,6 +651,7 @@ function drawCanvas() {
 
   $('min-score-count').textContent = S.minScore > 0 ? ` · ${shown}/${total} box` : '';
 
+  drawClickPreview();
   if (S.editBox) {
     drawBox(S.editBox, '#7c5cd6', { lw: 3, dash: S.mode === 'add' ? [6, 4] : null });
     if (S.mode === 'edit') {
@@ -672,6 +694,11 @@ function hitObject(x, y) {
 canvas.addEventListener('mousedown', (e) => {
   if (!S.frame) return;
   const [x, y] = toImg(e);
+  if (S.mode === 'click') { // bấm = điểm; kéo = box thô quanh vật (xử lý ở mouseup)
+    S.drag = { kind: 'prompt', x0: x, y0: y, x1: x, y1: y, negative: e.shiftKey || e.button === 2 };
+    e.preventDefault();
+    return;
+  }
   if (S.mode === 'add') {
     S.drag = { kind: 'draw', x0: x, y0: y };
     S.editBox = [x, y, x, y];
@@ -727,6 +754,9 @@ window.addEventListener('mousemove', (e) => {
   const d = S.drag;
   if (d.kind === 'draw') {
     S.editBox = [Math.min(d.x0, x), Math.min(d.y0, y), Math.max(d.x0, x), Math.max(d.y0, y)];
+  } else if (d.kind === 'prompt') {
+    d.x1 = x;
+    d.y1 = y;
   } else if (d.kind === 'handle') {
     const b = S.editBox;
     if (d.edges[0]) b[0] = Math.min(x, b[2] - 4);
@@ -745,6 +775,13 @@ window.addEventListener('mouseup', () => {
   if (!S.drag) return;
   const d = S.drag;
   S.drag = null;
+  if (d.kind === 'prompt') {
+    const k = px();
+    const dragged = Math.abs(d.x1 - d.x0) > 8 * k && Math.abs(d.y1 - d.y0) > 8 * k;
+    if (dragged && !d.negative) clickSegment(null, null, false, [Math.min(d.x0, d.x1), Math.min(d.y0, d.y1), Math.max(d.x0, d.x1), Math.max(d.y0, d.y1)]);
+    else clickSegment(d.x0, d.y0, d.negative);
+    return;
+  }
   if (d.kind === 'draw') {
     const b = S.editBox;
     if (b[2] - b[0] < 4 || b[3] - b[1] < 4) { S.editBox = null; draw(); return; }
@@ -780,10 +817,103 @@ function startAdd() {
   draw();
 }
 
+// ---------- bấm để chọn vật (SAM 2.1; máy chủ không có GPU thì GrabCut) ----------
+// Bấm lên vật -> POST /frames/{id}/segment -> box + đa giác mask xem trước; bấm thêm để tinh chỉnh (Shift+bấm hoặc
+// chuột phải = vùng không thuộc vật); chọn lớp rồi Enter / Lưu để thêm như một box người vẽ (kèm mask).
+function startClick() {
+  if (!S.frame || S.frame.status === 'approved') return;
+  if (S.mode !== 'view') cancelEdit();
+  S.mode = 'click';
+  S.click = { points: [], labels: [], box: null, polygon: null, busy: false, engine: null };
+  // Mã hoá ảnh trước ở nền (SAM ONNX) để lần bấm đầu không phải chờ
+  api(`/frames/${encodeURIComponent(S.frame.frame_id)}/segment/preload?offset=${S.viewOffset || 0}`, { method: 'POST' }).catch(() => {});
+  S.editBox = null;
+  canvas.classList.add('drawing');
+  $('btn-click').classList.add('active');
+  $('tool-poly')?.classList.add('active');
+  showEditBar('click');
+  draw();
+}
+
+async function clickSegment(x, y, negative, box = null) {
+  const c = S.click;
+  if (!c || c.busy) return;
+  if (negative && !c.points.length && !c.box) { toast('Bấm vào vật (hoặc kéo box quanh vật) trước; Shift+bấm để loại vùng thừa sau đó'); return; }
+  const undo = { points: c.points.slice(), labels: c.labels.slice(), box: c.box };
+  if (box) { // box thô mới thay cho prompt cũ
+    c.box = box.map((v) => Math.round(v * 10) / 10);
+    c.points = [];
+    c.labels = [];
+  } else {
+    c.points.push([Math.round(x * 10) / 10, Math.round(y * 10) / 10]);
+    c.labels.push(negative ? 0 : 1);
+  }
+  c.busy = true;
+  canvas.classList.add('busy');
+  draw();
+  try {
+    const r = await api(`/frames/${encodeURIComponent(S.frame.frame_id)}/segment`, {
+      method: 'POST', body: { points: c.points, labels: c.labels, box: c.box || undefined, offset: S.viewOffset || 0 },
+    });
+    if (S.click !== c) return; // đã huỷ trong lúc chờ
+    c.polygon = r.polygon;
+    c.engine = r.engine;
+    S.editBox = r.bbox;
+    showEditBar('click');
+  } catch (err) {
+    Object.assign(c, undo);
+    toast(err.message, true);
+  } finally {
+    c.busy = false;
+    canvas.classList.remove('busy');
+    draw();
+  }
+}
+
+function drawClickPreview() {
+  const c = S.mode === 'click' ? S.click : null;
+  if (!c) return;
+  const k = px();
+  if (c.polygon && c.polygon.length >= 6) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(c.polygon[0], c.polygon[1]);
+    for (let i = 2; i < c.polygon.length; i += 2) ctx.lineTo(c.polygon[i], c.polygon[i + 1]);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(124, 92, 214, .35)';
+    ctx.fill();
+    ctx.strokeStyle = '#7c5cd6';
+    ctx.lineWidth = 1.5 * k;
+    ctx.stroke();
+    ctx.restore();
+  }
+  const pr = S.drag?.kind === 'prompt' ? [S.drag.x0, S.drag.y0, S.drag.x1, S.drag.y1] : c.box;
+  if (pr) { // box thô đang kéo / đã dùng làm prompt
+    ctx.save();
+    ctx.setLineDash([6 * k, 4 * k]);
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 1.5 * k;
+    ctx.strokeRect(Math.min(pr[0], pr[2]), Math.min(pr[1], pr[3]), Math.abs(pr[2] - pr[0]), Math.abs(pr[3] - pr[1]));
+    ctx.restore();
+  }
+  c.points.forEach(([x, y], i) => {
+    ctx.beginPath();
+    ctx.arc(x, y, 5 * k, 0, Math.PI * 2);
+    ctx.fillStyle = c.labels[i] ? '#22c55e' : '#ef4444';
+    ctx.fill();
+    ctx.lineWidth = 2 * k;
+    ctx.strokeStyle = '#fff';
+    ctx.stroke();
+  });
+}
+
 function cancelEdit() {
   S.mode = 'view';
   S.editBox = null;
   S.drag = null;
+  S.click = null;
+  $('btn-click')?.classList.remove('active');
+  $('tool-poly')?.classList.remove('active');
   canvas.classList.remove('drawing');
   $('btn-add').classList.remove('active');
   $('edit-bar').classList.add('hidden');
@@ -792,9 +922,13 @@ function cancelEdit() {
 
 function showEditBar(kind) {
   $('edit-bar').classList.remove('hidden');
-  $('add-class').classList.toggle('hidden', kind !== 'add');
-  $('edit-save').classList.toggle('hidden', kind === 'draw');
+  const picked = kind === 'click' && !!S.editBox;
+  $('add-class').classList.toggle('hidden', kind !== 'add' && !picked);
+  $('edit-save').classList.toggle('hidden', kind === 'draw' || (kind === 'click' && !picked));
   $('edit-hint').textContent = {
+    click: picked
+      ? `${S.click?.engine === 'grabcut' ? 'GrabCut (chưa có SAM) · ' : ''}Bấm thêm: tinh chỉnh · Shift+bấm: loại vùng · Enter: lưu`
+      : 'Bấm vào vật, hoặc kéo một box quanh vật',
     draw: 'Kéo chuột trên ảnh để vẽ box mới',
     add: 'Chọn lớp cho box mới',
     edit: 'Kéo góc/cạnh hoặc kéo cả box để sửa',
@@ -805,9 +939,17 @@ function showEditBar(kind) {
 async function saveEdit() {
   const box = S.editBox.map((v) => Math.round(v * 10) / 10);
   if (inSweep()) {
-    if (S.mode === 'add') await sweepAct({ action: 'ADD_BOX', bbox: box, label: $('add-class').value });
+    if (S.mode === 'add' || S.mode === 'click') await sweepAct({ action: 'ADD_BOX', bbox: box, label: $('add-class').value });
     else if (S.mode === 'edit') await sweepAct({ action: 'EDIT_BOX', box_id: S.sweepSel, bbox: box });
     cancelEdit();
+    return;
+  }
+  if (S.mode === 'click') {
+    const poly = S.click?.polygon;
+    await act({ action: 'ADD_BOX', bbox: box, label: $('add-class').value, mask: poly && poly.length >= 6 ? poly.slice(0, 400) : undefined });
+    const again = S.frame && S.frame.status !== 'approved';
+    cancelEdit();
+    if (again) startClick(); // chọn tiếp vật khác, Esc để thoát
     return;
   }
   if (S.mode === 'add') {
@@ -883,6 +1025,14 @@ async function approveFrame() {
     const cur = S.frame;
     if (S.viewMode === 'video') {
       // Video: lan truyền sang các frame sau rồi mở frame kế tiếp (nơi vừa nhận nhãn lan truyền)
+      if (S.autoProp && engineInfo().id !== 'default') {
+        // Luồng chậm (DAM4SAM) chạy nền: không chờ và không tự mở frame kế (frame người đã mở sẽ không nhận nhãn lan
+        // truyền); xong thì tải lại timeline
+        propagate(cur.frame_id).then(() => refreshVideo());
+        await refreshVideo();
+        renderAll();
+        return;
+      }
       if (S.autoProp) await propagate(cur.frame_id);
       await refreshVideo();
       const frames = S.video?.frames || [];
@@ -904,9 +1054,62 @@ async function approveFrame() {
   }
 }
 
+// ---------- luồng lan truyền (người dùng chọn như chọn model): Nhanh = theo Cài đặt; Chính xác = DAM4SAM + BoT-SORT ----------
+async function loadEngines() {
+  const sel = $('prop-engine');
+  try {
+    S.engines = await api('/propagation/engines');
+  } catch { S.engines = [{ id: 'default', label: 'Nhanh', available: true, detail: '' }]; }
+  const saved = storageGet('propEngine', 'default');
+  sel.innerHTML = S.engines.map((e) => `<option value="${esc(e.id)}" ${e.available ? '' : 'disabled'} title="${esc(e.detail)}${e.reason ? '\nChưa dùng được: ' + esc(e.reason) : ''}">${e.id === 'default' ? '⚡' : '🎯'} ${esc(e.label)}${e.available ? '' : ' (chưa cài)'}</option>`).join('');
+  sel.value = S.engines.some((e) => e.id === saved && e.available) ? saved : 'default';
+  sel.title = engineInfo().detail || '';
+  resumePropJob();
+}
+const engineInfo = () => (S.engines || []).find((e) => e.id === $('prop-engine').value) || { id: 'default' };
+
+function showPropJob(job) {
+  const el = $('prop-job');
+  const running = job?.state === 'running';
+  el.classList.toggle('hidden', !running);
+  $('btn-propagate').classList.toggle('busy', running);
+  if (running) el.textContent = `🎯 ${job.message || 'Đang lan truyền…'} ${fmtTime((Date.now() / 1000) - (job.started || Date.now() / 1000))}`;
+}
+
+// Hỏi tiến độ việc lan truyền chạy nền tới khi xong; trả về kết quả (hoặc ném lỗi)
+async function waitPropJob() {
+  for (;;) {
+    const job = await api('/propagation/job');
+    showPropJob(job);
+    if (job.state === 'done') return job.result;
+    if (job.state === 'error') throw new Error(job.message);
+    if (job.state !== 'running') return null;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+}
+
+async function resumePropJob() { // mở lại trang khi việc nền còn chạy: hiện tiến độ, xong thì tải lại timeline
+  try {
+    const job = await api('/propagation/job');
+    if (job.state !== 'running') return;
+    const r = await waitPropJob();
+    if (r) { toast(`Lan truyền (${r.engine}) xong: ${r.frames_updated.length} frame, ${r.objects_propagated} nhãn`); refreshLists(); }
+  } catch (err) { toast('Lan truyền lỗi: ' + err.message, true); }
+}
+
 async function propagate(frameId) {
   try {
-    const r = await api(`/frames/${encodeURIComponent(frameId)}/propagate`, { method: 'POST', body: {} });
+    const engine = engineInfo().id;
+    let r;
+    if (engine === 'default') {
+      r = await api(`/frames/${encodeURIComponent(frameId)}/propagate`, { method: 'POST', body: {} });
+    } else {
+      const job = await api(`/frames/${encodeURIComponent(frameId)}/propagate-async`, { method: 'POST', body: { engine } });
+      if (job.state === 'running' && job.message && !job.message.includes(frameId)) toast('Đang có một lần lan truyền khác chạy nền, đợi nó xong');
+      else toast(`Luồng ${engineInfo().label}: chạy nền, vài phút. Bạn vẫn duyệt tiếp được.`);
+      r = await waitPropJob();
+      if (!r) return null;
+    }
     const n = r.frames_updated.length;
     const extra = r.objects_suppressed ? `, tự xoá ${r.objects_suppressed} box người đã xoá` : '';
     toast(n ? `Lan truyền sang ${n} frame (${r.objects_propagated} nhãn${extra}). ${r.stop_reason || ''}` : `Không lan truyền: ${r.stop_reason || 'không có frame phù hợp'}`);
@@ -1027,6 +1230,8 @@ function classOptions(selected) {
 }
 
 function objectCard(o) {
+  // Thẻ gọn kiểu CVAT: một dòng tiêu đề (#id · lớp · mức rủi ro · nút), một dòng số liệu, lỗi QA dạng chip (rê chuột xem
+  // giải thích); ảnh cắt + chi tiết chỉ mở cho thẻ đang chọn
   const lv = levelOf(o);
   const issues = o.qa?.issues || [];
   const lid = o.qa?.lidar || {};
@@ -1034,56 +1239,42 @@ function objectCard(o) {
   const locked = S.frame.status === 'approved';
   const done = o.review.status !== 'pending';
   const pr = o.propagation;
-  const srcNote = o.source === 'track' ? ' · box nội suy' : o.source === 'human' ? ' · người vẽ' : isProp(o) ? ` · ↦ từ ${esc(frameRef(pr.keyframe_id))}` : '';
+  const sel = o.object_id === S.selected;
   const facts = [];
-  if (isProp(o)) {
-    facts.push(`c_prop ${fx(pr.prop_conf)}`);
-    facts.push(pr.matched ? `detector: ${esc(pr.detector_label)} ${fx(pr.detector_score)}` : 'detector không thấy, box dự đoán');
-  } else if (o.source !== 'human') facts.push(o.det_score != null && Math.abs(o.det_score - o.score) >= 0.005 ? `score ${fx(o.score)} <span class="muted" title="Score tính lại theo các sweep lân cận (vật thấy ổn định được tăng, box chỉ loé lên bị hạ); số trong ngoặc là score gốc của detector">(detector ${fx(o.det_score)})</span>` : `score ${fx(o.score)}`);
-  if (lid.available) facts.push(`${lid.n_points ?? 0} điểm LiDAR${lid.depth_m != null ? ` · ${fx(lid.depth_m, 1)} m` : ''}${lid.est_height_m != null ? ` · cao ~${fx(lid.est_height_m, 1)} m` : ''}`);
-  if (tmp.available) facts.push(`sweep ${tmp.support}/${tmp.available}`);
+  if (isProp(o)) facts.push(`<span title="Độ tin cậy lan truyền từ ${esc(frameRef(pr.keyframe_id))}">↦ ${fx(pr.prop_conf)}</span>`, pr.matched ? `<span title="Detector thấy ở frame này">det ${esc(pr.detector_label)} ${fx(pr.detector_score)}</span>` : '<span title="Detector không thấy, box dự đoán từ chuyển động">dự đoán</span>');
+  else if (o.source === 'track') facts.push('<span title="Box nội suy từ các sweep lân cận (RECOVERED_BY_TRACK)">nội suy</span>');
+  else if (o.source === 'human') facts.push('người vẽ');
+  else facts.push(`<span title="${o.det_score != null && Math.abs(o.det_score - o.score) >= 0.005 ? `Detector ${fx(o.det_score)}, tính lại theo sweep lân cận` : 'Score detector'}">score ${fx(o.score)}</span>`);
+  if (lid.available) facts.push(`<span title="${lid.n_points ?? 0} điểm LiDAR trong box${lid.est_height_m != null ? `, cao ~${fx(lid.est_height_m, 1)} m` : ''}">${lid.depth_m != null ? `${fx(lid.depth_m, 0)} m` : `${lid.n_points ?? 0} pt`}</span>`);
+  if (tmp.available) facts.push(`<span title="Thấy ở ${tmp.support}/${tmp.available} sweep lân cận">${tmp.support}/${tmp.available} sw</span>`);
   const status = !done
     ? ''
     : isAutoDeleted(o)
-      ? `<span class="done-tag deleted" title="Người đã xoá object này ở ${esc(pr?.keyframe_id)}. Bấm Keep nếu đây là object thật.">✗ Tự xoá</span>`
-      : `<span class="done-tag ${o.review.status}">${o.review.status === 'deleted' ? '✗ Đã xoá' : `✓ ${o.review.action}${o.review.final_label !== o.label ? ' → ' + esc(o.review.final_label) : ''}`}</span>`;
-
-  return `<div class="obj-card ${lv} ${o.object_id === S.selected ? 'selected' : ''}" data-oid="${esc(o.object_id)}">
-    <div class="card-header-bar">
-      <div class="card-header-left">
-        <span class="card-num">#${esc(o.object_id)}</span>
-        <span class="card-shape">HÌNH CHỮ NHẬT</span>
-      </div>
-      <div class="card-header-right">
-        <select data-class class="card-select" ${locked ? 'disabled' : ''} title="Chọn lớp khác để đổi lớp ngay (bàn phím: C → chọn → Enter)">${classOptions(finalLabel(o))}</select>
-        <button class="card-more-btn" title="Thao tác"><i class="ri-more-2-fill"></i></button>
-      </div>
+      ? `<span class="done-tag deleted" title="Người đã xoá object này ở ${esc(pr?.keyframe_id)}. Bấm Giữ nếu đây là object thật.">✗ tự xoá</span>`
+      : `<span class="done-tag ${o.review.status}">${o.review.status === 'deleted' ? '✗ đã xoá' : `✓ ${o.review.final_label && o.review.final_label !== o.label ? '→ ' + esc(o.review.final_label) : 'giữ'}`}</span>`;
+  const chips = issues.map((i) => `<span class="chip-issue" title="${esc(i.message)}${S.cfg.issue_help[i.code] ? '\n\n' + esc(S.cfg.issue_help[i.code]) : ''}">${esc(i.code)}</span>`).join('');
+  const qc = qcFor(o.object_id).map((x) => `<span class="chip-issue qc" title="QC: ${esc(x.message)}">${esc(x.code)}</span>`).join('');
+  return `<div class="obj-card ${lv} ${sel ? 'selected' : ''}" data-oid="${esc(o.object_id)}">
+    <div class="oc-row">
+      <span class="oid">#${esc(o.object_id)}</span>
+      <select data-class class="card-select" ${locked ? 'disabled' : ''} title="Đổi lớp (phím C)">${classOptions(finalLabel(o))}</select>
+      ${o.qa ? `<span class="risk-badge ${lv}" title="Mức rủi ro ${fx(o.qa.risk)}">${fx(o.qa.risk)}</span>` : ''}
+      <span class="oc-icons">
+        <button class="card-icon-action-btn ${o.locked ? 'active' : ''}" data-act="LOCK" title="${o.locked ? 'Mở khóa' : 'Khóa'}"><i class="${o.locked ? 'ri-lock-fill' : 'ri-lock-line'}"></i></button>
+        <button class="card-icon-action-btn ${o.assigned ? 'active' : ''}" data-act="ASSIGN" title="${o.assigned ? 'Người phụ trách: ' + esc(o.assigned) : 'Người phụ trách'}"><i class="ri-user-line"></i></button>
+        <button class="card-icon-action-btn ${o.hidden ? 'active' : ''}" data-act="VISIBILITY" title="${o.hidden ? 'Hiện box' : 'Ẩn box'}"><i class="${o.hidden ? 'ri-eye-off-line' : 'ri-eye-line'}"></i></button>
+        <button class="card-icon-action-btn ${o.pinned ? 'active' : ''}" data-act="PIN" title="${o.pinned ? 'Bỏ ghim' : 'Ghim'}"><i class="${o.pinned ? 'ri-pushpin-fill' : 'ri-pushpin-line'}"></i></button>
+      </span>
+      ${locked ? '' : `<span class="oc-btns">
+        <button class="ib keep" data-act="KEEP" title="Giữ (K)">✓</button>
+        <button class="ib del" data-act="DELETE" title="Xoá (D)">✕</button>
+        <button class="ib" data-act="EDIT" title="Sửa box (E)">✎</button>
+      </span>`}
     </div>
-    <div class="card-icon-actions">
-      <button class="card-icon-action-btn ${o.locked ? 'active' : ''}" data-act="LOCK" title="${o.locked ? 'Mở khóa' : 'Khóa'}"><i class="${o.locked ? 'ri-lock-fill' : 'ri-lock-line'}"></i></button>
-      <button class="card-icon-action-btn" data-act="ASSIGN" title="Người phụ trách"><i class="ri-user-line"></i></button>
-      <button class="card-icon-action-btn ${o.hidden ? 'active' : ''}" data-act="VISIBILITY" title="${o.hidden ? 'Hiện box' : 'Ẩn box'}"><i class="${o.hidden ? 'ri-eye-off-line' : 'ri-eye-line'}"></i></button>
-      <button class="card-icon-action-btn ${o.pinned ? 'active' : ''}" data-act="PIN" title="${o.pinned ? 'Bỏ ghim' : 'Ghim'}"><i class="${o.pinned ? 'ri-pushpin-fill' : 'ri-pushpin-line'}"></i></button>
-      ${o.qa ? `<span class="risk-badge ${lv}" style="margin-left: auto;">${LEVEL_NAME[lv]} ${fx(o.qa.risk)}</span>` : ''}
-      ${qcFor(o.object_id).length ? `<span class="qc-mark sm" style="margin-left: 6px;" title="Nhãn cuối còn lỗi QC">QC</span>` : ''}
-    </div>
-    <details class="card-details" ${o.object_id === S.selected ? 'open' : ''}>
-      <summary class="card-details-sum"><i class="ri-arrow-right-s-line"></i> CHI TIẾT ĐỐI TƯỢNG</summary>
-      <div class="oc-body">
-        <canvas class="oc-crop" width="192" height="144" data-crop="${esc(o.object_id)}"></canvas>
-        <div class="oc-info">
-          <div class="oc-stats">${facts.join(' · ')}${srcNote}</div>
-          ${status}
-          ${issues.length ? `<ul class="issues">${issues.map((i) => `<li title="${esc(S.cfg.issue_help[i.code] || '')}"><span class="issue-code">${esc(i.code)}</span> <span class="issue-msg">${esc(i.message)}</span></li>`).join('')}</ul>` : ''}
-          ${qcFor(o.object_id).length ? `<div class="oc-qc"><span class="qc-mark sm">QC</span>${qcFor(o.object_id).map((x) => `<span class="issue-code qc" title="${esc(x.message)}">${esc(x.code)}</span>`).join(' ')}</div>` : ''}
-        </div>
-      </div>
-      ${locked ? '' : `<div class="oc-actions">
-        <button class="btn btn-sm btn-keep" data-act="KEEP">✓ Giữ</button>
-        <button class="btn btn-sm btn-del" data-act="DELETE">🗑 Xóa</button>
-        <button class="btn btn-sm btn-edit" data-act="EDIT">✎ Sửa box</button>
-      </div>`}
-    </details>
+    <div class="oc-row oc-meta">${facts.join('<i>·</i>')}${status}${chips}${qc}</div>
+    ${sel ? `<div class="oc-body"><canvas class="oc-crop" width="192" height="144" data-crop="${esc(o.object_id)}"></canvas>
+      <div class="oc-info">${issues.length ? `<ul class="issues">${issues.map((i) => `<li><span class="issue-code">${esc(i.code)}</span> <span class="issue-msg">${esc(i.message)}</span></li>`).join('')}</ul>` : '<span class="muted">Không có lỗi QA</span>'}
+      ${isProp(o) ? `<div class="muted">↦ lan truyền từ ${esc(frameRef(pr.keyframe_id))}</div>` : ''}</div></div>` : ''}
   </div>`;
 }
 
@@ -1266,6 +1457,8 @@ document.querySelector('.review-panel').addEventListener('click', (e) => {
   const btn = e.target.closest('[data-act]');
   if (e.target.closest('select')) return;
   if (!btn) { select(id); return; }
+  // Nút biểu tượng (khoá / người phụ trách / ẩn / ghim) chỉ đổi trạng thái hiển thị, xử lý ở index.html: không gọi API
+  if (btn.classList.contains('card-icon-action-btn')) return;
   const a = btn.dataset.act;
   if (a === 'EDIT') { S.selected = id; startEdit(); renderPanel(); return; }
   if (a === 'CHANGE_CLASS') {
@@ -1330,7 +1523,7 @@ function refreshLists() {
 }
 
 async function setMode(mode) {
-  stopPlay();
+  stopPlay({ reopen: false });
   S.viewMode = mode;
   storageSet('viewMode', mode);
   document.querySelectorAll('.mode').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
@@ -1409,7 +1602,7 @@ function renderVideoList() {
 }
 
 async function openVideo(id) {
-  stopPlay();
+  stopPlay({ reopen: false });
   // Mở lại đúng video đang xem thì giữ frame hiện tại; mở video khác (hoặc lần đầu vào chế độ Video) thì nhảy tới
   // frame đầu tiên chưa duyệt — chỗ bắt đầu gán nhãn / lan truyền
   const same = S.video?.video_id === id;
@@ -1488,29 +1681,122 @@ function stepVideo(delta) {
   if (j !== i) openFrame(frames[j].frame_id);
 }
 
-function stopPlay() {
-  const wasPlaying = !!S.playTimer;
-  if (S.playTimer) clearInterval(S.playTimer);
-  S.playTimer = null;
+// ---------- phát video ----------
+// Phát mọi ảnh đã cắt (keyframe 2 fps + sweep t-2 … t+2 ở 10 fps) theo đúng thời gian thực, box lấy sẵn từ
+// GET /videos/{id}/playback trong một lần gọi. Lúc phát chỉ vẽ lại khung ảnh (không mở frame, không vẽ lại panel);
+// ảnh phía trước được tải trước, ảnh chưa kịp tải thì đồng hồ đứng chờ. Dừng ở đâu thì mở keyframe gần đó để duyệt.
+const PLAY_AHEAD = 15; // số ảnh tải trước
+const PLAY_KEEP = 4; // số ảnh đã qua còn giữ (ảnh 2560×1440 giải nén ~15 MB, không giữ cả video)
+
+function setPlayButtons(playing, label) {
   const b = $('btn-play');
-  if (b) b.textContent = '▶ Phát';
-  // Frame mở lúc phát là bản xem nhanh (không bấm giờ); dừng ở frame nào thì bắt đầu tính giờ duyệt frame đó (M1)
-  if (wasPlaying && S.frame && S.frame.status !== 'approved' && !S.timerStart) S.timerStart = Date.now();
+  if (b) b.textContent = playing ? `⏸ ${label || 'Dừng'}` : '▶ Phát';
+  const nb = $('btn-nav-play');
+  if (nb) nb.innerHTML = `<i class="${playing ? 'ri-pause-fill' : 'ri-play-fill'}"></i>`;
 }
 
-function togglePlay() {
-  if (S.playTimer) { stopPlay(); return; }
-  const frames = S.video?.frames || [];
-  if (frames.length < 2) return;
-  $('btn-play').textContent = '⏸ Dừng';
-  let busy = false;
-  S.playTimer = setInterval(async () => {
-    if (busy) return;
-    const i = frames.findIndex((f) => f.frame_id === S.frame?.frame_id);
-    if (i >= frames.length - 1) { stopPlay(); return; }
-    busy = true;
-    try { await openFrame(frames[i + 1].frame_id, { preview: true }); } finally { busy = false; }
-  }, 700);
+function stopPlay({ reopen = true } = {}) {
+  const pb = S.playback;
+  if (!pb) return;
+  S.playback = null;
+  cancelAnimationFrame(pb.raf);
+  setPlayButtons(false);
+  const cur = pb.items[pb.i];
+  // Mở keyframe của ảnh đang dừng (bắt đầu tính giờ duyệt frame đó, M1)
+  if (reopen && cur && S.viewMode === 'video') openFrame(cur.frame_id).catch((err) => toast(err.message, true));
+  else drawCanvas();
+}
+
+function playImage(pb, j) {
+  const it = pb.items[j];
+  if (!it) return null;
+  let im = pb.imgs.get(j);
+  if (!im) {
+    im = new Image();
+    im.decoding = 'async';
+    im.src = `${API}/frames/${encodeURIComponent(it.frame_id)}/image${it.offset ? `?offset=${it.offset}` : ''}`;
+    im.decode?.().catch(() => {});
+    pb.imgs.set(j, im);
+  }
+  return im;
+}
+
+function playTick(now) {
+  const pb = S.playback;
+  if (!pb) return;
+  pb.raf = requestAnimationFrame(playTick);
+  const items = pb.items;
+  if (pb.last != null) {
+    // Ảnh kế chưa tải xong thì đồng hồ đứng chờ (không nhảy cóc qua ảnh thiếu)
+    const nxt = items[pb.i + 1];
+    const im = nxt && playImage(pb, pb.i + 1);
+    if (!nxt || (im.complete && im.naturalWidth)) pb.clock += Math.min(0.25, (now - pb.last) / 1000);
+  }
+  pb.last = now;
+  let j = pb.i;
+  while (j + 1 < items.length && items[j + 1].t <= pb.clock) {
+    const im = playImage(pb, j + 1);
+    if (!(im.complete && im.naturalWidth)) break;
+    j++;
+  }
+  for (let k = j + 1; k <= Math.min(items.length - 1, j + PLAY_AHEAD); k++) playImage(pb, k);
+  for (const k of pb.imgs.keys()) if (k < j - PLAY_KEEP) pb.imgs.delete(k);
+  if (j !== pb.i || !pb.drawn) {
+    pb.i = j;
+    pb.drawn = true;
+    drawCanvas();
+    const it = items[j];
+    setPlayButtons(true, `${it.t.toFixed(1)}s`);
+    if (it.frame_id !== pb.frameId) { pb.frameId = it.frame_id; markTimeline(it.frame_id); }
+  }
+  if (j >= items.length - 1 && pb.clock >= items[j].t + 0.15) stopPlay();
+}
+
+// Đánh dấu keyframe đang phát trên timeline mà không mở frame
+function markTimeline(id) {
+  let cur = null;
+  document.querySelectorAll('.tl-card').forEach((c) => { const on = c.dataset.id === id; c.classList.toggle('current', on); if (on) cur = c; });
+  cur?.scrollIntoView({ block: 'nearest', inline: 'center' });
+}
+
+function drawPlayback() {
+  const pb = S.playback;
+  const it = pb.items[pb.i];
+  const im = pb.imgs.get(pb.i);
+  if (im?.complete && im.naturalWidth) ctx.drawImage(im, 0, 0, canvas.width, canvas.height);
+  for (const b of it.boxes) {
+    if (b.pending && b.level === 'low' && !S.showLow) continue;
+    const color = b.source === 'human' ? HUMAN_COLOR : RISK_COLOR[b.level] || RISK_COLOR.low;
+    const tag = b.source === 'human' || (b.pending && b.level === 'high') ? `#${b.id} ${b.label}` : null;
+    drawBox(b.bbox, color, { lw: b.pending ? 2 : 1.4, dash: b.source === 'track' ? [8, 5] : null, label: tag });
+  }
+}
+
+async function togglePlay() {
+  if (S.playback) { stopPlay(); return; }
+  const v = S.video;
+  if (!v || (v.frames || []).length < 2) return;
+  const pb = { items: [], i: 0, imgs: new Map(), raf: 0, clock: 0, last: null, drawn: false, frameId: null };
+  S.playback = pb;
+  setPlayButtons(true, '…');
+  try {
+    const res = await api(`/videos/${encodeURIComponent(v.video_id)}/playback`);
+    if (S.playback !== pb) return;
+    pb.items = res.items;
+  } catch (err) {
+    if (S.playback === pb) { S.playback = null; setPlayButtons(false); }
+    toast('Không phát được: ' + err.message, true);
+    return;
+  }
+  if (pb.items.length < 2) { S.playback = null; setPlayButtons(false); return; }
+  // Phát tiếp từ keyframe đang mở; đang ở cuối thì phát lại từ đầu
+  let start = pb.items.findIndex((it) => it.frame_id === S.frame?.frame_id && it.offset === 0);
+  if (start < 0 || start >= pb.items.length - 2) start = 0;
+  pb.i = start;
+  pb.clock = pb.items[start].t;
+  stopTimer();
+  for (let k = start; k <= Math.min(pb.items.length - 1, start + PLAY_AHEAD); k++) playImage(pb, k);
+  pb.raf = requestAnimationFrame(playTick);
 }
 
 async function uploadVideo(file) {
@@ -1547,6 +1833,7 @@ $('upload-input').addEventListener('change', (e) => {
 $('btn-prev').addEventListener('click', () => stepVideo(-1));
 $('btn-next').addEventListener('click', () => stepVideo(1));
 $('btn-play').addEventListener('click', togglePlay);
+$('btn-nav-play')?.addEventListener('click', () => { if (S.viewMode === 'video') togglePlay(); });
 $('timeline').addEventListener('click', (e) => {
   const card = e.target.closest('.tl-card');
   if (card) openFrame(card.dataset.id).catch((err) => toast(err.message, true));
@@ -1631,6 +1918,12 @@ async function loadMetrics() {
       '<tr><td colspan="4" class="muted">Chưa có object gắn issue nào được duyệt</td></tr>') + '</tbody>';
   renderProductivity(m.productivity, '', API + '/report.csv');
   loadExports();
+  api('/metrics/tracking').then((t) => {
+    $('track-table').innerHTML = !t.frames
+      ? '<tr><td class="muted">Workspace chưa có frame nào có nhãn gốc</td></tr>'
+      : `<thead><tr><th>Frame</th><th class="num">HOTA</th><th class="num">DetA</th><th class="num">AssA</th><th class="num">MOTA</th><th class="num">IDF1</th><th class="num">Đổi ID</th><th class="num">Thừa</th><th class="num">Sót</th></tr></thead>
+        <tbody><tr><td>${t.frames}</td><td class="num">${fx(t.HOTA)}</td><td class="num">${fx(t.DetA)}</td><td class="num">${fx(t.AssA)}</td><td class="num">${fx(t.MOTA)}</td><td class="num">${fx(t.IDF1)}</td><td class="num">${t.IDSW}</td><td class="num">${t.FP}</td><td class="num">${t.FN}</td></tr></tbody>`;
+  }).catch(() => { $('track-table').innerHTML = ''; });
 }
 
 const EXPORT_FILES = ['coco.json', 'labels.jsonl', 'corrections.jsonl', 'qc_log.jsonl', 'qa_report.md', 'manifest.json'];
@@ -2158,7 +2451,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (!S.frame) return;
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-  if (S.playTimer && key !== ' ') stopPlay();
+  if (S.playback && key !== ' ') { stopPlay(); e.preventDefault(); return; } // phím bất kỳ: chỉ dừng phát
   if ((e.ctrlKey || e.metaKey) && (key === 'z' || key === 'y')) {
     e.preventDefault();
     undoRedo(key === 'y' || e.shiftKey ? 'redo' : 'undo');
@@ -2173,7 +2466,6 @@ document.addEventListener('keydown', (e) => {
     n: () => stepFrame(1),
     p: () => stepFrame(-1),
     l: () => $('show-lidar').click(),
-    v: () => $('show-bev2d').click(),
     g: () => $('show-gt').click(),
     t: propagateCurrent,
     r: openReject,
@@ -2195,6 +2487,7 @@ document.addEventListener('keydown', (e) => {
       c: () => sb && document.querySelector(`[data-sbid="${CSS.escape(sb)}"] [data-sclass]`)?.focus(),
       e: startEdit,
       b: startAdd,
+      m: startClick,
       Enter: () => S.mode !== 'view' && S.editBox && saveEdit(),
     };
     if (sweepKeys[key]) { sweepKeys[key](); e.preventDefault(); }
@@ -2208,6 +2501,7 @@ document.addEventListener('keydown', (e) => {
     c: () => sel && document.querySelector(`[data-oid="${CSS.escape(sel)}"] [data-class]`)?.focus(),
     e: startEdit,
     b: startAdd,
+    m: startClick,
     a: approveLow,
     Enter: () => (S.mode !== 'view' && S.editBox ? saveEdit() : approveFrame()),
   };
@@ -2269,8 +2563,12 @@ $('reject-send').addEventListener('click', sendReject);
 $('reject-cancel').addEventListener('click', () => $('reject-box').classList.add('hidden'));
 $('reject-reason').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendReject(); });
 $('btn-propagate').addEventListener('click', propagateCurrent);
+$('prop-engine').addEventListener('change', (e) => { storageSet('propEngine', e.target.value); e.target.title = engineInfo().detail || ''; });
 $('auto-prop').addEventListener('change', (e) => { S.autoProp = e.target.checked; storageSet('autoProp', S.autoProp ? '1' : '0'); });
 $('btn-add').addEventListener('click', () => (S.mode === 'add' ? cancelEdit() : startAdd()));
+$('btn-click').addEventListener('click', () => (S.mode === 'click' ? cancelEdit() : startClick()));
+$('tool-poly')?.addEventListener('click', () => (S.mode === 'click' ? cancelEdit() : startClick()));
+canvas.addEventListener('contextmenu', (e) => { if (S.mode === 'click') e.preventDefault(); });
 $('edit-save').addEventListener('click', saveEdit);
 $('edit-cancel').addEventListener('click', cancelEdit);
 $('log-refresh').addEventListener('click', loadLog);
@@ -2279,10 +2577,88 @@ $('metrics-refresh').addEventListener('click', loadMetrics);
 $('btn-export').addEventListener('click', doExport);
 $('reviewer').addEventListener('change', (e) => storageSet('reviewer', e.target.value.trim()));
 new ResizeObserver(() => { fitCanvas(); draw(); }).observe($('canvas-wrap'));
-// cho bev2d.js (module) dùng chung trạng thái
+// trạng thái dùng chung với app3d.js
 window.AL = { get S() { return S; }, select, ensureLidar, renderProductivity };
 
 // Dự án: hiện tên + link quay lại, ẩn chế độ không có dữ liệu (không LiDAR -> không 3D)
+// ---------- nhiều người dùng: người đăng nhập, ai đang mở frame nào, khoá frame ----------
+const initials = (name) => String(name || '?').trim().split(/\s+/).map((w) => w[0]).slice(-2).join('').toUpperCase();
+
+async function initUser() {
+  try {
+    const me = await fetch('/api/v1/auth/me').then((r) => r.json());
+    S.me = me.user;
+    if (me.auth_required && !S.me) { location.href = '/ui/login.html'; return; }
+  } catch { S.me = null; }
+  const box = $('reviewer');
+  if (S.me) {
+    // Tên người duyệt lấy theo tài khoản (ghi vào lịch sử sửa / corrections.jsonl), không gõ tay
+    box.value = S.me.name;
+    box.readOnly = true;
+    box.title = `${S.me.name} (${S.me.email}) — đăng xuất ở trang Dự án`;
+    const chip = document.createElement('button');
+    chip.className = 'chip';
+    chip.id = 'chip-mine';
+    chip.textContent = 'Của tôi';
+    chip.title = 'Chỉ frame được giao cho tôi (chia việc ở trang Dự án → Thành viên)';
+    chip.addEventListener('click', (e) => { e.stopPropagation(); S.mineOnly = !S.mineOnly; chip.classList.toggle('active', S.mineOnly); loadQueue(); });
+    $('queue-filter').appendChild(chip);
+  }
+  await refreshPresence();
+  setInterval(refreshPresence, 15000);
+  setInterval(() => { if (S.frame && S.me && !S.lockedBy) acquireLock(S.frame.frame_id, true); }, 30000); // gia hạn khoá
+  window.addEventListener('beforeunload', () => {
+    if (S.frame && S.me && !S.lockedBy) fetch(`${API}/frames/${encodeURIComponent(S.frame.frame_id)}/lock`, { method: 'DELETE', keepalive: true }).catch(() => {});
+  });
+}
+
+async function refreshPresence() {
+  try {
+    const p = await api('/presence');
+    S.presence = { locks: p.locks || {}, assignments: p.assignments || {}, users: p.users || {} };
+    if (p.me && !S.me) S.me = p.me;
+    renderQueue();
+    if (S.frame) renderLockBanner();
+  } catch { /* server cũ */ }
+}
+
+async function acquireLock(id, quiet = false) {
+  if (!S.me) return;
+  try {
+    await api(`/frames/${encodeURIComponent(id)}/lock`, { method: 'POST' });
+    if (S.lockedBy) { S.lockedBy = null; renderLockBanner(); }
+    S.presence.locks[id] = { user_id: S.me.id, name: S.me.name, at: Date.now() / 1000 };
+  } catch (err) {
+    if (err.code === 'FRAME_LOCKED') {
+      const holder = S.presence.locks[id];
+      S.lockedBy = holder?.name || 'người khác';
+      renderLockBanner();
+      if (!quiet) toast(`${S.lockedBy} đang mở frame này: bạn chỉ xem được`, true);
+    }
+  }
+}
+
+function renderLockBanner() {
+  let b = $('lock-banner');
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'lock-banner';
+    b.className = 'lock-banner hidden';
+    $('reject-banner').insertAdjacentElement('beforebegin', b);
+    b.addEventListener('click', async (e) => {
+      if (!e.target.closest('[data-take]') || !S.frame) return;
+      try {
+        await api(`/frames/${encodeURIComponent(S.frame.frame_id)}/lock?force=true`, { method: 'POST' });
+        S.lockedBy = null; renderLockBanner(); refreshPresence(); toast('Bạn đã lấy quyền sửa frame này');
+      } catch (err) { toast(err.message, true); }
+    });
+  }
+  const locked = !!S.lockedBy && S.viewMode !== '3d';
+  b.classList.toggle('hidden', !locked);
+  document.body.classList.toggle('readonly', locked);
+  if (locked) b.innerHTML = `🔒 <b>${esc(S.lockedBy)}</b> đang mở frame này — bạn chỉ xem. <button class="btn btn-ghost btn-sm" data-take title="Lấy quyền sửa (người kia sẽ bị chuyển sang chỉ xem)">Lấy quyền sửa</button>`;
+}
+
 async function initProject() {
   const r = await fetch(`/api/v1/projects/${encodeURIComponent(PROJECT)}`);
   if (!r.ok) throw new Error(`Không tìm thấy dự án ${PROJECT}`);
@@ -2302,6 +2678,8 @@ async function initProject() {
   try {
     S.cfg = await api('/config');
     $('reviewer').value = storageGet('reviewer', S.cfg.reviewer);
+    await initUser();
+    loadEngines();
     S.autoProp = storageGet('autoProp', '1') === '1';
     $('auto-prop').checked = S.autoProp;
     $('add-class').innerHTML = classOptions('car');
