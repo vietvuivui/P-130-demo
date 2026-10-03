@@ -14,7 +14,8 @@ const STATUS_TEXT = { auto: 'Chưa mở', editing: 'Đang sửa', approved: 'Đ�
 const S = {
   cfg: null,
   queue: [],
-  sort: 'risk',
+  sort: 'order', // mặc định theo thứ tự frame; 'risk' = khó nhất trước
+  objSort: 'id-asc',
   statusFilter: '',
   frame: null,
   img: null,
@@ -1061,7 +1062,7 @@ async function loadEngines() {
     S.engines = await api('/propagation/engines');
   } catch { S.engines = [{ id: 'default', label: 'Nhanh', available: true, detail: '' }]; }
   const saved = storageGet('propEngine', 'default');
-  sel.innerHTML = S.engines.map((e) => `<option value="${esc(e.id)}" ${e.available ? '' : 'disabled'} title="${esc(e.detail)}${e.reason ? '\nChưa dùng được: ' + esc(e.reason) : ''}">${e.id === 'default' ? '⚡' : '🎯'} ${esc(e.label)}${e.available ? '' : ' (chưa cài)'}</option>`).join('');
+  sel.innerHTML = S.engines.map((e) => `<option value="${esc(e.id)}" ${e.available ? '' : 'disabled'} title="${esc(e.detail)}${e.reason ? '\nChưa dùng được: ' + esc(e.reason) : ''}">${e.id === 'default' ? '⚡' : '🎯'} ${esc(e.label)}</option>`).join('');
   sel.value = S.engines.some((e) => e.id === saved && e.available) ? saved : 'default';
   sel.title = engineInfo().detail || '';
   resumePropJob();
@@ -2267,21 +2268,24 @@ function fmtSetting(f, v) {
   if (f.kind === 'bool') return v ? 'bật' : 'tắt';
   return String(v);
 }
-function settingRow(f) {
+function settingRow(f, i, all) {
+  // Dòng gọn: tên + ⓘ (rê chuột xem số đo làm căn cứ) + ghi chú một dòng; ô chọn bên phải
   const id = 'set-' + f.path.replace(/\./g, '-');
   let control;
   if (f.kind === 'choice') {
     control = `<select id="${id}" data-path="${esc(f.path)}">${Object.entries(f.choices).map(([k, lab]) => `<option value="${esc(k)}" ${k === f.value ? 'selected' : ''}>${esc(lab)}</option>`).join('')}</select>`;
   } else if (f.kind === 'bool') {
-    control = `<label class="set-control"><input type="checkbox" id="${id}" data-path="${esc(f.path)}" ${f.value ? 'checked' : ''}> bật</label>`;
+    control = `<label class="set-control"><input type="checkbox" id="${id}" data-path="${esc(f.path)}" ${f.value ? 'checked' : ''}> Bật</label>`;
   } else {
     control = `<input type="number" id="${id}" data-path="${esc(f.path)}" value="${f.value}" min="${f.min}" max="${f.max}" step="${f.step || 1}">`;
   }
-  const when = f.applies === 'now' ? 'áp dụng ngay' : 'áp cho frame auto-label mới — bấm Áp dụng lại cho frame cũ';
-  return `<div class="set-row">
-    <label for="${id}">${esc(f.label)}<span class="set-meta ${f.changed ? 'changed' : ''}">${f.changed ? `đã đổi · mặc định: ${esc(fmtSetting(f, f.default))}` : 'mặc định'}</span></label>
+  const group = f.group && (!i || all[i - 1].group !== f.group) ? `<h4 class="set-group">${esc(f.group)}</h4>` : '';
+  const info = f.detail ? `<span class="set-info tip" tabindex="0" data-tip="${esc(f.detail)}"><i class="ri-information-line"></i></span>` : '';
+  const tags = (f.changed ? `<span class="set-meta changed tip" data-tip="Mặc định: ${esc(fmtSetting(f, f.default))}">đã đổi</span>` : '')
+    + (f.applies === 'relabel' ? '<span class="set-meta tip" data-tip="Có hiệu lực với frame gán nhãn mới. Frame cũ chưa ai mở: bấm Áp dụng lại.">cần Áp dụng lại</span>' : '');
+  return `${group}<div class="set-row">
+    <div class="set-name"><label for="${id}">${esc(f.label)}</label>${info}${tags}${f.help ? `<span class="set-help">${esc(f.help)}</span>` : ''}</div>
     <div>${control}</div>
-    <div class="set-help">${esc(f.help)} <i>(${when})</i></div>
   </div>`;
 }
 function settingValues() {

@@ -15,90 +15,113 @@ from src.models.qa_config import AutoLabelConfig
 SETTINGS_FILE = "settings.json"
 
 # path trong config -> mô tả cho UI. kind: choice | bool | float | int
+# label / choices / help: ngắn, hiện thẳng trên trang. detail: số đo làm căn cứ, chỉ hiện khi rê chuột vào ⓘ.
+# group: tiêu đề nhóm trên trang. applies: now = có hiệu lực ngay | relabel = cần bấm "Áp dụng lại" cho frame cũ
 FIELDS: dict[str, dict] = {
     "propagation.flow": {
         "kind": "choice",
-        "label": "Lan truyền nhãn: dự đoán chuyển động",
+        "group": "Lan truyền 2D",
+        "label": "Dự đoán chuyển động",
         "choices": {
-            "always": "Optical flow ở mọi ảnh (khuyên dùng)",
-            "dam4sam": "DAM4SAM (SAM 2.1) phân đoạn từng vật — cần GPU và repo DAM4SAM",
-            "flow+dam4sam": "Lai: optical flow, DAM4SAM chỉ cho vật đang mất detection — cần GPU và repo DAM4SAM",
-            "missing": "Optical flow chỉ ở ảnh chưa detect",
-            "off": "Đoán theo vận tốc không đổi (cách cũ)",
+            "always": "Optical flow",
+            "dam4sam": "DAM4SAM (cần GPU)",
+            "flow+dam4sam": "Optical flow + DAM4SAM (cần GPU)",
+            "missing": "Optical flow, chỉ ảnh chưa detect",
+            "off": "Vận tốc không đổi",
         },
-        "help": "Held-out 20 scene (795 keyframe): flow ở mọi ảnh cho thêm 14% nhãn lan truyền đúng (2910 → 3329), "
-        "đổi ID 265 → 97, mất dấu −22%. Tốn ~1 s cho mỗi lần lan truyền 10 keyframe trên CPU.",
+        "help": "Khuyên dùng: Optical flow.",
+        "detail": "Held-out 20 scene (795 keyframe): optical flow ở mọi ảnh cho thêm 14% nhãn lan truyền đúng "
+        "(2910 → 3329), đổi ID 265 → 97, mất dấu −22%; tốn ~1 s cho mỗi lần lan truyền 10 keyframe trên CPU. "
+        "DAM4SAM + BoT-SORT: HOTA 0.573 so với 0.563, chậm hơn 3,4 lần.",
         "applies": "now",
     },
     "propagation.association": {
         "kind": "choice",
-        "label": "Lan truyền nhãn: cách ghép với detection",
+        "group": "Lan truyền 2D",
+        "label": "Ghép với detection",
         "choices": {
-            "byte": "Hai lượt kiểu ByteTrack — box rõ trước (khuyên dùng)",
-            "botsort": "BoT-SORT — ByteTrack + ngoại hình (màu) + bù chuyển động camera",
-            "single": "Một lượt với mọi box (cách cũ)",
+            "byte": "ByteTrack",
+            "botsort": "BoT-SORT",
+            "single": "IoU một lượt",
         },
-        "help": "Box score thấp nằm gần không còn 'cướp' track của vật có box rõ. Dev: box lan truyền sai 224 → 203, "
-        "nhãn đúng giữ nguyên; held-out 4 scene: sai 329 → 300.",
+        "help": "Khuyên dùng: ByteTrack.",
+        "detail": "ByteTrack ghép box score cao trước, box score thấp chỉ cho track còn thiếu. Dev: box lan truyền sai "
+        "224 → 203, nhãn đúng giữ nguyên; held-out 4 scene: sai 329 → 300. BoT-SORT thêm ngoại hình (màu) và bù chuyển "
+        "động camera, gần như không đổi khi đã có optical flow.",
         "applies": "now",
     },
     "propagation.oc_recover": {
         "kind": "bool",
-        "label": "Lan truyền 2D: nhận lại vật bị che (OC-SORT)",
-        "help": "Không khuyên bật. Track đang mất được ghép lại theo box quan sát cuối. 20 scene test: box ghi ra đúng "
-        "3192 → 3215 (+0.7%) nhưng đổi ID 76 → 87, box sai 860 → 868.",
+        "group": "Lan truyền 2D",
+        "label": "Nhận lại vật bị che (OC-SORT)",
+        "help": "Không khuyên bật.",
+        "detail": "Track đang mất được ghép lại theo box quan sát cuối. 20 scene test: box ghi ra đúng 3192 → 3215 "
+        "(+0.7%) nhưng đổi ID 76 → 87, box sai 860 → 868.",
+        "applies": "now",
+    },
+    "propagation.max_keyframes": {
+        "kind": "int",
+        "group": "Lan truyền 2D",
+        "label": "Số keyframe tối đa mỗi lần",
+        "min": 1,
+        "max": 200,
+        "help": "",
+        "detail": "Lan truyền dừng sau bấy nhiêu keyframe, hoặc trước frame đã có người mở.",
         "applies": "now",
     },
     "propagation3d.max_misses": {
         "kind": "int",
-        "label": "Lan truyền 3D: số keyframe giữ track khi mất dấu",
+        "group": "Lan truyền 3D",
+        "label": "Số keyframe giữ track khi mất dấu",
         "min": 1,
         "max": 10,
-        "help": "Vật bị che quá bấy nhiêu keyframe thì dừng. 2 → 4 (mặc định): test 24 scene nhãn đúng +1.6% "
+        "help": "",
+        "detail": "Vật bị che quá bấy nhiêu keyframe thì dừng. 2 → 4 (mặc định): test 24 scene nhãn đúng +1.6% "
         "(23355 → 23731), đổi ID 470 → 543.",
         "applies": "now",
     },
     "propagation3d.oc_recover": {
         "kind": "bool",
-        "label": "Lan truyền 3D: nhận lại theo vị trí quan sát cuối (OC-SORT)",
-        "help": "Tắt mặc định: thêm nhãn đúng trên test (23731 → 23872) nhưng không trên dev, và thêm đổi ID.",
+        "group": "Lan truyền 3D",
+        "label": "Nhận lại theo vị trí cuối (OC-SORT)",
+        "help": "Không khuyên bật.",
+        "detail": "Thêm nhãn đúng trên test (23731 → 23872) nhưng không trên dev, và thêm đổi ID.",
         "applies": "now",
     },
-    "propagation.max_keyframes": {
-        "kind": "int",
-        "label": "Số keyframe tối đa mỗi lần lan truyền",
-        "min": 1,
-        "max": 200,
-        "help": "Lan truyền dừng sau bấy nhiêu keyframe (hoặc trước frame đã có người mở).",
-        "applies": "now",
-    },
-    "qa.temporal.flow": {
-        "kind": "bool",
-        "label": "So khớp sweep t−2…t+2 bằng optical flow",
-        "help": "Không khuyên dùng. Box sweep được dời về thời điểm keyframe trước khi so: cờ FLICKER đúng hơn "
-        "(precision 0.79 → 0.90) nhưng bắt ít lỗi hơn hẳn — lỗi lọt qua duyệt theo lô 1632 → 2082 (held-out 20 scene).",
+    "detection.min_score": {
+        "kind": "float",
+        "group": "Gán nhãn",
+        "label": "Ngưỡng giữ box",
+        "min": 0.05,
+        "max": 0.9,
+        "step": 0.05,
+        "help": "Thấp: ít sót, nhiều box phải xoá.",
+        "detail": "Box có score dưới ngưỡng bị bỏ trước khi duyệt. Đổi ngưỡng không phải chạy lại detector.",
         "applies": "relabel",
     },
     "qa.temporal.rescore": {
         "kind": "choice",
-        "label": "Tính lại score keyframe theo các sweep",
+        "group": "Gán nhãn",
+        "label": "Tính lại score theo sweep",
         "choices": {
-            "off": "Tắt — dùng score detector (mặc định)",
-            "mean": "Trung bình 5 ảnh — bớt ~60% box phải xem tay, sót thêm ~9% vật",
-            "linked": "Trung bình các lần thấy — ít sót hơn, nhiều box sai hơn",
+            "off": "Tắt",
+            "mean": "Trung bình 5 ảnh",
+            "linked": "Trung bình các lần thấy",
         },
-        "help": "mAP gần như không đổi ở cả ba. Held-out 20 scene, 'Trung bình 5 ảnh' khi TẮT so khớp bằng flow: "
-        "box phải xem tay 1707 → 648, box sai 2980 → 1860, tổng lỗi còn lại sau duyệt như cũ (4197 → 4190), "
-        "nhưng vật bị sót phải vẽ thêm 2565 → 2791. Bật cùng flow thì lỗi còn lại tăng ~9%.",
+        "help": "Khuyên dùng: Tắt.",
+        "detail": "mAP gần như không đổi ở cả ba. Held-out 20 scene, 'Trung bình 5 ảnh': box phải xem tay 1707 → 648, "
+        "box sai 2980 → 1860, tổng lỗi còn lại sau duyệt như cũ (4197 → 4190), nhưng vật sót phải vẽ thêm 2565 → 2791. "
+        "'Trung bình các lần thấy': ít sót hơn, nhiều box sai hơn. Bật cùng so khớp bằng optical flow thì lỗi còn lại "
+        "tăng ~9%.",
         "applies": "relabel",
     },
-    "detection.min_score": {
-        "kind": "float",
-        "label": "Ngưỡng giữ box sau detector",
-        "min": 0.05,
-        "max": 0.9,
-        "step": 0.05,
-        "help": "Box dưới ngưỡng bị bỏ trước khi duyệt. Thấp: ít sót, nhiều box phải xoá. Không phải detect lại.",
+    "qa.temporal.flow": {
+        "kind": "bool",
+        "group": "Gán nhãn",
+        "label": "So khớp sweep bằng optical flow",
+        "help": "Không khuyên bật.",
+        "detail": "Box ở sweep t−2…t+2 được dời về thời điểm keyframe trước khi so: cờ FLICKER đúng hơn (precision "
+        "0.79 → 0.90) nhưng bắt ít lỗi hơn hẳn — lỗi lọt qua duyệt theo lô 1632 → 2082 (held-out 20 scene).",
         "applies": "relabel",
     },
 }

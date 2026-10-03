@@ -56,7 +56,15 @@ def relabel_auto_frames(
             if pipeline is None:
                 from src.services.nuscenes_data import NuScenesMini
 
-                pipeline = AutoLabelPipeline(NuScenesMini(dataroot, version), store, config)
+                # Dự án có LiDAR: dự đoán 3D đã lưu ở <dự án>/work3d/preds.json; thiếu thì "áp dụng lại" sẽ làm mất phần box
+                # 3D đã gộp vào nhãn 2D (bước fuse2d)
+                preds_file = Path(store.root).parent / "work3d" / "preds.json"
+                preds3d = None
+                if config.detection.lidar3d.enabled and preds_file.is_file():
+                    import json
+
+                    preds3d = json.loads(preds_file.read_text())["results"]
+                pipeline = AutoLabelPipeline(NuScenesMini(dataroot, version), store, config, preds3d=preds3d)
                 pipeline.ensemble = ensemble
                 pipeline.run_id = run_id
             record = pipeline.process(f.scene, f.index, f.sample_token, overwrite=True)

@@ -79,6 +79,10 @@ class Lidar3DCfg(BaseModel):
     # nên không nên hạ điểm như camera_only_scale. None = hạ như thường (cách cũ); 1.0 = giữ nguyên điểm detector.
     no_lidar_scale: float | None = None
     no_lidar_max_points: int = 2  # "không có điểm LiDAR" = số điểm trong box <= ngần này
+    # Hai box 3D của xe (car / truck / bus / trailer / construction_vehicle) chồng nhau trên mặt đường từ tỉ lệ này
+    # (phần chồng / box nhỏ hơn) là một xe: giữ box điểm cao hơn. Ensemble đôi khi cho hai box lệch vài mét dọc thân xe
+    # tải dài, hoặc car + truck ở cùng chỗ -> một xe có hai nhãn 2D. None = tắt.
+    dedup_bev_overlap: float | None = 0.15
 
 
 class DetectionCfg(BaseModel):

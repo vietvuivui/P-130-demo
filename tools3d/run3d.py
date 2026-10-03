@@ -325,8 +325,7 @@ def build_infos(nusc, tokens: set, version: str, dataroot: Path, test: bool, max
     upd.update_nuscenes_infos(str(v1), str(WORK / "infos"))
     if short:
         print(
-            f"Cảnh báo: {short}/{len(infos)} keyframe không có sweep LiDAR (dữ liệu chỉ có keyframe): mô hình chỉ thấy 1 lần "
-            "quét thay vì 10, độ chính xác 3D giảm rõ (scene-0035, CenterPoint pillar: mAP 0.43 với 4 sweep, 0.29 khi không có)"
+            f"Cảnh báo: {short}/{len(infos)} keyframe không có sweep LiDAR, độ chính xác 3D giảm (mAP 0.43 → 0.29)"
         )
     return len(infos)
 

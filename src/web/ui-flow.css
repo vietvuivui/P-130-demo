@@ -1484,3 +1484,8 @@ a {
 .pj-invite-link { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .pj-invite-link input { flex: 1 1 320px; width: auto; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
 .pj-team .linklike { background: none; border: none; padding: 0; color: #1677ff; cursor: pointer; font: inherit; }
+
+/* Tên dự án sửa tại chỗ */
+#projectTitleDisplay { cursor: text; border-radius: 4px; padding: 0 4px; margin-left: -4px; outline: none; }
+#projectTitleDisplay:hover { background: #f1f5f9; }
+#projectTitleDisplay.editing { background: #fff; box-shadow: 0 0 0 2px #1677ff; }
