@@ -69,6 +69,83 @@ Hai luồng lan truyền 2D người dùng chọn trên giao diện (held-out 20
 Trong cả hai luồng, YOLO không tham gia bước dự đoán: nó đã chạy từ bước ① và tracker chỉ đọc box của nó để ghép. Box
 ghi ra ở keyframe sau là box YOLO mang ID và lớp của vật đã duyệt.
 
+### Giải thích từng bước cho người chưa biết sản phẩm
+
+**Sản phẩm làm gì.** Xe tự lái cần dữ liệu đã gán nhãn: mỗi ảnh camera và mỗi lần quét LiDAR phải có hộp (box) bao từng
+xe, người, cọc tiêu… kèm tên lớp. Gán tay rất tốn công. AutoLabel 3D để máy gán trước, tự chấm xem box nào đáng ngờ,
+rồi người chỉ xem lại những box đáng ngờ đó ("review by exception") thay vì xem tất cả.
+
+**Vài thuật ngữ dùng bên dưới.**
+
+| Thuật ngữ | Nghĩa |
+|---|---|
+| Box 2D / box 3D | Hình chữ nhật trên ảnh / hình hộp trong không gian (có vị trí, kích thước, hướng) bao một vật |
+| LiDAR | Cảm biến quét laser quanh xe, cho ra đám mây điểm 3D; biết chính xác khoảng cách nhưng thưa dần ở xa |
+| Keyframe, sweep | Dữ liệu được ghi ~12 lần / giây. Keyframe là các thời điểm cách nhau 0,5 giây được chọn để gán nhãn; sweep là các ảnh ở giữa, không gán nhãn nhưng dùng làm bằng chứng |
+| Score | Độ tự tin của mô hình với một box, từ 0 đến 1 |
+| IoU | Mức chồng lấn của hai box (0 = rời nhau, 1 = trùng khít); dùng để quyết định hai box có phải cùng một vật |
+| Nhãn gốc (GT) | Nhãn do người của nuScenes gán, dùng làm đáp án để chấm |
+
+**① Detector 2D — tìm vật trên ảnh.** Một mô hình nhận diện (YOLOE-26-L) nhìn từng ảnh và vẽ box quanh vật thuộc 10
+lớp của nuScenes. Mô hình gốc được huấn luyện thêm ("fine-tune") trên bộ ảnh đường phố nuImages để quen với cảnh lái
+xe. Nó chạy trên cả keyframe lẫn 4 sweep quanh mỗi keyframe. Mọi box score ≥ 0.10 được lưu lại, nhưng chỉ box ≥ 0.30
+mới thành nhãn: ngưỡng thấp hơn thì bắt được nhiều vật hơn nhưng người phải xoá nhiều box sai hơn.
+
+**② Detector 3D — tìm vật trong đám mây điểm, rồi "gộp 4 mô hình".** Chỉ chạy khi dữ liệu có LiDAR.
+
+- *Vì sao 4 mô hình.* Mỗi mô hình 3D (CenterPoint voxel, CenterPoint pillar, SSN, PointPillars) chia không gian và học
+  theo cách khác nhau nên sai ở những chỗ khác nhau: cái giỏi xe lớn, cái giỏi vật nhỏ. Hỏi cả bốn rồi lấy ý kiến chung
+  thì chính xác hơn hỏi một (giống hội chẩn bốn bác sĩ).
+- *Gộp thế nào.* Với mỗi keyframe, các box cùng lớp của bốn mô hình có tâm cách nhau dưới một bán kính (xe con 1 m,
+  người 0,5 m, cọc tiêu 0,4 m…) được coi là cùng một vật; mỗi mô hình góp tối đa một box. Box gộp lấy vị trí, kích
+  thước, hướng, vận tốc là trung bình có trọng số theo score. Score mới = score trung bình × tỉ lệ mô hình đồng ý: vật
+  cả 4 mô hình cùng thấy giữ nguyên score, vật chỉ 1 mô hình thấy còn 1/4, nên box "một mình một ý" tự tụt xuống dưới.
+- *Tinh chỉnh theo track.* Một vật thật không đổi kích thước hay quay ngoắt 180° giữa hai keyframe. Nên các box của cùng
+  một vật qua các keyframe được nối thành chuỗi (track), rồi: kích thước lấy trung vị cả chuỗi; hướng bị ngược đầu đuôi
+  thì lật lại theo đa số; vận tốc tính lại từ quãng đường thật; keyframe bị hụt box ở giữa chuỗi thì nội suy thêm.
+- *Kết quả.* mAP (độ chính xác trung bình, thang 0–1) từ 0.578 của mô hình đơn tốt nhất lên 0.668, không phải huấn luyện
+  thêm gì. Giá phải trả là thời gian: chạy bốn mô hình thay vì một.
+
+**③ Gộp 2D + 3D — dùng LiDAR để sửa nhãn trên ảnh.** Box 3D được chiếu xuống ảnh camera thành box 2D. Box của camera
+trùng với box chiếu (IoU ≥ 0.4, cùng lớp) thì lấy box chiếu và score cao hơn trong hai. Box chỉ camera thấy, LiDAR không
+xác nhận, bị nhân score với 0.5, nên phần lớn rơi xuống dưới ngưỡng giữ. Lý do: LiDAR đo được khoảng cách thật nên ít
+"tưởng tượng" ra vật hơn camera. Trên tập test, số box người phải sửa (thừa + sót) giảm từ 6990 xuống 3748.
+
+**④ QA Agent — máy tự chấm box nào đáng ngờ.** Mỗi box đi qua bốn nhóm kiểm tra; mỗi kiểm tra không đạt sinh một mã
+lỗi kèm lời giải thích cho người duyệt:
+
+| Nhóm | Hỏi gì | Mã lỗi |
+|---|---|---|
+| Độ tự tin | Score có thấp không? Mô hình có phân vân giữa hai lớp không? | `LOW_CONFIDENCE`, `CLASS_CONFLICT` |
+| LiDAR | Trong box có điểm LiDAR không? Kích thước box có hợp với khoảng cách đo được không? | `NO_LIDAR_SUPPORT`, `SIZE_DEPTH_MISMATCH` |
+| Thời gian | Vật có xuất hiện lại ở các sweep ngay trước và sau không, hay chỉ loé lên một ảnh? | `FLICKER`, `RECOVERED_BY_TRACK` |
+| Hình học | Box có to bất thường, hay tỉ lệ rộng / cao lạ so với lớp không? | `BOX_TOO_LARGE`, `ASPECT_RATIO_ABNORMAL` |
+
+Bốn nhóm được cộng có trọng số thành một điểm rủi ro 0–1, chia ba mức: **low** (xanh, < 0.30), **medium** (vàng),
+**high** (đỏ, ≥ 0.60). Box có bất kỳ mã lỗi nào thì không bao giờ được xếp low. `RECOVERED_BY_TRACK` là trường hợp
+ngược: detector bỏ sót (hoặc thấy quá mờ) ở keyframe nhưng các sweep hai bên đều thấy, nên máy đề xuất một box nét đứt
+để người xác nhận.
+
+**⑤ Người duyệt.** Hàng đợi xếp frame khó nhất lên đầu. Trong mỗi frame, người duyệt xem box đỏ và vàng (giữ, xoá, đổi
+lớp, sửa box), rồi bấm một nút để duyệt cả nhóm box xanh. Vật máy sót thì vẽ box, hoặc bấm ✨ Chọn vật rồi bấm vào vật:
+mô hình SAM 2.1 tự tách vật ra và tạo box. Frame chỉ được duyệt khi không còn box nào chưa xử lý.
+
+**⑥ Lan truyền nhãn — không phải duyệt lại cùng một vật ở mọi frame.** Một chiếc xe có mặt liên tục vài giây, tức hàng
+chục keyframe. Sau khi người duyệt một keyframe, tracker mang từng nhãn sang các keyframe sau, qua hai bước lặp lại ở
+mỗi ảnh:
+
+- *Dự đoán:* vật này ở ảnh kế tiếp nằm đâu? Mặc định dùng **optical flow**: tính mỗi điểm ảnh dịch đi bao nhiêu giữa
+  hai ảnh liên tiếp rồi dời box theo. Tuỳ chọn **DAM4SAM**: mô hình SAM 2.1 nhớ hình dạng vật và tô lại vật ở ảnh mới.
+- *Ghép:* box dự đoán ứng với box nào detector vừa thấy ở ảnh đó? Mặc định dùng **ByteTrack**: ghép với box score cao
+  trước, box score thấp chỉ dùng cho vật chưa ghép được, để box mờ không "cướp" mất vật rõ.
+
+Nhãn lan truyền mang tag ↦ và một độ tin cậy riêng; vật không ghép được trong 6 ảnh liên tiếp thì ngừng theo dõi. Vật
+người đã xoá cũng được nhớ để tự xoá ở frame sau. Với 3D, vật được dời theo vận tốc mô hình đã đo và chuyển động của
+chính xe thu dữ liệu.
+
+**⑦ Xuất và đo.** Chỉ frame người đã duyệt mới được xuất (COCO, nuScenes, KITTI), kèm nhật ký mọi lần sửa. Từ nhật ký,
+hệ thống tính tỉ lệ nhãn máy phải sửa và thời gian duyệt mỗi frame, tức các số nói lên máy đã đỡ được bao nhiêu công.
+
 ## 1. Giao thức đánh giá và định nghĩa chỉ số
 
 **Tách dữ liệu để tránh overfit.** Cách làm được chọn trên **dev**, gồm 3 scene demo của UI (scene-0035, 0097, 0101;
