@@ -67,6 +67,11 @@
       <button class="top-btn-icon" id="btn-fullscreen" title="Toàn màn hình" onclick="toggleFullscreen()"><i
           class="ri-fullscreen-line"></i></button>
 
+      <div class="model-switch" id="topbar-model-switch" role="radiogroup" aria-label="Mô hình nhận diện và lan truyền">
+        <button class="model-btn active" data-engine="default" type="button" title="Mô hình Nhanh: Optical flow + ByteTrack (chạy CPU, ~1s)">⚡ Nhanh</button>
+        <button class="model-btn" data-engine="dam4sam" type="button" title="Mô hình Chính xác: DAM4SAM (SAM 2.1) + BoT-SORT (chính xác cao, cần GPU)">🎯 Chính xác</button>
+      </div>
+
       <div class="mode-switch" role="tablist" aria-label="Chế độ gán nhãn">
         <button class="mode active" data-mode="image" role="tab" title="Gán nhãn từng frame ảnh độc lập">🖼 Ảnh</button>
         <button class="mode" data-mode="video" role="tab" title="Gán nhãn cả video: timeline + lan truyền nhãn">🎞 Video</button>
