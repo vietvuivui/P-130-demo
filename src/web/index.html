@@ -9,8 +9,8 @@
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="ui-flow.css?v=3d23merge">
-  <link rel="stylesheet" href="styles.css?v=3d23merge">
+  <link rel="stylesheet" href="ui-flow.css?v=3d24set">
+  <link rel="stylesheet" href="styles.css?v=3d24set">
 </head>
 
 <body class="workspace-page">
@@ -606,19 +606,19 @@
             <button id="settings-save" class="btn btn-primary btn-sm" type="button" disabled>Lưu</button>
           </span>
         </div>
-        <p class="muted">Lưu riêng cho workspace / dự án này (không cần sửa file config). Mặc định lấy từ <code>configs/autolabel.yaml</code>.</p>
+        <p class="muted">Lưu riêng cho dự án này. Rê chuột vào ⓘ để xem số liệu.</p>
         <form id="settings-form" class="settings-form" autocomplete="off"></form>
       </section>
       <div class="two-col">
         <section class="card">
-          <h3>Áp dụng lại cho frame chưa ai mở</h3>
-          <p class="muted">Chạy lại QA / score / ngưỡng theo cài đặt hiện tại, dùng detection đã lưu nên nhanh. Không đụng frame đã mở, đã duyệt, đã nhận nhãn lan truyền hoặc có sweep đã sửa.</p>
+          <h3>Áp dụng lại</h3>
+          <p class="muted" title="Chạy lại QA / score / ngưỡng theo cài đặt hiện tại, dùng detection đã lưu nên nhanh. Không đụng frame đã mở, đã duyệt, đã nhận nhãn lan truyền hoặc có sweep đã sửa.">Áp cài đặt mới cho các frame chưa ai mở.</p>
           <button id="relabel-run" class="btn btn-primary btn-sm" type="button">↻ Áp dụng lại</button>
           <div class="job-status" id="relabel-status"></div>
         </section>
         <section class="card">
-          <h3>So sánh trước / sau optical flow</h3>
-          <p class="muted">Chạy mọi cách xử lý trên các frame có nhãn gốc (GT) của workspace này, cùng một detection, rồi so mAP, việc của người duyệt và độ chính xác lan truyền. Vài phút; chạy nền, có thể tiếp tục duyệt.</p>
+          <h3>Đánh giá</h3>
+          <p class="muted" title="Chạy mọi cách xử lý trên các frame có nhãn gốc (GT) của workspace này, cùng một detection, rồi so mAP, việc của người duyệt và độ chính xác lan truyền. Vài phút; chạy nền, có thể tiếp tục duyệt.">So các cách xử lý trên frame có nhãn gốc. Vài phút, chạy nền.</p>
           <button id="eval-run" class="btn btn-primary btn-sm" type="button">▶ Chạy đánh giá</button>
           <div class="job-status" id="eval-status"></div>
         </section>
@@ -784,8 +784,8 @@
     }, 500);
   </script>
 
-  <script src="app.js?v=3d23merge"></script>
-  <script type="module" src="app3d.js?v=3d23merge"></script>
+  <script src="app.js?v=3d24set"></script>
+  <script type="module" src="app3d.js?v=3d24set"></script>
 
   <script>
     // ---------- Left Toolbar Interaction Controller ----------
