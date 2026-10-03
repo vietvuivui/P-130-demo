@@ -354,7 +354,16 @@ async function initFramesPage() {
   if (!tasksContainer) return;
 
   const urlParams = new URLSearchParams(window.location.search);
+  // Mở "Tasks & Frames" từ thanh menu (không kèm ?project=): quay lại dự án vừa xem, chưa có thì lấy dự án mới nhất.
+  if (!urlParams.get("project")) {
+    let pid = "";
+    try { pid = localStorage.getItem("lastProject") || ""; } catch (e) { }
+    const list = await fetch("/api/v1/projects").then((r) => (r.ok ? r.json() : [])).catch(() => []);
+    if (!list.some((x) => x.id === pid)) pid = list.length ? [...list].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0].id : "";
+    if (pid) { window.location.replace(`frames.html?project=${encodeURIComponent(pid)}`); return; }
+  }
   const projectId = urlParams.get("project") || "";
+  if (projectId) { try { localStorage.setItem("lastProject", projectId); } catch (e) { } }
   const projectName = urlParams.get("name") || (projectId ? projectId : "Dự án");
 
   const titleEl = document.getElementById("projectTitleDisplay");
