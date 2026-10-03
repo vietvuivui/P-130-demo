@@ -7,31 +7,26 @@
   <title>AutoLabel 3D — Workspace Gán nhãn</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet"
-    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=3d22scroll">
+  <link rel="stylesheet" href="ui-flow.css?v=3d23merge">
+  <link rel="stylesheet" href="styles.css?v=3d23merge">
 </head>
 
-<body class="dark-theme">
+<body class="workspace-page">
 
-  <!-- Top Navigation Bar -->
+  <!-- Top Navigation Bar (Unified with AutoLabel Suite) -->
   <header class="topbar">
     <div class="topbar-left">
-      <!-- Menu Dropdown Button -->
-      <div class="menu-dropdown-wrap">
-        <button class="menu-btn" id="menuBtn">
-          <i class="ri-menu-line"></i>
-          <span>Menu</span>
-        </button>
-        <div class="menu-dropdown" id="menuDropdown">
-          <a href="projects.html"><i class="ri-folder-2-line"></i> Dự án</a>
-          <a href="frames.html"><i class="ri-list-check-2"></i> Tasks &amp; Frames</a>
-          <a href="export.html"><i class="ri-download-cloud-2-line"></i> Xuất dữ liệu</a>
-          <div class="dropdown-divider"></div>
-          <a href="javascript:void(0)" onclick="toggleQueuePanel()"><i class="ri-side-bar-line"></i> Hàng đợi Frame</a>
-          <a href="login.html" style="color: #ff4d4f;"><i class="ri-logout-box-r-line"></i> Đăng xuất</a>
-        </div>
-      </div>
+      <a href="projects.html" class="logo" style="margin-right: 6px;">
+        <i class="ri-box-3-fill logo-icon"></i>
+        <span>AutoLabel</span>
+      </a>
+      <nav class="nav topbar-nav">
+        <a href="projects.html" class="nav-item">Dự án</a>
+        <a href="frames.html" class="nav-item">Tasks &amp; Frames</a>
+        <a href="export.html" class="nav-item">Xuất dữ liệu</a>
+      </nav>
 
       <a id="project-link" class="project-link hidden" href="/ui/projects.html" title="Về danh sách dự án">← Dự án <b id="project-name"></b></a>
 
@@ -44,8 +39,8 @@
       </div>
     </div>
 
-    <!-- Media / Frame Player Navigation Controls -->
-    <div class="player-controls">
+    <!-- Media / Frame Player Navigation Controls (Only shown for video mode) -->
+    <div class="player-controls hidden" id="topbar-player-controls" style="display: none;">
       <button class="player-btn" title="Về đầu video (Shift+P)" onclick="stepFrame(-10)"><i
           class="ri-skip-back-line"></i></button>
       <button class="player-btn" id="btn-nav-prev" title="Frame trước (P)" onclick="stepFrame(-1)"><i
@@ -86,11 +81,11 @@
         <button class="tab" data-tab="settings" role="tab" title="Chỉnh cách gán nhãn / lan truyền, áp dụng lại, đánh giá trước / sau">⚙ Cài đặt</button>
       </nav>
 
-      <!-- Reviewer input -->
-      <label class="reviewer-tag" title="Người duyệt hiện tại">
-        <i class="ri-user-line"></i>
-        <input id="reviewer" type="text" maxlength="40" value="Huy">
-      </label>
+      <!-- Reviewer Profile -->
+      <div class="user-profile topbar-user-profile" title="Người duyệt hiện tại">
+        <i class="ri-user-line avatar-icon"></i>
+        <input id="reviewer" type="text" maxlength="40" value="Huy" class="reviewer-inline-input" title="Đổi tên người duyệt">
+      </div>
     </div>
   </header>
 
@@ -116,20 +111,26 @@
         <i class="ri-pentagon-line"></i>
       </button>
       <div class="tool-divider"></div>
-      <button class="tool-btn" id="tool-tags" title="Bật/Tắt thẻ nhãn hiển thị">
+      <button class="tool-btn active" id="tool-tags" title="Bật/Tắt thẻ nhãn hiển thị">
         <i class="ri-price-tag-3-line"></i>
       </button>
       <button class="tool-btn" id="tool-fit" title="Thu phóng vừa khung nhìn (Ctrl+0)">
         <i class="ri-aspect-ratio-line"></i>
       </button>
+      <div class="tool-divider"></div>
+      <button class="tool-btn active" id="tool-queue" title="Danh sách Frame (Hàng đợi)" onclick="toggleQueuePanel()">
+        <i class="ri-list-check-2"></i>
+      </button>
     </aside>
 
     <!-- Collapsible Queue Drawer for Frames / Videos -->
-    <aside class="queue-drawer" id="queue-panel">
+    <aside class="queue queue-drawer" id="queue-panel">
       <div class="queue-drawer-header">
         <div class="flex justify-between align-center">
-          <strong class="text-sm font-semibold">Danh sách Frame</strong>
-          <button class="btn-icon-xs" onclick="toggleQueuePanel()"><i class="ri-close-line"></i></button>
+          <strong class="text-sm font-semibold" style="display: flex; align-items: center; gap: 6px;">
+            <i class="ri-list-check-2" style="color: var(--primary);"></i> Hàng đợi Frame
+          </strong>
+          <button class="btn-icon-xs" onclick="toggleQueuePanel()" title="Thu gọn danh sách"><i class="ri-close-line"></i></button>
         </div>
         <div class="mt-2 flex gap-1">
           <select id="queue-sort" class="form-select-sm" title="Sắp xếp danh sách">
@@ -248,15 +249,15 @@
         <div class="sort-wrap">
           <span>Sắp xếp</span>
           <select id="objSortSelect" class="sidebar-select">
-            <option>ID - tăng dần</option>
-            <option>ID - giảm dần</option>
-            <option>Mức độ rủi ro</option>
+            <option value="risk">Mức độ rủi ro</option>
+            <option value="id-asc">ID - tăng dần</option>
+            <option value="id-desc">ID - giảm dần</option>
           </select>
         </div>
         <div class="items-quick-icons">
-          <button class="side-icon-btn" title="Khóa tất cả"><i class="ri-lock-line"></i></button>
-          <button class="side-icon-btn" title="Ẩn tất cả"><i class="ri-eye-line"></i></button>
-          <button class="side-icon-btn" title="Bộ lọc"><i class="ri-filter-line"></i></button>
+          <button class="side-icon-btn" id="btnQuickLockAll" title="Khóa tất cả"><i class="ri-lock-line"></i></button>
+          <button class="side-icon-btn" id="btnQuickHideAll" title="Ẩn tất cả"><i class="ri-eye-line"></i></button>
+          <button class="side-icon-btn" id="btnQuickFilter" title="Bộ lọc rủi ro"><i class="ri-filter-line"></i></button>
         </div>
       </div>
 
@@ -299,6 +300,16 @@
         </section>
       </div>
 
+      <!-- Labels Tab Content -->
+      <div class="review-scroll labels-scroll hidden" id="labels-scroll">
+        <div class="labels-list-wrap" id="labels-list-wrap" style="padding: 12px;"></div>
+      </div>
+
+      <!-- Issues Tab Content -->
+      <div class="review-scroll issues-scroll hidden" id="issues-scroll">
+        <div class="issues-list-wrap" id="issues-list-wrap" style="padding: 12px;"></div>
+      </div>
+
       <!-- Appearance Collapsible Section -->
       <div class="appearance-box">
         <div class="appearance-head" onclick="toggleAppearanceBox()">
@@ -310,16 +321,17 @@
         <div class="appearance-content" id="appearanceContent">
           <div class="color-by-row">
             <span class="text-xs text-gray">Màu theo</span>
-            <div class="segmented-btn-group">
-              <button class="seg-btn active">Nhãn</button>
-              <button class="seg-btn">Đối tượng</button>
-              <button class="seg-btn">Nhóm</button>
+            <div class="segmented-btn-group" id="colorModeGroup">
+              <button class="seg-btn active" data-color-mode="label">Nhãn</button>
+              <button class="seg-btn" data-color-mode="object">Đối tượng</button>
+              <button class="seg-btn" data-color-mode="group">Nhóm</button>
             </div>
           </div>
 
           <div class="slider-field">
             <div class="flex justify-between text-xs text-gray mb-1">
               <span>Độ mờ (Opacity)</span>
+              <span id="opacityVal" class="mono">20%</span>
             </div>
             <input type="range" min="0" max="100" value="20" class="range-slider" id="opacitySlider">
           </div>
@@ -327,22 +339,23 @@
           <div class="slider-field">
             <div class="flex justify-between text-xs text-gray mb-1">
               <span>Độ mờ khi chọn</span>
+              <span id="selectedOpacityVal" class="mono">60%</span>
             </div>
             <input type="range" min="0" max="100" value="60" class="range-slider" id="selectedOpacitySlider">
           </div>
 
           <div class="checkbox-group">
             <label class="checkbox-label">
-              <input type="checkbox" checked>
+              <input type="checkbox" id="chkShowBorder" checked>
               <span>Viền ngoài đối tượng</span>
               <i class="ri-pencil-line text-blue" style="font-size: 11px;"></i>
             </label>
             <label class="checkbox-label">
-              <input type="checkbox">
+              <input type="checkbox" id="chkShowBitmap" checked>
               <span>Hiện lớp bitmap</span>
             </label>
             <label class="checkbox-label">
-              <input type="checkbox">
+              <input type="checkbox" id="chkShow3dProj">
               <span>Hiện hình chiếu 3D</span>
             </label>
           </div>
@@ -735,7 +748,11 @@
     // Toggle Queue Panel
     function toggleQueuePanel() {
       const q = document.getElementById('queue-panel');
-      if (q) q.classList.toggle('hidden');
+      const btn = document.getElementById('tool-queue');
+      if (q) {
+        q.classList.toggle('hidden');
+        if (btn) btn.classList.toggle('active', !q.classList.contains('hidden'));
+      }
     }
 
     // Toggle Appearance Box
@@ -765,19 +782,514 @@
         el.textContent = total;
       }
     }, 500);
+  </script>
 
-    // Left toolbar tool-rect triggers #btn-add
-    const toolRect = document.getElementById('tool-rect');
-    if (toolRect) {
-      toolRect.addEventListener('click', () => {
+  <script src="app.js?v=3d23merge"></script>
+  <script type="module" src="app3d.js?v=3d23merge"></script>
+
+  <script>
+    // ---------- Left Toolbar Interaction Controller ----------
+    let currentTool = 'select'; // 'select' | 'pan' | 'rect' | 'poly'
+
+    function setActiveTool(toolName, silent = false) {
+      currentTool = toolName;
+      ['select', 'pan', 'rect', 'poly'].forEach((t) => {
+        const btn = document.getElementById('tool-' + t);
+        if (btn) btn.classList.toggle('active', t === toolName);
+      });
+
+      const canvasScroll = document.getElementById('canvas-scroll');
+      const canvasEl = document.getElementById('canvas');
+
+      if (toolName === 'select') {
+        if (typeof cancelEdit === 'function') cancelEdit();
+        if (canvasScroll) canvasScroll.style.cursor = 'default';
+        if (canvasEl) canvasEl.style.cursor = 'default';
+        if (!silent && typeof toast === 'function') toast('Công cụ con trỏ chọn đối tượng (Esc)');
+      } else if (toolName === 'pan') {
+        if (typeof cancelEdit === 'function') cancelEdit();
+        if (canvasScroll) canvasScroll.style.cursor = 'grab';
+        if (canvasEl) canvasEl.style.cursor = 'grab';
+        if (!silent && typeof toast === 'function') toast('Chế độ di chuyển góc nhìn (Pan): Kéo chuột trên ảnh để di chuyển');
+      } else if (toolName === 'rect') {
+        if (canvasScroll) canvasScroll.style.cursor = 'crosshair';
+        if (canvasEl) canvasEl.style.cursor = 'crosshair';
         const btnAdd = document.getElementById('btn-add');
         if (btnAdd) btnAdd.click();
+        const btn3dAdd = document.getElementById('btn3d-add');
+        if (btn3dAdd) btn3dAdd.click();
+      } else if (toolName === 'poly') {
+        if (canvasScroll) canvasScroll.style.cursor = 'crosshair';
+        if (canvasEl) canvasEl.style.cursor = 'crosshair';
+        const showMask = document.getElementById('show-mask');
+        if (showMask && !showMask.checked) {
+          showMask.checked = true;
+          showMask.dispatchEvent(new Event('change'));
+        }
+        // Chế độ "Chọn vật" (SAM 2.1: bấm điểm hoặc kéo khung thô) do app.js bật / tắt qua cùng nút này (startClick);
+        // không bấm btn-add ở đây, nếu không hai chế độ vẽ box và chọn vật cùng bật
+      }
+    }
+
+    // Attach Left Toolbar Listeners
+    const toolSelect = document.getElementById('tool-select');
+    if (toolSelect) toolSelect.addEventListener('click', () => setActiveTool('select'));
+
+    const toolPan = document.getElementById('tool-pan');
+    if (toolPan) toolPan.addEventListener('click', () => setActiveTool('pan'));
+
+    const toolRect = document.getElementById('tool-rect');
+    if (toolRect) toolRect.addEventListener('click', () => setActiveTool('rect'));
+
+    const toolPoly = document.getElementById('tool-poly');
+    if (toolPoly) toolPoly.addEventListener('click', () => setActiveTool('poly'));
+
+    const toolRotate = document.getElementById('tool-rotate');
+    if (toolRotate) {
+      toolRotate.addEventListener('click', () => {
+        if (typeof setZoom === 'function') setZoom(1);
+        const box = document.getElementById('canvas-scroll');
+        if (box) { box.scrollLeft = 0; box.scrollTop = 0; }
+        const btnReset = document.getElementById('btn-zoom-reset') || document.getElementById('btn3d-reset');
+        if (btnReset) btnReset.click();
+        if (typeof toast === 'function') toast('Đã đặt lại góc nhìn vừa khung (0)');
+      });
+    }
+
+    const toolFit = document.getElementById('tool-fit');
+    if (toolFit) {
+      toolFit.addEventListener('click', () => {
+        if (typeof setZoom === 'function') setZoom(1);
+        const box = document.getElementById('canvas-scroll');
+        if (box) { box.scrollLeft = 0; box.scrollTop = 0; }
+        const btnReset = document.getElementById('btn-zoom-reset') || document.getElementById('btn3d-reset');
+        if (btnReset) btnReset.click();
+        if (typeof toast === 'function') toast('Thu phóng vừa khung nhìn (100%)');
+      });
+    }
+
+    const toolTags = document.getElementById('tool-tags');
+    if (toolTags) {
+      toolTags.addEventListener('click', () => {
+        if (typeof S !== 'undefined') {
+          S.hideTags = !S.hideTags;
+          toolTags.classList.toggle('active', !S.hideTags);
+          if (typeof draw === 'function') draw();
+          if (typeof toast === 'function') toast(S.hideTags ? 'Đã ẩn thẻ nhãn' : 'Đã hiển thị thẻ nhãn');
+        }
+      });
+    }
+
+    // Smooth Pan Drag Handler when in Pan mode
+    const canvasScroll = document.getElementById('canvas-scroll');
+    if (canvasScroll) {
+      canvasScroll.addEventListener('mousedown', (e) => {
+        if (currentTool === 'pan' && e.button === 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          let startX = e.clientX, startY = e.clientY;
+          let startLeft = canvasScroll.scrollLeft, startTop = canvasScroll.scrollTop;
+          canvasScroll.style.cursor = 'grabbing';
+          const cEl = document.getElementById('canvas');
+          if (cEl) cEl.style.cursor = 'grabbing';
+
+          function onMouseMove(me) {
+            canvasScroll.scrollLeft = startLeft - (me.clientX - startX);
+            canvasScroll.scrollTop = startTop - (me.clientY - startY);
+          }
+          function onMouseUp() {
+            if (currentTool === 'pan') {
+              canvasScroll.style.cursor = 'grab';
+              if (cEl) cEl.style.cursor = 'grab';
+            }
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
+          }
+          window.addEventListener('mousemove', onMouseMove);
+          window.addEventListener('mouseup', onMouseUp);
+        }
+      }, true);
+    }
+
+    // Keyboard Shortcuts sync with toolbar
+    window.addEventListener('keydown', (e) => {
+      const inField = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName);
+      if (inField) return;
+      if (e.key === 'Escape') {
+        setActiveTool('select', true);
+      } else if (e.key === 'b' || e.key === 'B') {
+        setActiveTool('rect', true);
+      }
+    });
+
+    // Topbar player play/pause toggle
+    const btnNavPlay = document.getElementById('btn-nav-play');
+    if (btnNavPlay) {
+      btnNavPlay.addEventListener('click', () => {
+        const btnPlay = document.getElementById('btn-play');
+        if (btnPlay) {
+          btnPlay.click();
+          setTimeout(() => {
+            const icon = btnNavPlay.querySelector('i');
+            if (icon) {
+              const isPlaying = btnPlay.textContent.includes('Dừng');
+              icon.className = isPlaying ? 'ri-pause-fill' : 'ri-play-fill';
+            }
+          }, 50);
+        }
+      });
+    }
+
+    // Topbar quick save/approve
+    const btnSaveFrame = document.getElementById('btn-save-frame');
+    if (btnSaveFrame) {
+      btnSaveFrame.addEventListener('click', () => {
+        const btnApprove = document.getElementById('btn-approve-frame') || document.getElementById('btn3d-approve');
+        if (btnApprove) btnApprove.click();
+      });
+    }
+
+    // Scrub slider & frame input synchronization
+    const scrubber = document.getElementById('frameScrubber');
+    const frameInput = document.getElementById('frameNumInput');
+    setInterval(() => {
+      try {
+        const frames = (typeof S !== 'undefined' && S.video?.frames) ? S.video.frames : (typeof S !== 'undefined' && S.queue) ? S.queue : [];
+        if (frames.length > 0 && typeof S !== 'undefined' && S.frame) {
+          const idx = frames.findIndex(f => f.frame_id === S.frame.frame_id);
+          if (idx >= 0) {
+            if (scrubber && document.activeElement !== scrubber) {
+              scrubber.max = Math.max(0, frames.length - 1);
+              scrubber.value = idx;
+            }
+            if (frameInput && document.activeElement !== frameInput) {
+              frameInput.max = Math.max(0, frames.length - 1);
+              frameInput.value = idx;
+            }
+          }
+        }
+      } catch (e) {}
+    }, 400);
+
+    if (scrubber) {
+      scrubber.addEventListener('input', () => {
+        const targetIdx = parseInt(scrubber.value, 10);
+        if (!isNaN(targetIdx) && typeof S !== 'undefined') {
+          const frames = S.video?.frames ? S.video.frames : S.queue ? S.queue : [];
+          if (frames[targetIdx] && typeof openFrame === 'function') {
+            openFrame(frames[targetIdx].frame_id);
+          }
+        }
+      });
+    }
+
+    if (frameInput) {
+      frameInput.addEventListener('change', () => {
+        const targetIdx = parseInt(frameInput.value, 10);
+        if (!isNaN(targetIdx) && typeof S !== 'undefined') {
+          const frames = S.video?.frames ? S.video.frames : S.queue ? S.queue : [];
+          if (frames[targetIdx] && typeof openFrame === 'function') {
+            openFrame(frames[targetIdx].frame_id);
+          }
+        }
+      });
+    }
+
+    // ---------- Mode Switch Immediate Player Visibility Controller ----------
+    document.querySelectorAll('.mode').forEach((b) => {
+      b.addEventListener('click', () => {
+        const pc = document.getElementById('topbar-player-controls');
+        if (pc) {
+          const isVideo = b.dataset.mode === 'video';
+          pc.classList.toggle('hidden', !isVideo);
+          pc.style.display = isVideo ? 'flex' : 'none';
+        }
+      });
+    });
+
+    // ---------- Right Sidebar Tabs Controller (Objects, Labels, Issues) ----------
+    const sideTabBtns = document.querySelectorAll('.sidebar-tabs .tab-btn');
+    sideTabBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        sideTabBtns.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        const tab = btn.dataset.tabName;
+        const revScroll = document.getElementById('review-scroll');
+        const lblScroll = document.getElementById('labels-scroll');
+        const issScroll = document.getElementById('issues-scroll');
+        if (revScroll) revScroll.classList.toggle('hidden', tab !== 'objects');
+        if (lblScroll) {
+          lblScroll.classList.toggle('hidden', tab !== 'labels');
+          if (tab === 'labels' && typeof renderLabelsTab === 'function') renderLabelsTab();
+        }
+        if (issScroll) {
+          issScroll.classList.toggle('hidden', tab !== 'issues');
+          if (tab === 'issues' && typeof renderIssuesTab === 'function') renderIssuesTab();
+        }
+      });
+    });
+
+    // Click label item in Labels tab to select matching object
+    const labelsScroll = document.getElementById('labels-scroll');
+    if (labelsScroll) {
+      labelsScroll.addEventListener('click', (e) => {
+        const item = e.target.closest('.label-stat-item');
+        if (!item) return;
+        const lbl = item.dataset.label;
+        if (!lbl || typeof S === 'undefined' || !S.frame) return;
+        const targetObj = S.frame.objects.find((o) => o.review.status !== 'deleted' && (o.review.final_label || o.label) === lbl);
+        if (targetObj) {
+          if (typeof select === 'function') select(targetObj.object_id);
+          const objTab = document.querySelector('.sidebar-tabs .tab-btn[data-tab-name="objects"]');
+          if (objTab) objTab.click();
+          setTimeout(() => {
+            document.querySelector(`.obj-card[data-oid="${CSS.escape(targetObj.object_id)}"]`)?.scrollIntoView({ block: 'nearest' });
+          }, 50);
+          if (typeof toast === 'function') toast(`Đã chọn đối tượng #${targetObj.object_id} (${lbl})`);
+        } else {
+          if (typeof toast === 'function') toast(`Không có đối tượng nào thuộc lớp ${lbl} trên frame này`);
+        }
+      });
+    }
+
+    // Click issue item in Issues tab to navigate directly to object
+    const issuesScroll = document.getElementById('issues-scroll');
+    if (issuesScroll) {
+      issuesScroll.addEventListener('click', (e) => {
+        const item = e.target.closest('.issue-stat-item');
+        if (!item) return;
+        const oid = item.dataset.oid;
+        if (!oid) return;
+        if (typeof select === 'function') select(oid);
+        const objTab = document.querySelector('.sidebar-tabs .tab-btn[data-tab-name="objects"]');
+        if (objTab) objTab.click();
+        setTimeout(() => {
+          document.querySelector(`.obj-card[data-oid="${CSS.escape(oid)}"]`)?.scrollIntoView({ block: 'nearest' });
+        }, 50);
+        if (typeof toast === 'function') toast(`Đã chọn đối tượng #${oid} có cảnh báo QC`);
+      });
+    }
+
+    // ---------- Sort Dropdown Controller ----------
+    const objSortSelect = document.getElementById('objSortSelect');
+    if (objSortSelect) {
+      objSortSelect.addEventListener('change', (e) => {
+        if (typeof S !== 'undefined') {
+          S.objSort = e.target.value;
+          if (typeof renderPanel === 'function') renderPanel();
+          if (typeof toast === 'function') {
+            const txt = e.target.options[e.target.selectedIndex].text;
+            toast(`Đã sắp xếp danh sách: ${txt}`);
+          }
+        }
+      });
+    }
+
+    // ---------- Right Sidebar Quick Action Buttons ----------
+    const btnQuickLockAll = document.getElementById('btnQuickLockAll');
+    if (btnQuickLockAll) {
+      btnQuickLockAll.addEventListener('click', () => {
+        if (typeof S === 'undefined' || !S.frame) return;
+        S.allLocked = !S.allLocked;
+        S.frame.objects.forEach((o) => { o.locked = S.allLocked; });
+        const icon = btnQuickLockAll.querySelector('i');
+        if (icon) icon.className = S.allLocked ? 'ri-lock-fill' : 'ri-lock-line';
+        btnQuickLockAll.classList.toggle('active', S.allLocked);
+        if (typeof renderPanel === 'function') renderPanel();
+        if (typeof toast === 'function') toast(S.allLocked ? 'Đã khóa tất cả đối tượng trên frame' : 'Đã mở khóa tất cả đối tượng');
+      });
+    }
+
+    const btnQuickHideAll = document.getElementById('btnQuickHideAll');
+    if (btnQuickHideAll) {
+      btnQuickHideAll.addEventListener('click', () => {
+        if (typeof S === 'undefined') return;
+        S.hideAllBoxes = !S.hideAllBoxes;
+        const icon = btnQuickHideAll.querySelector('i');
+        if (icon) icon.className = S.hideAllBoxes ? 'ri-eye-off-line' : 'ri-eye-line';
+        btnQuickHideAll.classList.toggle('active', S.hideAllBoxes);
+        if (typeof draw === 'function') draw();
+        if (typeof toast === 'function') toast(S.hideAllBoxes ? 'Đã ẩn toàn bộ nhãn trên ảnh' : 'Đã hiển thị toàn bộ nhãn trên ảnh');
+      });
+    }
+
+    const btnQuickFilter = document.getElementById('btnQuickFilter');
+    if (btnQuickFilter) {
+      btnQuickFilter.addEventListener('click', () => {
+        if (typeof S === 'undefined') return;
+        if (!S._quickFilterState) S._quickFilterState = 0;
+        S._quickFilterState = (S._quickFilterState + 1) % 3;
+        if (S._quickFilterState === 1) {
+          S.showLow = false;
+          const chkLow = document.getElementById('show-low');
+          if (chkLow) chkLow.checked = false;
+          btnQuickFilter.classList.add('active');
+          if (typeof toast === 'function') toast('Bộ lọc: Ẩn các box rủi ro thấp (chỉ hiện High + Medium)');
+        } else if (S._quickFilterState === 2) {
+          S.showLow = true;
+          S.minScore = 0.3;
+          const minScore = document.getElementById('min-score');
+          if (minScore) minScore.value = 0.3;
+          const minScoreVal = document.getElementById('min-score-val');
+          if (minScoreVal) minScoreVal.textContent = '0.30';
+          btnQuickFilter.classList.add('active');
+          if (typeof toast === 'function') toast('Bộ lọc: Điểm tin cậy Score ≥ 0.30');
+        } else {
+          S.showLow = true;
+          S.minScore = 0.0;
+          const chkLow = document.getElementById('show-low');
+          if (chkLow) chkLow.checked = true;
+          const minScore = document.getElementById('min-score');
+          if (minScore) minScore.value = 0.0;
+          const minScoreVal = document.getElementById('min-score-val');
+          if (minScoreVal) minScoreVal.textContent = '0.00';
+          btnQuickFilter.classList.remove('active');
+          if (typeof toast === 'function') toast('Bộ lọc: Đã xóa lọc (hiển thị tất cả)');
+        }
+        if (typeof draw === 'function') draw();
+      });
+    }
+
+    // ---------- Object Cards Icon Actions (Lock, Assign, Visibility, Pin, More) ----------
+    const reviewPanel = document.querySelector('.review-panel');
+    if (reviewPanel) {
+      reviewPanel.addEventListener('click', (e) => {
+        const btn = e.target.closest('.card-icon-action-btn');
+        if (btn) {
+          e.stopPropagation();
+          const card = btn.closest('.obj-card');
+          const oid = card?.dataset.oid;
+          const actType = btn.dataset.act;
+          if (!oid || typeof S === 'undefined' || !S.frame) return;
+          const o = S.frame.objects.find((x) => x.object_id === oid);
+          if (!o) return;
+
+          if (actType === 'LOCK') {
+            o.locked = !o.locked;
+            btn.classList.toggle('active', o.locked);
+            const icon = btn.querySelector('i');
+            if (icon) icon.className = o.locked ? 'ri-lock-fill' : 'ri-lock-line';
+            btn.title = o.locked ? 'Mở khóa' : 'Khóa';
+            const sel = card.querySelector('select[data-class]');
+            if (sel) sel.disabled = o.locked || S.frame.status === 'approved';
+            if (typeof toast === 'function') toast(o.locked ? `Đã khóa đối tượng #${oid}` : `Đã mở khóa đối tượng #${oid}`);
+          } else if (actType === 'ASSIGN') {
+            const curUser = (typeof reviewer === 'function') ? reviewer() : 'annotator';
+            const assigned = prompt(`Gán người phụ trách cho đối tượng #${oid}:`, o.assigned || curUser);
+            if (assigned !== null) {
+              o.assigned = assigned.trim();
+              btn.classList.toggle('active', !!o.assigned);
+              btn.title = `Người phụ trách: ${o.assigned || 'Chưa gán'}`;
+              if (typeof toast === 'function') toast(`Đã gán đối tượng #${oid} cho: ${o.assigned || 'Không ai'}`);
+            }
+          } else if (actType === 'VISIBILITY') {
+            o.hidden = !o.hidden;
+            btn.classList.toggle('active', o.hidden);
+            const icon = btn.querySelector('i');
+            if (icon) icon.className = o.hidden ? 'ri-eye-off-line' : 'ri-eye-line';
+            btn.title = o.hidden ? 'Hiện box' : 'Ẩn box';
+            if (typeof draw === 'function') draw();
+            if (typeof toast === 'function') toast(o.hidden ? `Đã ẩn box #${oid}` : `Đã hiện box #${oid}`);
+          } else if (actType === 'PIN') {
+            o.pinned = !o.pinned;
+            btn.classList.toggle('active', o.pinned);
+            const icon = btn.querySelector('i');
+            if (icon) icon.className = o.pinned ? 'ri-pushpin-fill' : 'ri-pushpin-line';
+            btn.title = o.pinned ? 'Bỏ ghim' : 'Ghim';
+            if (typeof renderPanel === 'function') renderPanel();
+            if (typeof toast === 'function') toast(o.pinned ? `Đã ghim đối tượng #${oid} lên đầu` : `Đã bỏ ghim đối tượng #${oid}`);
+          }
+          return;
+        }
+
+        const moreBtn = e.target.closest('.card-more-btn');
+        if (moreBtn) {
+          e.stopPropagation();
+          const card = moreBtn.closest('.obj-card');
+          const details = card?.querySelector('.card-details');
+          if (details) {
+            details.open = !details.open;
+          }
+          return;
+        }
+      });
+    }
+
+    // ---------- Appearance Collapsible Box Controls ----------
+    const segBtns = document.querySelectorAll('#colorModeGroup .seg-btn');
+    segBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        segBtns.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        if (typeof S !== 'undefined') {
+          S.colorMode = btn.dataset.colorMode || 'label';
+          if (typeof draw === 'function') draw();
+          if (typeof toast === 'function') toast(`Chế độ màu hiển thị: ${btn.textContent}`);
+        }
+      });
+    });
+
+    const opacitySlider = document.getElementById('opacitySlider');
+    const opacityVal = document.getElementById('opacityVal');
+    if (opacitySlider) {
+      opacitySlider.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        if (opacityVal) opacityVal.textContent = val + '%';
+        if (typeof S !== 'undefined') {
+          S.boxFillOpacity = val / 100;
+          if (typeof draw === 'function') draw();
+        }
+      });
+    }
+
+    const selOpacitySlider = document.getElementById('selectedOpacitySlider');
+    const selOpacityVal = document.getElementById('selectedOpacityVal');
+    if (selOpacitySlider) {
+      selOpacitySlider.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        if (selOpacityVal) selOpacityVal.textContent = val + '%';
+        if (typeof S !== 'undefined') {
+          S.selectedOpacity = val / 100;
+          if (typeof draw === 'function') draw();
+        }
+      });
+    }
+
+    const chkShowBorder = document.getElementById('chkShowBorder');
+    if (chkShowBorder) {
+      chkShowBorder.addEventListener('change', (e) => {
+        if (typeof S !== 'undefined') {
+          S.showBorder = e.target.checked;
+          if (typeof draw === 'function') draw();
+        }
+      });
+    }
+
+    const chkShowBitmap = document.getElementById('chkShowBitmap');
+    if (chkShowBitmap) {
+      chkShowBitmap.addEventListener('change', (e) => {
+        if (typeof S !== 'undefined') {
+          S.showMask = e.target.checked;
+          const maskEl = document.getElementById('show-mask');
+          if (maskEl) maskEl.checked = e.target.checked;
+          if (typeof draw === 'function') draw();
+        }
+      });
+    }
+
+    const chkShow3dProj = document.getElementById('chkShow3dProj');
+    if (chkShow3dProj) {
+      chkShow3dProj.addEventListener('change', async (e) => {
+        if (typeof S !== 'undefined') {
+          S.showLidar = e.target.checked;
+          const lidarEl = document.getElementById('show-lidar');
+          if (lidarEl) lidarEl.checked = e.target.checked;
+          if (S.showLidar && typeof ensureLidar === 'function') await ensureLidar();
+          if (typeof draw === 'function') draw();
+        }
       });
     }
   </script>
-
-  <script src="app.js?v=3d22scroll"></script>
-  <script type="module" src="app3d.js?v=3d22scroll"></script>
 </body>
 
 </html>

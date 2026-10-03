@@ -56,6 +56,7 @@ const S = {
   auditCur: null,
   auditImgs: {},
   quick: null, // kết quả Quick Check gần nhất
+  hideTags: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -126,13 +127,21 @@ function scoreText(o) {
 function finalBox(o) { return o.review.final_bbox || o.bbox; }
 function finalLabel(o) { return o.review.final_label || o.label; }
 
-/* Thứ tự duyệt: object chờ (high -> medium -> low, risk giảm dần) rồi tới object đã xử lý */
+/* Thứ tự duyệt: theo sort hoặc object chờ (high -> medium -> low, risk giảm dần) rồi tới object đã xử lý */
 function orderedObjects() {
   if (!S.frame) return [];
-  const pending = S.frame.objects.filter((o) => o.review.status === 'pending');
+  let objs = [...S.frame.objects];
+  if (S.objSort === 'id-asc') {
+    objs.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || String(a.object_id).localeCompare(String(b.object_id), undefined, { numeric: true }));
+    return objs;
+  } else if (S.objSort === 'id-desc') {
+    objs.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || String(b.object_id).localeCompare(String(a.object_id), undefined, { numeric: true }));
+    return objs;
+  }
+  const pending = objs.filter((o) => o.review.status === 'pending');
   const rank = { high: 0, medium: 1, low: 2 };
-  pending.sort((a, b) => rank[levelOf(a)] - rank[levelOf(b)] || (b.qa?.risk || 0) - (a.qa?.risk || 0));
-  return pending.concat(S.frame.objects.filter((o) => o.review.status !== 'pending'));
+  pending.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || rank[levelOf(a)] - rank[levelOf(b)] || (b.qa?.risk || 0) - (a.qa?.risk || 0));
+  return pending.concat(objs.filter((o) => o.review.status !== 'pending'));
 }
 const getObj = (id) => S.frame?.objects.find((o) => o.object_id === id);
 
@@ -489,17 +498,36 @@ function drawMask(o, color, sel) {
   ctx.restore();
 }
 
-function drawBox(b, color, { lw = 2, dash = null, label = null, alpha = 1, textColor = '#fff' } = {}) {
+function hexToRgba(hex, alpha = 1) {
+  if (!hex || !hex.startsWith('#')) return hex;
+  const h = hex.replace('#', '');
+  if (h.length === 3) {
+    const r = parseInt(h[0] + h[0], 16), g = parseInt(h[1] + h[1], 16), b = parseInt(h[2] + h[2], 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  } else if (h.length === 6) {
+    const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+  return hex;
+}
+
+function drawBox(b, color, { lw = 2, dash = null, label = null, alpha = 1, textColor = '#fff', fill = null } = {}) {
   const k = px();
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.strokeStyle = color;
-  ctx.lineWidth = lw * k;
-  if (dash) ctx.setLineDash(dash.map((v) => v * k));
-  ctx.strokeRect(b[0], b[1], b[2] - b[0], b[3] - b[1]);
-  ctx.setLineDash([]);
+  if (fill) {
+    ctx.fillStyle = fill;
+    ctx.fillRect(b[0], b[1], b[2] - b[0], b[3] - b[1]);
+  }
+  if (S.showBorder !== false) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw * k;
+    if (dash) ctx.setLineDash(dash.map((v) => v * k));
+    ctx.strokeRect(b[0], b[1], b[2] - b[0], b[3] - b[1]);
+    ctx.setLineDash([]);
+  }
   if (label) {
-    ctx.font = `${600} ${12 * k}px 'Plus Jakarta Sans', sans-serif`;
+    ctx.font = `${600} ${12 * k}px 'Inter', sans-serif`;
     const w = ctx.measureText(label).width + 8 * k;
     const h = 17 * k;
     const y = b[1] - h >= 0 ? b[1] - h : b[1];
@@ -549,7 +577,7 @@ function drawCanvas() {
       const done = b.review.status === 'approved' || b.source === 'human';
       drawBox(finalBox(b), done ? HUMAN_COLOR : '#94a3b8', {
         lw: sel ? 3.5 : 1.6,
-        label: `#${b.box_id} ${finalLabel(b)}${done ? '' : ' ' + fx(b.score)}`,
+        label: S.hideTags ? null : `#${b.box_id} ${finalLabel(b)}${done ? '' : ' ' + fx(b.score)}`,
         alpha: sel || !S.sweepSel ? 1 : 0.8,
       });
     }
@@ -571,6 +599,8 @@ function drawCanvas() {
   let shown = 0, total = 0;
   for (const o of f.objects) {
     if (o.review.status === 'deleted') continue;
+    if (S.hideAllBoxes) continue;
+    if (o.hidden) continue;
     total++;
     const lv = levelOf(o);
     const pending = o.review.status === 'pending';
@@ -586,18 +616,36 @@ function drawCanvas() {
       const m = 5 * k;
       drawBox([x1 - m, y1 - m, x2 + m, y2 + m], QC_COLOR, { lw: 1.6, dash: [5, 3] });
     }
-    const color = o.source === 'human' ? HUMAN_COLOR : RISK_COLOR[lv];
+    let color = o.source === 'human' ? HUMAN_COLOR : RISK_COLOR[lv];
+    if (S.colorMode === 'label' && S.cfg?.classes?.[finalLabel(o)]) {
+      color = S.cfg.classes[finalLabel(o)];
+    } else if (S.colorMode === 'object') {
+      const hash = String(o.object_id).split('').reduce((acc, c) => acc * 31 + c.charCodeAt(0), 0);
+      color = `hsl(${Math.abs(hash) % 360}, 80%, 55%)`;
+    } else if (S.colorMode === 'group') {
+      color = RISK_COLOR[lv];
+    }
     if (S.showMask) drawMask(o, color, sel);
     // Nhãn đầy đủ chỉ cho box đang chọn / high / người vẽ; medium chỉ hiện #id để ảnh không bị che kín
     const full = `${pending ? '' : '✓ '}#${o.object_id} ${finalLabel(o)}${o.source === 'human' ? '' : ' ' + scoreText(o)}`;
     let tag = null;
-    if (sel || o.source === 'human' || (pending && lv === 'high')) tag = full;
-    else if (pending && lv === 'medium') tag = `#${o.object_id}`;
+    if (!S.hideTags) {
+      if (sel || o.source === 'human' || (pending && lv === 'high')) tag = full;
+      else if (pending && lv === 'medium') tag = `#${o.object_id}`;
+    }
+    const fillAlpha = sel ? (S.selectedOpacity ?? 0.25) : (S.boxFillOpacity ?? 0.05);
+    let fill = null;
+    if (fillAlpha > 0) {
+      if (color.startsWith('#')) fill = hexToRgba(color, fillAlpha);
+      else if (color.startsWith('hsl(')) fill = color.replace('hsl(', 'hsla(').replace(')', `, ${fillAlpha})`);
+      else fill = color;
+    }
     drawBox(finalBox(o), color, {
       lw: sel ? 3.5 : pending ? 2 : 1.4,
       dash: o.source === 'track' ? [8, 5] : isProp(o) && !o.propagation.matched ? [3, 3] : null,
       label: tag,
       alpha: sel || S.selected == null ? 1 : 0.85,
+      fill: fill,
     });
   }
 
@@ -915,6 +963,13 @@ async function saveEdit() {
 // ---------- hành động review ----------
 
 async function act(body) {
+  if (body.object_id && S.frame) {
+    const target = S.frame.objects.find(o => o.object_id === body.object_id);
+    if (target?.locked && body.action !== 'UNLOCK') {
+      toast(`Đối tượng #${body.object_id} đang bị khóa, hãy mở khóa để sửa`, true);
+      return;
+    }
+  }
   try {
     const prevOrder = orderedObjects().map((o) => o.object_id);
     const frame = await api(`/frames/${encodeURIComponent(S.frame.frame_id)}/actions`, {
@@ -1204,6 +1259,12 @@ function objectCard(o) {
       <span class="oid">#${esc(o.object_id)}</span>
       <select data-class class="card-select" ${locked ? 'disabled' : ''} title="Đổi lớp (phím C)">${classOptions(finalLabel(o))}</select>
       ${o.qa ? `<span class="risk-badge ${lv}" title="Mức rủi ro ${fx(o.qa.risk)}">${fx(o.qa.risk)}</span>` : ''}
+      <span class="oc-icons">
+        <button class="card-icon-action-btn ${o.locked ? 'active' : ''}" data-act="LOCK" title="${o.locked ? 'Mở khóa' : 'Khóa'}"><i class="${o.locked ? 'ri-lock-fill' : 'ri-lock-line'}"></i></button>
+        <button class="card-icon-action-btn ${o.assigned ? 'active' : ''}" data-act="ASSIGN" title="${o.assigned ? 'Người phụ trách: ' + esc(o.assigned) : 'Người phụ trách'}"><i class="ri-user-line"></i></button>
+        <button class="card-icon-action-btn ${o.hidden ? 'active' : ''}" data-act="VISIBILITY" title="${o.hidden ? 'Hiện box' : 'Ẩn box'}"><i class="${o.hidden ? 'ri-eye-off-line' : 'ri-eye-line'}"></i></button>
+        <button class="card-icon-action-btn ${o.pinned ? 'active' : ''}" data-act="PIN" title="${o.pinned ? 'Bỏ ghim' : 'Ghim'}"><i class="${o.pinned ? 'ri-pushpin-fill' : 'ri-pushpin-line'}"></i></button>
+      </span>
       ${locked ? '' : `<span class="oc-btns">
         <button class="ib keep" data-act="KEEP" title="Giữ (K)">✓</button>
         <button class="ib del" data-act="DELETE" title="Xoá (D)">✕</button>
@@ -1263,6 +1324,9 @@ function renderPanel() {
   $('count-qc').textContent = qcList.length;
   $('list-qc').innerHTML = qcList.map(qcRow).join('');
 
+  renderLabelsTab();
+  renderIssuesTab();
+
   const locked = f?.status === 'approved';
   const btnLow = $('btn-approve-low');
   btnLow.disabled = !f || locked || byLevel.low.length === 0;
@@ -1291,6 +1355,60 @@ function renderPanel() {
   $('sweep-panel').classList.toggle('hidden', !sweepMode);
   $('sweep-panel').innerHTML = sweepMode ? sweepPanel() : '';
   drawCrops();
+}
+
+function renderLabelsTab() {
+  const wrap = $('labels-list-wrap');
+  if (!wrap) return;
+  const f = S.frame;
+  if (!f) {
+    wrap.innerHTML = '<p class="muted" style="padding:12px;">Chưa mở frame nào</p>';
+    return;
+  }
+  const counts = {};
+  f.objects.forEach((o) => {
+    if (o.review.status === 'deleted') return;
+    const lbl = finalLabel(o);
+    counts[lbl] = (counts[lbl] || 0) + 1;
+  });
+  const classes = { ...(S.cfg?.classes || {}), ...counts };
+  wrap.innerHTML = Object.keys(classes).map((lbl) => {
+    const color = S.cfg?.classes?.[lbl] || '#3b82f6';
+    const count = counts[lbl] || 0;
+    return `<div class="label-stat-item" data-label="${esc(lbl)}" title="Bấm để lọc/chọn đối tượng lớp ${esc(lbl)}">
+      <div class="label-stat-left">
+        <span class="label-color-dot" style="background: ${color};"></span>
+        <strong>${esc(lbl)}</strong>
+      </div>
+      <span class="label-stat-count">${count} đối tượng</span>
+    </div>`;
+  }).join('') || '<p class="muted" style="padding:12px;">Không có nhãn nào</p>';
+}
+
+function renderIssuesTab() {
+  const wrap = $('issues-list-wrap');
+  if (!wrap) return;
+  const f = S.frame;
+  if (!f) {
+    wrap.innerHTML = '<p class="muted" style="padding:12px;">Chưa mở frame nào</p>';
+    return;
+  }
+  const issues = [];
+  f.objects.forEach((o) => {
+    if (o.review.status === 'deleted') return;
+    (o.qa?.issues || []).forEach((iss) => {
+      issues.push({ obj: o, ...iss });
+    });
+  });
+  wrap.innerHTML = issues.map((iss) => `
+    <div class="issue-stat-item" data-oid="${esc(iss.obj.object_id)}" title="Bấm để xem object #${esc(iss.obj.object_id)}">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span class="issue-code" style="font-weight:600;">#${esc(iss.obj.object_id)} ${esc(iss.code)}</span>
+        <span class="risk-badge ${levelOf(iss.obj)}">${LEVEL_NAME[levelOf(iss.obj)]}</span>
+      </div>
+      <div class="muted text-xs" style="margin-top:4px;">${esc(iss.message)}</div>
+    </div>
+  `).join('') || '<p class="muted" style="padding:12px;">✓ Không phát hiện sự cố (issue) nào trên frame này</p>';
 }
 
 function drawCrops() {
@@ -1339,6 +1457,8 @@ document.querySelector('.review-panel').addEventListener('click', (e) => {
   const btn = e.target.closest('[data-act]');
   if (e.target.closest('select')) return;
   if (!btn) { select(id); return; }
+  // Nút biểu tượng (khoá / người phụ trách / ẩn / ghim) chỉ đổi trạng thái hiển thị, xử lý ở index.html: không gọi API
+  if (btn.classList.contains('card-icon-action-btn')) return;
   const a = btn.dataset.act;
   if (a === 'EDIT') { S.selected = id; startEdit(); renderPanel(); return; }
   if (a === 'CHANGE_CLASS') {
@@ -1407,6 +1527,13 @@ async function setMode(mode) {
   S.viewMode = mode;
   storageSet('viewMode', mode);
   document.querySelectorAll('.mode').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
+  // Chỉ hiển thị player-controls trên topbar khi ở chế độ video
+  const playerControls = document.getElementById('topbar-player-controls') || document.querySelector('.player-controls');
+  if (playerControls) {
+    const isVideo = mode === 'video';
+    playerControls.classList.toggle('hidden', !isVideo);
+    playerControls.style.display = isVideo ? 'flex' : 'none';
+  }
   // Chế độ 3D có panel riêng (app3d.js); tab Review hiển thị panel của chế độ đang chọn
   const reviewTab = document.querySelector('.tab.active')?.dataset.tab === 'review';
   $('tab-review').classList.toggle('hidden', mode === '3d' || !reviewTab);
@@ -2566,3 +2693,19 @@ async function initProject() {
     toast('Không tải được dữ liệu: ' + err.message, true);
   }
 })();
+
+// Expose globally for topbar & left toolbar controls
+window.S = S;
+window.draw = draw;
+window.setZoom = setZoom;
+window.cancelEdit = cancelEdit;
+window.startAdd = startAdd;
+window.openFrame = openFrame;
+window.togglePlay = togglePlay;
+window.renderPanel = renderPanel;
+window.renderLabelsTab = renderLabelsTab;
+window.renderIssuesTab = renderIssuesTab;
+window.select = select;
+window.toast = toast;
+window.reviewer = reviewer;
+window.ensureLidar = ensureLidar;
