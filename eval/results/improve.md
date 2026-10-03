@@ -92,6 +92,7 @@ lớp kia thành lớp phụ. Test 957 keyframe, ngưỡng giữ 0.30:
 | Ngưỡng 0.30 | 0.618 | 0.725 | 0.725 | 4879 | 1848 | 1854 | 3702 |
 | Ngưỡng 0.50 | 0.619 | 0.723 | 0.725 | 4880 | 1867 | 1853 | 3720 |
 | Chỉ cặp khác lớp, ngưỡng 0.50 | 0.620 | 0.723 | 0.725 | 4881 | 1872 | 1852 | 3724 |
+| Ngưỡng 0.15, cặp khác lớp lấy lớp theo detector ảnh | 0.619 | 0.726 | 0.724 | 4876 | 1842 | 1857 | 3699 |
 
 Dev: phải sửa 637 → 634, mAP50 0.702 → 0.693.
 
@@ -101,8 +102,9 @@ Dev: phải sửa 637 → 634, mAP50 0.702 → 0.693.
   40% trường hợp giữ nhầm lớp. Đây là toàn bộ lý do mAP50 giảm 0.010. Với người duyệt thì vẫn lợi: trước là 105 lần xoá
   box thừa, sau là khoảng 43 lần đổi lớp (chỉ số "phải sửa" tính một box sai lớp thành hai lỗi, thừa + sót, nên nói quá
   phần thiệt).
-- Việc tiếp: chọn lớp cho cặp khác lớp theo detector ảnh thay vì theo điểm 3D (cấu hình `lớp theo camera` trong
-  `tools2d/eval_lidar2d.py`, chưa có số).
+- **Lấy lớp theo detector ảnh** cho cặp khác lớp (thay vì theo điểm 3D) không giúp gì: đúng 4876 so với 4878. Không
+  dùng. Muốn giảm việc giữ nhầm lớp thì phải sửa ở chỗ bộ gộp 3D sinh ra hai lớp cho một xe (gộp không phân biệt lớp
+  rồi bỏ phiếu lớp), việc này đổi mAP / NDS 3D đã báo cáo nên chưa làm.
 
 ## Việc còn lại
 
