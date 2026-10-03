@@ -9,7 +9,7 @@
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="ui-flow.css">
+  <link rel="stylesheet" href="ui-flow.css?v=3d25">
 </head>
 
 <body>
@@ -72,9 +72,9 @@
     <div class="project-header-card">
       <div class="project-title-row">
         <div class="project-title">
-          <span id="projectTitleDisplay">Dự án 2</span>
+          <span id="projectTitleDisplay" title="Bấm để đổi tên dự án (Enter lưu, Esc huỷ)">Dự án</span>
           <i class="ri-edit-line" id="btnEditProjectTitle"
-            style="font-size: 16px; color: var(--primary); cursor: pointer;" title="Chỉnh sửa tên dự án"></i>
+            style="font-size: 16px; color: var(--primary); cursor: pointer;" title="Đổi tên dự án"></i>
         </div>
       </div>
 
@@ -110,7 +110,7 @@
       </div>
 
       <div class="project-section-row" style="margin-bottom: 0;">
-        <span>Theo dõi sự cố (Issue Tracker):</span>
+        <span>Theo dõi sự cố:</span>
         <a id="issueTrackerLink" href="https://github.com/issues" target="_blank"
           style="font-size: 13px; color: var(--primary); text-decoration: none; margin-left: 6px;">https://github.com/issues</a>
         <i class="ri-edit-line" id="btnEditIssueTracker"
@@ -121,9 +121,8 @@
       <!-- Label Constructor (Image 3) -->
       <div class="constructor-card">
         <div class="constructor-tabs">
-          <button class="tab" id="tabRawLabels"><i class="ri-edit-line"></i> Dạng thô (Raw)</button>
-          <button class="tab active" id="tabConstructorLabels"><i class="ri-layout-grid-line"></i> Trình dựng nhãn
-            (Constructor)</button>
+          <button class="tab" id="tabRawLabels"><i class="ri-edit-line"></i> Dạng thô</button>
+          <button class="tab active" id="tabConstructorLabels"><i class="ri-layout-grid-line"></i> Trình dựng nhãn</button>
         </div>
 
         <!-- Constructor Visual View -->
@@ -280,7 +279,7 @@
   </div>
 
   <div id="toastContainer" class="toast-container"></div>
-  <script src="ui-flow.js"></script>
+  <script src="ui-flow.js?v=3d25"></script>
 </body>
 
 </html>

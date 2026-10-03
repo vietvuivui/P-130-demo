@@ -136,9 +136,9 @@ async function initProjectsPage() {
   // 3. Preset items matching Image 2 ("Project 1", "Project 2", "Project 3")
   if (projects.length === 0) {
     projects = [
-      { id: "project-1", name: "Dự án 1 (Project 1)", creator: "Username", updated: "3 tháng trước", frames_count: 404, approved_count: 0, thumb: "road_camera.jpg", isReal: false },
-      { id: "project-2", name: "Dự án 2 (Project 2)", creator: "Username", updated: "8 ngày trước", frames_count: 32, approved_count: 0, thumb: "road_camera.jpg", isReal: false },
-      { id: "project-3", name: "Dự án 3 (Project 3)", creator: "Username", updated: "1 tháng trước", frames_count: 120, approved_count: 42, thumb: "road_camera.jpg", isReal: false }
+      { id: "project-1", name: "Dự án 1", creator: "Username", updated: "3 tháng trước", frames_count: 404, approved_count: 0, thumb: "road_camera.jpg", isReal: false },
+      { id: "project-2", name: "Dự án 2", creator: "Username", updated: "8 ngày trước", frames_count: 32, approved_count: 0, thumb: "road_camera.jpg", isReal: false },
+      { id: "project-3", name: "Dự án 3", creator: "Username", updated: "1 tháng trước", frames_count: 120, approved_count: 42, thumb: "road_camera.jpg", isReal: false }
     ];
   }
 
@@ -335,17 +335,18 @@ async function initProjectsPage() {
 // -------------------------------------------------------------
 // 3. FRAMES / TASKS PAGE (Image 3)
 // -------------------------------------------------------------
+// Tên nhãn là tên lớp gốc của taxonomy (cũng là prompt đưa vào detector open-vocab): không dịch, không thêm chú thích
 const DEFAULT_DRIVING_TAXONOMY = {
-  car: { name: "Xe hơi (car)", color: "#3b82f6" },
-  pedestrian: { name: "Người đi bộ (pedestrian)", color: "#ef4444" },
-  motorcycle: { name: "Xe máy (motorcycle)", color: "#06b6d4" },
-  bicycle: { name: "Xe đạp (bicycle)", color: "#14b8a6" },
-  truck: { name: "Xe tải (truck)", color: "#8b5cf6" },
-  bus: { name: "Xe buýt (bus)", color: "#a855f7" },
-  traffic_cone: { name: "Chóp nón (traffic cone)", color: "#f59e0b" },
-  barrier: { name: "Rào chắn (barrier)", color: "#eab308" },
-  construction_vehicle: { name: "Xe công trình", color: "#f97316" },
-  trailer: { name: "Rơ-moóc", color: "#6366f1" }
+  car: { name: "car", color: "#3b82f6" },
+  pedestrian: { name: "pedestrian", color: "#ef4444" },
+  motorcycle: { name: "motorcycle", color: "#06b6d4" },
+  bicycle: { name: "bicycle", color: "#14b8a6" },
+  truck: { name: "truck", color: "#8b5cf6" },
+  bus: { name: "bus", color: "#a855f7" },
+  traffic_cone: { name: "traffic cone", color: "#f59e0b" },
+  barrier: { name: "barrier", color: "#eab308" },
+  construction_vehicle: { name: "construction vehicle", color: "#f97316" },
+  trailer: { name: "trailer", color: "#6366f1" }
 };
 
 async function initFramesPage() {
@@ -354,7 +355,7 @@ async function initFramesPage() {
 
   const urlParams = new URLSearchParams(window.location.search);
   const projectId = urlParams.get("project") || "";
-  const projectName = urlParams.get("name") || (projectId ? projectId : "Dự án 2 (Project 2)");
+  const projectName = urlParams.get("name") || (projectId ? projectId : "Dự án");
 
   const titleEl = document.getElementById("projectTitleDisplay");
   const savedProjectName = localStorage.getItem("projectName_" + projectId);
@@ -391,17 +392,60 @@ async function initFramesPage() {
     if (expLink) expLink.href = `export.html?project=${encodeURIComponent(projectId)}`;
   }
 
-  // Edit Project Title
+  // Đổi tên dự án ngay tại chỗ: bấm vào tên (hoặc biểu tượng bút) -> ô nhập; Enter / bấm ra ngoài = lưu, Esc = huỷ.
+  // Dự án thật lưu qua API (PATCH /api/v1/projects/{id}); dự án mẫu chỉ lưu trong trình duyệt.
   const btnEditTitle = document.getElementById("btnEditProjectTitle");
-  if (btnEditTitle && titleEl) {
-    btnEditTitle.onclick = () => {
-      const newTitle = prompt("Nhập tên mới cho dự án:", titleEl.innerText);
-      if (newTitle && newTitle.trim()) {
-        titleEl.innerText = newTitle.trim();
-        try { localStorage.setItem("projectName_" + projectId, newTitle.trim()); } catch (e) { }
-        showToast("Đã cập nhật tên dự án!", "success");
+  if (titleEl) {
+    if (projectId) {  // tên thật từ server (tên trong URL có thể đã cũ sau khi đổi)
+      fetch(`/api/v1/projects/${encodeURIComponent(projectId)}`).then((r) => (r.ok ? r.json() : null))
+        .then((p) => { if (p?.name && !titleEl.isContentEditable) titleEl.innerText = p.name; }).catch(() => { });
+    }
+    let before = "";
+    const startEdit = () => {
+      if (titleEl.isContentEditable) return;
+      before = titleEl.innerText.trim();
+      titleEl.contentEditable = "true";
+      titleEl.classList.add("editing");
+      titleEl.focus();
+      document.getSelection()?.selectAllChildren(titleEl);
+    };
+    const finish = async (save) => {
+      if (!titleEl.isContentEditable) return;
+      titleEl.contentEditable = "false";
+      titleEl.classList.remove("editing");
+      const name = titleEl.innerText.replace(/\s+/g, " ").trim();
+      if (!save || !name || name === before) { titleEl.innerText = before; return; }
+      titleEl.innerText = name;
+      try {
+        const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name })
+        });
+        if (r.ok) {
+          const u = new URL(window.location.href);
+          u.searchParams.set("name", name);
+          window.history.replaceState(null, "", u);
+          try { localStorage.removeItem("projectName_" + projectId); } catch (e) { }
+          showToast("Đã đổi tên dự án", "success");
+        } else if (r.status === 404 && !projectId.startsWith("p-")) {
+          try { localStorage.setItem("projectName_" + projectId, name); } catch (e) { }  // dự án mẫu
+          showToast("Đã đổi tên dự án", "success");
+        } else {
+          const body = await r.json().catch(() => ({}));
+          titleEl.innerText = before;
+          showToast(body?.detail?.message || `Không đổi được tên (HTTP ${r.status})`, "danger");
+        }
+      } catch (e) {
+        titleEl.innerText = before;
+        showToast("Không đổi được tên: mất kết nối tới server", "danger");
       }
     };
+    titleEl.addEventListener("click", startEdit);
+    if (btnEditTitle) btnEditTitle.onclick = startEdit;
+    titleEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); titleEl.blur(); }
+      else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+    });
+    titleEl.addEventListener("blur", () => finish(true));
   }
 
   // Edit Project Description
@@ -455,6 +499,12 @@ async function initFramesPage() {
   try {
     const savedTaxonomy = localStorage.getItem("autolabel_taxonomy");
     if (savedTaxonomy) taxonomy = JSON.parse(savedTaxonomy);
+    // Bản lưu cũ trong trình duyệt có tên đã dịch ("Xe hơi (car)", "Rơ-moóc"): đưa về tên lớp gốc
+    const OLD_NAMES = ["Xe hơi (car)", "Người đi bộ (pedestrian)", "Xe máy (motorcycle)", "Xe đạp (bicycle)", "Xe tải (truck)",
+      "Xe buýt (bus)", "Chóp nón (traffic cone)", "Rào chắn (barrier)", "Xe công trình", "Rơ-moóc"];
+    for (const [k, v] of Object.entries(DEFAULT_DRIVING_TAXONOMY)) {
+      if (taxonomy[k] && OLD_NAMES.includes(taxonomy[k].name)) taxonomy[k].name = v.name;
+    }
   } catch (e) { }
 
   // Fetch real config to enrich taxonomy if available
@@ -1111,7 +1161,7 @@ async function initExportPage() {
         const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {
-          const msg = data.detail?.message || "Chưa có frame nào được duyệt (Approve) để xuất.";
+          const msg = data.detail?.message || "Chưa có frame nào được duyệt để xuất.";
           showToast(msg, "warning");
           btnDoExport.disabled = false;
           btnDoExport.innerHTML = `Xuất dữ liệu`;

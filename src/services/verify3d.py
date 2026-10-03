@@ -283,39 +283,31 @@ def _shift(v: dict, d: dict) -> tuple[float, float]:
 
 
 def conclude(box: Box, best_cam, v, match, d, mv, n_pts: int) -> tuple[str, str]:
-    pts_txt = f"{n_pts} điểm LiDAR trong box"
+    """Kết luận + một dòng số liệu cho thẻ box. Ý nghĩa của kết luận đã nằm ở nhãn (verdict) trên thẻ, nên dòng này chỉ
+    ghi số: IoU, độ lệch, camera, mức thấy / che, số điểm LiDAR."""
+    pts_txt = f"{n_pts} điểm LiDAR"
     if best_cam is None:
-        return V_UNSURE, f"Không lọt rõ vào camera nào (chỉ lộ ở mép / quá nhỏ). {pts_txt}."
-    view_txt = f"{best_cam}, thấy {v['vis']:.0%}, che {v['occ']:.0%}, độ rõ {v['clarity']:.2f}"
+        return V_UNSURE, f"Không lọt rõ vào camera nào · {pts_txt}"
+    view_txt = f"{best_cam} · thấy {v['vis']:.0%} · che {v['occ']:.0%} · độ rõ {v['clarity']:.2f}"
     if match is not None:
         cam, (_j, iou, kind) = match
-        where = "" if cam == best_cam else f" (xác nhận ở {cam})"
+        where = "" if cam == best_cam else f" · xác nhận ở {cam}"
         said = (
             d["label"]
             if d.get("prompt", d["label"]).replace(" ", "_") == d["label"]
             else f"{d['label']} ('{d['prompt']}')"
         )
         if d["label"] != box.label:
-            return V_CLASS, (
-                f"Camera thấy đúng vị trí{where} nhưng gọi là {said} ({d['score']:.2f}), 3D gọi là {box.label}. {pts_txt}."
-            )
+            return V_CLASS, f"Camera: {said} {d['score']:.2f} · 3D: {box.label}{where} · {pts_txt}"
         if kind == "mot phan":
-            return V_OK, f"Camera xác nhận{where}, vật bị che / cắt mép nên chỉ khớp một phần. {pts_txt}."
+            return V_OK, f"Khớp một phần (bị che / cắt mép){where} · {pts_txt}"
         dx, dy = _shift(mv, d)
         if iou < 0.5 and (dx > SHIFT_THR or dy > SHIFT_THR):
-            return V_SHIFT, (
-                f"Camera thấy đúng vật, đúng lớp{where}, nhưng box 3D lệch (IoU {iou:.2f}, tâm lệch {dx:.0%}, "
-                f"đáy lệch {dy:.0%}). {pts_txt}."
-            )
-        return V_OK, f"Camera xác nhận đúng vật, đúng lớp{where} (IoU {iou:.2f}). {pts_txt}."
+            return V_SHIFT, f"IoU {iou:.2f} · tâm lệch {dx:.0%} · đáy lệch {dy:.0%}{where} · {pts_txt}"
+        return V_OK, f"IoU {iou:.2f}{where} · {pts_txt}"
     if v["occ"] >= CLEAR_OCC or v["info"] < CLEAR_INFO:
-        return V_UNSURE, f"Ảnh tốt nhất vẫn kém ({view_txt}); detector 2D không thấy. {pts_txt}."
-    if n_pts < MIN_PTS_IN_BOX:
-        return V_FP, f"Ảnh rõ ({view_txt}) nhưng detector 2D không thấy gì, và {pts_txt}: nhiều khả năng báo nhầm."
-    return V_MISS, (
-        f"Ảnh rõ ({view_txt}) nhưng detector 2D không thấy; LiDAR vẫn có {n_pts} điểm. "
-        "Có thể detector 2D bỏ sót, hoặc box 3D sai vị trí / kích thước."
-    )
+        return V_UNSURE, f"{view_txt} · 2D không thấy · {pts_txt}"
+    return (V_FP if n_pts < MIN_PTS_IN_BOX else V_MISS), f"{view_txt} · 2D không thấy · {pts_txt}"
 
 
 @dataclass

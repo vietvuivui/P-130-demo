@@ -11,6 +11,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 
 from src.config import get_settings
 from src.models.qa_config import get_autolabel_config
@@ -110,6 +111,19 @@ def environment():
 @projects_router.get("/{pid}", response_model=Project)
 def get_project(pid: str):
     return _get(pid)
+
+
+class ProjectPatch(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+@projects_router.patch("/{pid}", response_model=Project)
+def rename_project(pid: str, body: ProjectPatch):
+    """Đổi tên hiển thị của dự án (id và thư mục giữ nguyên)."""
+    try:
+        return get_manager().rename(pid, body.name)
+    except ProjectError as e:
+        raise _err(e) from e
 
 
 @projects_router.post("/{pid}/run", response_model=Project)

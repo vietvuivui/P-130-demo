@@ -133,6 +133,12 @@ async def test_project_api_upload_review_export(api, manager, tmp_path):
     manager.wait_idle(60)
     p = (await api.get(f"/api/v1/projects/{pid}")).json()
     assert p["status"] == "ready" and p["kind"] == "images"
+    # đổi tên dự án trên UI: lưu vào project.json, id giữ nguyên; tên rỗng bị từ chối
+    r = await api.patch(f"/api/v1/projects/{pid}", json={"name": "  Bộ ảnh   đường phố "})
+    assert r.status_code == 200 and r.json()["name"] == "Bộ ảnh đường phố" and r.json()["id"] == pid
+    assert (await api.get(f"/api/v1/projects/{pid}")).json()["name"] == "Bộ ảnh đường phố"
+    assert (await api.patch(f"/api/v1/projects/{pid}", json={"name": ""})).status_code == 422
+    assert (await api.patch("/api/v1/projects/p-khong-co", json={"name": "x"})).status_code == 404
     frames = (await api.get(f"/p/{pid}/api/v1/frames")).json()
     assert len(frames) == 2
     fid = frames[0]["frame_id"]
