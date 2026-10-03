@@ -1,6 +1,6 @@
 # Report đánh giá mô hình — AutoLabel 3D
 
-Cập nhật 2026-10-03 · nhóm P-130 · biểu đồ vẽ bằng matplotlib: `python eval/report/make_figures.py`
+Cập nhật 2026-10-03 · nhóm P-130 · biểu đồ: notebook [figures.ipynb](figures.ipynb) (matplotlib, hiện ngay trong notebook)
 
 Report gom mọi mô hình đã thử nghiệm, các chỉ số đánh giá và các phương pháp tối ưu cho hai phần:
 
@@ -179,7 +179,7 @@ Tham số lấy theo mặc định của bài báo gốc, không dò trên nhãn
 
 Tất cả là trọng số MMDetection3D có sẵn, không train lại và không dùng TTA.
 
-![mAP và NDS của mô hình 3D](figures/fig01_3d_map_nds.png)
+Biểu đồ: [mAP và NDS của mô hình 3D](figures.ipynb) (mục 1 trong notebook).
 
 | Mô hình | Cảm biến | mAP | NDS | mATE (m) | mASE | mAOE (rad) | mAVE (m/s) | P | R | F1 | F1 tốt nhất (ngưỡng) | s / keyframe | VRAM |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -212,9 +212,9 @@ Nhận xét:
   track bù lại recall (0.788 → 0.809) và giảm sai số hướng (0.274 → 0.220 rad).
 - **Thêm 2 mô hình camera** tăng precision nhưng giảm mạnh recall, mAP giảm từ 0.668 xuống 0.662, và chậm gấp 3 lần.
 
-![Đánh đổi tốc độ – độ chính xác](figures/fig02_3d_speed_accuracy.png)
+Biểu đồ: [Đánh đổi tốc độ – độ chính xác](figures.ipynb) (mục 2 trong notebook).
 
-![Precision / Recall / F1 3D](figures/fig03_3d_precision_recall.png)
+Biểu đồ: [Precision / Recall / F1 3D](figures.ipynb) (mục 3 trong notebook).
 
 **AP từng lớp** (test 24 scene):
 
@@ -231,7 +231,7 @@ Nhận xét:
 | **Gộp 4 LiDAR + track (mặc định)** | **0.886** | **0.587** | 0.803 | **0.620** | **0.473** | 0.900 | 0.555 | 0.561 | 0.802 | 0.495 |
 | Gộp 4 LiDAR + 2 camera + track | 0.886 | 0.572 | **0.812** | 0.470 | 0.468 | **0.903** | **0.593** | **0.582** | **0.834** | **0.503** |
 
-![AP từng lớp 3D](figures/fig04_3d_ap_per_class.png)
+Biểu đồ: [AP từng lớp 3D](figures.ipynb) (mục 4 trong notebook).
 
 **Precision / recall từng lớp ở score ≥ 0.3** (test 20 scene):
 
@@ -247,7 +247,7 @@ cone, ensemble đổi recall lấy precision ở cùng ngưỡng score.
 
 ## 3. Detector 2D
 
-![Chọn detector 2D và fine-tune](figures/fig05_2d_detector.png)
+Biểu đồ: [Chọn detector 2D và fine-tune](figures.ipynb) (mục 5 trong notebook).
 
 | Detector | Tập | mAP50 | mAP70 | P | R | F1 | Thời gian / ảnh (1280 px) |
 |---|---|---|---|---|---|---|---|
@@ -266,7 +266,7 @@ Ghi chú:
   val (mAP50 0.509). Linear probe chỉ học lại đầu phân lớp, nên kiến trúc và tốc độ không đổi.
 - **Thời gian zero-shot trên GPU:** lần chấm đó đọc từ cache detection nên không có số riêng.
 
-![AP50 từng lớp 2D](figures/fig06_2d_ap_per_class.png)
+Biểu đồ: [AP50 từng lớp 2D](figures.ipynb) (mục 6 trong notebook).
 
 | Lớp | barrier | bicycle | bus | car | constr. | motorcycle | pedestrian | traffic cone | trailer | truck |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -307,7 +307,7 @@ Pipeline với model fine-tune chưa được chạy lại (xem mục 9).
 
 QA Agent chấm rủi ro cho từng box. Box rủi ro thấp được duyệt theo lô, còn người duyệt chỉ xem kỹ các box bị gắn cờ.
 
-![QA Agent](figures/fig10_qa_agent.png)
+Biểu đồ: [QA Agent](figures.ipynb) (mục 10 trong notebook).
 
 **QA 3D: kiểm chứng box bằng camera** (dev 3 scene, mỗi mô hình dùng ngưỡng điểm riêng):
 
@@ -349,7 +349,7 @@ Test 20 scene, 154 lần lan truyền, dùng chung detection zero-shot. Chỉ đ
 - P = đúng / box ghi ra.
 - R = đúng / (đúng + thiếu).
 
-![Lan truyền 2D](figures/fig07_2d_tracker.png)
+Biểu đồ: [Lan truyền 2D](figures.ipynb) (mục 7 trong notebook).
 
 | Optical flow | Ghép detection | Đúng | Sai | Đổi ID | Thiếu | P | R | F1 | Điểm |
 |---|---|---|---|---|---|---|---|---|---|
@@ -378,7 +378,7 @@ này chỉ dùng dự đoán có sẵn, không chạy lại mô hình.
 - P = tỉ lệ box đúng vật.
 - R = tỉ lệ vật còn trong tầm có nhãn lan truyền đúng.
 
-![Lan truyền 3D](figures/fig08_3d_propagation.png)
+Biểu đồ: [Lan truyền 3D](figures.ipynb) (mục 8 trong notebook).
 
 | Cấu hình (test 24 scene) | Box ghi ra | Đúng | Sai | Đổi ID | P | R | F1 | Sai số tâm | Điểm dev |
 |---|---|---|---|---|---|---|---|---|---|
@@ -404,7 +404,7 @@ có thể bật ở tab ⚙ Cài đặt.
 
 ## 7. Lịch sử tối ưu
 
-![Lịch sử tối ưu](figures/fig09_optimization_history.png)
+Biểu đồ: [Lịch sử tối ưu](figures.ipynb) (mục 9 trong notebook).
 
 | # | Phương pháp | Phần | Chỉ số quyết định | Trước | Sau | Thời gian thêm | Dùng? |
 |---|---|---|---|---|---|---|---|
@@ -430,7 +430,7 @@ có thể bật ở tab ⚙ Cài đặt.
 
 ## 8. Thời gian suy luận
 
-![Thời gian suy luận](figures/fig11_inference_time.png)
+Biểu đồ: [Thời gian suy luận](figures.ipynb) (mục 11 trong notebook).
 
 | Bước | GPU laptop (RTX 4050) | CPU |
 |---|---|---|
