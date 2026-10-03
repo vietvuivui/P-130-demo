@@ -2051,7 +2051,51 @@ select {
   color: var(--muted);
 }
 
-/* ---------- chế độ Ảnh / Video ---------- */
+/* ---------- bộ chuyển model Nhanh / Chính xác ---------- */
+.model-switch {
+  display: inline-flex;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+  margin-right: 2px;
+}
+
+.model-btn {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  user-select: none;
+}
+
+.model-btn:hover:not(:disabled) {
+  color: var(--primary);
+  background: rgba(22, 119, 255, 0.05);
+}
+
+.model-btn.active {
+  background: #ffffff;
+  color: var(--primary);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.model-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* ---------- chế độ Ảnh / Video ---------- */
 .mode-switch {
   display: inline-flex;
