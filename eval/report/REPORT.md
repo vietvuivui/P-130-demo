@@ -69,13 +69,13 @@ Hai luồng lan truyền 2D người dùng chọn trên giao diện (held-out 20
 Trong cả hai luồng, YOLO không tham gia bước dự đoán: nó đã chạy từ bước ① và tracker chỉ đọc box của nó để ghép. Box
 ghi ra ở keyframe sau là box YOLO mang ID và lớp của vật đã duyệt.
 
-### Giải thích từng bước cho người chưa biết sản phẩm
+### Mô tả chi tiết từng bước
 
-**Sản phẩm làm gì.** Xe tự lái cần dữ liệu đã gán nhãn: mỗi ảnh camera và mỗi lần quét LiDAR phải có hộp (box) bao từng
+**Bài toán và cách tiếp cận.** Xe tự lái cần dữ liệu đã gán nhãn: mỗi ảnh camera và mỗi lần quét LiDAR phải có hộp (box) bao từng
 xe, người, cọc tiêu… kèm tên lớp. Gán tay rất tốn công. AutoLabel 3D để máy gán trước, tự chấm xem box nào đáng ngờ,
 rồi người chỉ xem lại những box đáng ngờ đó ("review by exception") thay vì xem tất cả.
 
-**Vài thuật ngữ dùng bên dưới.**
+**Thuật ngữ.**
 
 | Thuật ngữ | Nghĩa |
 |---|---|
@@ -95,7 +95,7 @@ mới thành nhãn: ngưỡng thấp hơn thì bắt được nhiều vật hơn
 
 - *Vì sao 4 mô hình.* Mỗi mô hình 3D (CenterPoint voxel, CenterPoint pillar, SSN, PointPillars) chia không gian và học
   theo cách khác nhau nên sai ở những chỗ khác nhau: cái giỏi xe lớn, cái giỏi vật nhỏ. Hỏi cả bốn rồi lấy ý kiến chung
-  thì chính xác hơn hỏi một (giống hội chẩn bốn bác sĩ).
+  thì chính xác hơn hỏi một.
 - *Gộp thế nào.* Với mỗi keyframe, các box cùng lớp của bốn mô hình có tâm cách nhau dưới một bán kính (xe con 1 m,
   người 0,5 m, cọc tiêu 0,4 m…) được coi là cùng một vật; mỗi mô hình góp tối đa một box. Box gộp lấy vị trí, kích
   thước, hướng, vận tốc là trung bình có trọng số theo score. Score mới = score trung bình × tỉ lệ mô hình đồng ý: vật
