@@ -88,6 +88,22 @@ UI: ⚙ Cài đặt > Gán nhãn > "Mô hình phát hiện 2D" > Lưu > "Áp d�
 **Còn dở / việc tiếp:** (Đã chấm bản full trên 957 ảnh của laptop, xem mục 2026-10-04 (2).) trailer / construction_vehicle còn
 thấp (ít mẫu trong nuImages). Bản full chưa được thử trên ảnh ngoài nuScenes.
 
+## 2026-10-03 · Danh · nhánh `danh`
+
+**Làm gì:** Thêm cụm chuyển đổi nhanh mô hình (Model Switcher: ⚡ Nhanh / 🎯 Chính xác) trực tiếp trên Topbar giao diện đánh dấu (`index.html`). Đồng bộ hai chiều với dropdown chọn luồng lan truyền ở timeline và `localStorage`; hỗ trợ tự động nhận diện tính khả dụng của backend DAM4SAM (SAM 2.1) kèm tooltip và thông báo toast.
+
+**File chính:** `src/web/index.html`, `src/web/styles.css`, `src/web/app.js`.
+
+**Ảnh hưởng tới người khác:** Không. Giữ nguyên API và cấu hình hiện tại, chỉ bổ sung UI switch và logic đồng bộ frontend.
+
+**Cách kiểm tra:**
+- `node -c src/web/app.js src/web/ui-flow.js src/web/projects.js` (không có lỗi cú pháp JS).
+- `pytest tests/test_api/` (41 passed).
+- `pytest tests/test_services/test_improve.py` (6 passed).
+- Mở `http://localhost:8000/ui/index.html`: Thấy cụm nút `⚡ Nhanh` và `🎯 Chính xác` trên Topbar. Khi click chuyển đổi, trạng thái được cập nhật đồng bộ với dropdown timeline và hiển thị toast thông báo. Nút `🎯 Chính xác` tự động disabled kèm tooltip lý do khi máy chủ chưa cài đặt weights DAM4SAM.
+
+---
+
 ## 2026-10-02 · Kiên · nhánh `kien-mentor`
 
 **Làm gì:** Theo góp ý mentor: (1) làm việc nhiều người kiểu CVAT / Google Docs — tài khoản + đăng nhập, mời vào dự án

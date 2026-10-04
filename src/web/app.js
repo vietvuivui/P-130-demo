@@ -1056,18 +1056,55 @@ async function approveFrame() {
 }
 
 // ---------- luồng lan truyền (người dùng chọn như chọn model): Nhanh = theo Cài đặt; Chính xác = DAM4SAM + BoT-SORT ----------
+function updateTopModelSwitch(activeId) {
+  const topSwitch = $('topbar-model-switch');
+  if (!topSwitch) return;
+  topSwitch.querySelectorAll('.model-btn').forEach((btn) => {
+    const isAct = btn.dataset.engine === activeId;
+    btn.classList.toggle('active', isAct);
+    const eng = (S.engines || []).find((e) => e.id === btn.dataset.engine);
+    if (eng) {
+      btn.disabled = !eng.available;
+      if (!eng.available && eng.reason) {
+        btn.title = `${eng.label} chưa dùng được: ${eng.reason}`;
+      }
+    }
+  });
+}
+
+function setEngine(id) {
+  const eng = (S.engines || []).find((e) => e.id === id);
+  if (eng && !eng.available) {
+    toast(`Mô hình ${eng.label} chưa dùng được: ${eng.reason || 'thiếu cấu hình / GPU'}`, true);
+    return;
+  }
+  const sel = $('prop-engine');
+  if (sel) {
+    sel.value = id;
+    sel.title = engineInfo().detail || '';
+  }
+  storageSet('propEngine', id);
+  updateTopModelSwitch(id);
+  const label = id === 'dam4sam' ? '🎯 Chính xác (DAM4SAM)' : '⚡ Nhanh';
+  toast(`Đã chuyển sang mô hình: ${label}`);
+}
+
 async function loadEngines() {
   const sel = $('prop-engine');
   try {
     S.engines = await api('/propagation/engines');
   } catch { S.engines = [{ id: 'default', label: 'Nhanh', available: true, detail: '' }]; }
   const saved = storageGet('propEngine', 'default');
-  sel.innerHTML = S.engines.map((e) => `<option value="${esc(e.id)}" ${e.available ? '' : 'disabled'} title="${esc(e.detail)}${e.reason ? '\nChưa dùng được: ' + esc(e.reason) : ''}">${e.id === 'default' ? '⚡' : '🎯'} ${esc(e.label)}</option>`).join('');
-  sel.value = S.engines.some((e) => e.id === saved && e.available) ? saved : 'default';
-  sel.title = engineInfo().detail || '';
+  const validSaved = S.engines.some((e) => e.id === saved && e.available) ? saved : 'default';
+  if (sel) {
+    sel.innerHTML = S.engines.map((e) => `<option value="${esc(e.id)}" ${e.available ? '' : 'disabled'} title="${esc(e.detail)}${e.reason ? '\nChưa dùng được: ' + esc(e.reason) : ''}">${e.id === 'default' ? '⚡' : '🎯'} ${esc(e.label)}</option>`).join('');
+    sel.value = validSaved;
+    sel.title = engineInfo().detail || '';
+  }
+  updateTopModelSwitch(validSaved);
   resumePropJob();
 }
-const engineInfo = () => (S.engines || []).find((e) => e.id === $('prop-engine').value) || { id: 'default' };
+const engineInfo = () => (S.engines || []).find((e) => e.id === ($('prop-engine')?.value || storageGet('propEngine', 'default'))) || { id: 'default' };
 
 function showPropJob(job) {
   const el = $('prop-job');
@@ -2567,7 +2604,15 @@ $('reject-send').addEventListener('click', sendReject);
 $('reject-cancel').addEventListener('click', () => $('reject-box').classList.add('hidden'));
 $('reject-reason').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendReject(); });
 $('btn-propagate').addEventListener('click', propagateCurrent);
-$('prop-engine').addEventListener('change', (e) => { storageSet('propEngine', e.target.value); e.target.title = engineInfo().detail || ''; });
+$('prop-engine').addEventListener('change', (e) => {
+  storageSet('propEngine', e.target.value);
+  e.target.title = engineInfo().detail || '';
+  updateTopModelSwitch(e.target.value);
+});
+$('topbar-model-switch')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.model-btn');
+  if (btn && btn.dataset.engine) setEngine(btn.dataset.engine);
+});
 $('auto-prop').addEventListener('change', (e) => { S.autoProp = e.target.checked; storageSet('autoProp', S.autoProp ? '1' : '0'); });
 $('btn-add').addEventListener('click', () => (S.mode === 'add' ? cancelEdit() : startAdd()));
 $('btn-click').addEventListener('click', () => (S.mode === 'click' ? cancelEdit() : startClick()));
