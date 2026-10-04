@@ -229,6 +229,8 @@ def put_ui_settings(req: SettingsRequest, store: WorkspaceStore = Depends(get_st
         current = ui_settings.validate(current)
     except ValueError as e:
         raise _error(422, "INVALID_SETTING", str(e)) from e
+    if lost := ui_settings.missing_weights(ui_settings.validate(req.values)):
+        raise _error(422, "INVALID_SETTING", f"Chưa có file {lost} trên máy này: git pull nhánh có trọng số rồi chọn lại")
     defaults = {f["path"]: f["default"] for f in ui_settings.describe(base, {})}
     ui_settings.save(store.root, {k: v for k, v in current.items() if v != defaults[k]})
     store.append_event(dict(type="settings", mode="2d", values=req.values))

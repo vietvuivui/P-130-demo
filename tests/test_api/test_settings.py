@@ -35,6 +35,31 @@ async def test_settings_roundtrip_and_validation(client, store, config):
     assert not any(x["changed"] for x in r.json()["fields"]) and ui_settings.load(store.root) == {}
 
 
+@pytest.mark.asyncio
+async def test_detector_weights_choice(client, store, config, tmp_path, monkeypatch):
+    key = "detection.yoloe.weights"
+    full, lp = "weights/yoloe-26l-nuimages-full-1280.pt", "weights/yoloe-26l-nuimages-lp-1280.pt"
+    base = "yoloe-26l-seg.pt"
+    f = {x["path"]: x for x in (await client.get(S)).json()["fields"]}[key]
+    assert f["default"] == full and set(f["choices"]) == {full, lp, base} and f["applies"] == "relabel"
+
+    monkeypatch.setattr(ui_settings, "REPO_ROOT", tmp_path)  # máy chưa pull trọng số
+    assert (await client.put(S, json={"values": {key: "weights/khac.pt"}})).status_code == 422  # ngoài danh sách
+    r = await client.put(S, json={"values": {key: lp}})
+    assert r.status_code == 422 and lp in r.json()["detail"]["message"]
+    assert ui_settings.load(store.root) == {}
+
+    (tmp_path / "weights").mkdir()
+    (tmp_path / lp).write_bytes(b"")
+    assert (await client.put(S, json={"values": {key: lp}})).status_code == 200
+    assert ui_settings.apply(config, ui_settings.load(store.root)).detection.yoloe.weights == lp
+    assert config.detection.yoloe.weights == full
+    # Bản gốc không cần file sẵn (Ultralytics tự tải); đổi cài đặt khác không bị chặn vì trọng số đã lưu
+    assert (await client.put(S, json={"values": {key: base}})).status_code == 200
+    assert (await client.put(S, json={"values": {"detection.min_score": 0.25}})).status_code == 200
+    assert ui_settings.load(store.root) == {key: base, "detection.min_score": 0.25}
+
+
 def test_broken_settings_file_falls_back_to_defaults(tmp_path):
     (tmp_path / "settings.json").write_text("{not json")
     assert ui_settings.load(tmp_path) == {}

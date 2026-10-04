@@ -30,6 +30,39 @@ Quy tắc:
 
 ---
 
+## 2026-10-04 · Kiên · nhánh `kien`
+
+**Làm gì:** Fine-tune toàn mạng YOLOE-26L trên nuImages xong (30 epoch, 1280 px, RTX 3090) và thành detector 2D mặc
+định. Tab ⚙ Cài đặt có thêm ô **"Mô hình phát hiện 2D"** (nhóm Gán nhãn) để đổi giữa 3 bản theo từng workspace / dự án:
+fine-tune toàn mạng (mặc định), linear probe, YOLOE gốc open-vocab. Chấm trên nuScenes CAM_FRONT (`tools2d/eval2d.py`,
+ngưỡng 0.30, IoU 0.5; held-out lần này là 4852 keyframe trên PC, không phải 957 ảnh của laptop):
+
+| | nuImages val | dev (119 ảnh) | held-out (4852 ảnh) | P held-out | R held-out |
+|---|---|---|---|---|---|
+| zero-shot `yoloe-26l-seg.pt` | 0.389 | 0.391 | 0.266 | 0.500 | 0.478 |
+| linear probe | 0.509 | 0.428 | 0.305 | 0.503 | 0.530 |
+| fine-tune toàn mạng | **0.782** | **0.616** | **0.585** | **0.530** | **0.782** |
+
+AP50 held-out bản full: car 0.80, bus 0.80, traffic_cone 0.75, barrier 0.74, motorcycle 0.63, truck 0.63, bicycle 0.63,
+pedestrian 0.52; còn yếu trailer 0.24, construction_vehicle 0.10.
+
+**File chính:** `weights/yoloe-26l-nuimages-full-1280.pt` (+ `.sha256`, `results-full-1280.csv`),
+`src/services/ui_settings.py` (trường `detection.yoloe.weights`, `missing_weights`), `src/api/routes.py` (PUT `/settings`
+trả 422 nếu file trọng số được chọn chưa có trên máy), `configs/autolabel.yaml`, `tests/test_api/test_settings.py`.
+
+**Ảnh hưởng tới người khác:** Config đổi `detection.yoloe.weights` sang bản full. Cần `git pull` để có file `.pt`
+(50.6 MB, `git add -f`). Bản full và linear probe là **tập lớp đóng 10 lớp nuScenes**: prompt chữ / lớp thêm mới không
+có tác dụng; cần open-vocab thì vào ⚙ Cài đặt chọn "YOLOE gốc, open-vocab" (không phải sửa yaml). Đổi mô hình chỉ ảnh
+hưởng frame gán nhãn sau đó; frame cũ cần bấm "Áp dụng lại" (bỏ qua frame đã có người sửa). Cache detection khoá theo
+tên trọng số nên không lẫn giữa các bản. API `/settings` không đổi dạng, chỉ thêm một trường.
+
+**Cách kiểm tra:** `ruff check src tests` sạch, `pytest` 233 passed, 2 skipped (PC train). Chấm lại:
+`powershell -ExecutionPolicy Bypass -File scripts\tasks.ps1 eval2d -Weights weights\yoloe-26l-nuimages-full-1280.pt`.
+UI: ⚙ Cài đặt > Gán nhãn > "Mô hình phát hiện 2D" > Lưu > "Áp dụng lại".
+
+**Còn dở / việc tiếp:** Chưa chấm bản full trên tập held-out 957 ảnh của laptop. trailer / construction_vehicle còn
+thấp (ít mẫu trong nuImages). Bản full chưa được thử trên ảnh ngoài nuScenes.
+
 ## 2026-10-02 · Kiên · nhánh `kien-mentor`
 
 **Làm gì:** Theo góp ý mentor: (1) làm việc nhiều người kiểu CVAT / Google Docs — tài khoản + đăng nhập, mời vào dự án
