@@ -75,10 +75,11 @@ class Lidar3DCfg(BaseModel):
     # (cọc tiêu, người) hai nguồn lệch vài px nên 0.5 để sót nhiều cặp trùng; 0.3 ghép nhầm sang cọc bên cạnh.
     match_iou: float = 0.4
     camera_only_scale: float = 0.5  # hệ số điểm của box chỉ detector ảnh thấy
-    # Box chỉ camera thấy mà trong box không có điểm LiDAR (vật ngoài tầm LiDAR / bị che): LiDAR không có cơ hội thấy nó,
-    # nên không nên hạ điểm như camera_only_scale. None = hạ như thường (cách cũ); 1.0 = giữ nguyên điểm detector.
-    no_lidar_scale: float | None = None
-    no_lidar_max_points: int = 2  # "không có điểm LiDAR" = số điểm trong box <= ngần này
+    # Box chỉ camera thấy mà trong box không có điểm LiDAR (vật ngoài tầm LiDAR / bị che) dùng hệ số riêng thay cho
+    # camera_only_scale. None = hạ như box chỉ camera khác; 1.0 = giữ nguyên điểm detector. 0.3 từ 04/10/2026: với
+    # detector fine-tune toàn mạng, 95% box loại này không khớp nhãn gốc (eval/results/lidar2d.md).
+    no_lidar_scale: float | None = 0.3
+    no_lidar_max_points: int = 0  # "không có điểm LiDAR" = số điểm trong box <= ngần này
     # Hai box 3D của xe (car / truck / bus / trailer / construction_vehicle) chồng nhau trên mặt đường từ tỉ lệ này
     # (phần chồng / box nhỏ hơn) là một xe: giữ box điểm cao hơn. Ensemble đôi khi cho hai box lệch vài mét dọc thân xe
     # tải dài, hoặc car + truck ở cùng chỗ -> một xe có hai nhãn 2D. None = tắt.
@@ -106,7 +107,7 @@ class DetectionCfg(BaseModel):
 
 
 class ConfidenceCfg(BaseModel):
-    low_threshold: float = 0.35
+    low_threshold: float = 0.6
     class_conflict_ratio: float = 0.6
 
 
@@ -116,16 +117,25 @@ class LidarCfg(BaseModel):
     min_depth_m: float = 1.0
     max_depth_m: float = 45.0
     size_tolerance: tuple[float, float] = (0.5, 1.5)
+    # Điểm rủi ro LiDAR theo số điểm trong box (dò trên dev 04/10/2026 với detector fine-tune toàn mạng, xem
+    # eval/results/qa_tuning.md): box nhỏ 0 điểm / box nhỏ 1..min_points-1 điểm / box có < sparse_points điểm
+    no_points_term: float = 1.0
+    zero_points_issue: bool = True  # box nhỏ 0 điểm có bị gắn cờ NO_LIDAR_SUPPORT không
+    few_points_term: float = 0.4
+    sparse_points: int = 5
+    sparse_term: float = 0.2
 
 
 class TemporalCfg(BaseModel):
     match_iou: float = 0.3
     min_support: int = 2
-    recover_min_score: float = 0.35
+    # Box nội suy RECOVERED_BY_TRACK chỉ tạo từ box sweep có score >= ngưỡng này. 1.0 = chỉ box người đã xác nhận / vẽ
+    # ở sweep (score 1.0); box sweep của riêng detector không tạo đề xuất nữa (đo 04/10: 2% đề xuất loại này đúng)
+    recover_min_score: float = 1.0
     # Detector thấy vật ở keyframe nhưng score dưới ngưỡng giữ (detection.min_score) -> box bị bỏ. Nếu sweep trước VÀ sau
     # đều có box cùng lớp trùng vị trí (score >= ngưỡng này) thì giữ lại box của detector, gắn RECOVERED_BY_TRACK để
     # người xác nhận (như lượt ghép score thấp của ByteTrack, nhưng ở ngay lúc gán nhãn). None = tắt.
-    recover_weak_min_score: float | None = 0.2
+    recover_weak_min_score: float | None = None
     # Mang nhãn máy của keyframe TRƯỚC sang keyframe này bằng tracker lan truyền (flow + ByteTrack, qua các ảnh 12 Hz ở
     # giữa) ngay lúc gán nhãn: vật mà detector thấy mờ ở keyframe này (dưới ngưỡng giữ) nhưng tracker theo được từ
     # frame trước thì giữ box của detector, gắn RECOVERED_BY_TRACK. Tốn thêm optical flow cho ~4 cặp ảnh mỗi keyframe.
@@ -147,21 +157,21 @@ class GeometryCfg(BaseModel):
 
 
 class RiskWeights(BaseModel):
-    detection: float = 0.35
-    lidar: float = 0.30
-    temporal: float = 0.20
+    detection: float = 0.60
+    lidar: float = 0.25
+    temporal: float = 0.0
     geometric: float = 0.15
 
 
 class RiskLevels(BaseModel):
-    medium: float = 0.30
-    high: float = 0.60
+    medium: float = 0.17
+    high: float = 0.40
 
 
 class RiskCfg(BaseModel):
     weights: RiskWeights = RiskWeights()
     class_conflict_penalty: float = 0.30
-    issue_floor: float = 0.30
+    issue_floor: float = 0.17
     levels: RiskLevels = RiskLevels()
 
 

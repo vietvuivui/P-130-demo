@@ -30,6 +30,51 @@ Quy tắc:
 
 ---
 
+## 2026-10-04 (3) · Kiên · nhánh `kien`
+
+**Làm gì:** Dò lại QA Agent 2D cho detector fine-tune toàn mạng. Risk cũ xếp box sai không hơn gì score detector (AUC
+held-out 0.841 cả hai) và để 82% box vào nhóm duyệt theo lô với 48% sai. Cấu hình mới (chọn trên dev, báo trên held-out
+20 scene / 795 keyframe): nhóm low sai 47.8% → **8.9%**, box sai lọt duyệt theo lô 3621 → **280**, tỉ lệ box sai được gắn
+cờ 25% → 94%, nhóm high 2300 box với 95% sai; đổi lại box phải xem tay 1668 → 6103. mAP / P / R / F1 không đổi (QA không
+đụng tới box của detector). Lược bỏ hai phần không có ích: điểm temporal trong công thức risk (trọng số 0) và đề xuất
+RECOVERED_BY_TRACK từ box của riêng detector (627 đề xuất chỉ 37 trùng vật sót). Báo cáo: `eval/results/qa_tuning.md`.
+
+Gộp box 3D vào nhãn 2D (dự án có LiDAR): box chỉ camera thấy mà không có điểm LiDAR nào trong box giờ nhân 0.3 thay vì
+0.5. Đo bằng code thật trên **cả 6 camera** của tập test (5742 ảnh, 25991 vật), detector fine-tune toàn mạng:
+
+| | mAP50 | P | R | F1 | Box phải sửa |
+|---|---|---|---|---|---|
+| Chỉ detector ảnh | 0.560 | 0.534 | 0.763 | 0.628 | 23432 |
+| Gộp box 3D, cấu hình trước | 0.671 | 0.628 | 0.818 | 0.710 | 17348 |
+| Gộp box 3D, cấu hình mới | 0.672 | 0.672 | 0.812 | 0.735 | 15184 |
+
+Gộp có lợi ở cả 6 camera (mAP50 +0.08 đến +0.14); CAM_FRONT: mAP50 0.589 → 0.700, phải sửa 7023 → 3504. Bảng từng camera:
+`eval/results/lidar2d.md`. Cũng đã thử: hạ / nâng ngưỡng giữ box (hai hướng recall cao / precision cao) và cho QA gọi
+thêm một detector 2D thứ hai; kết quả ở `eval/results/qa_tuning.md`, không đổi config.
+
+**File chính:** `configs/autolabel.yaml` (khối `qa`), `src/models/qa_config.py` (mặc định mới + `qa.lidar.no_points_term`,
+`zero_points_issue`, `few_points_term`, `sparse_points`, `sparse_term`), `src/agents/nodes/lidar.py`,
+`src/services/temporal_eval.py` (cấu hình `qa-old` để so sánh, thêm `by_level`), `tests/test_agents/`,
+`eval/results/qa_tuning.md`, `eval/results/lidar2d.md`, `eval/results/qa/*.json`, `eval/report/REPORT.md`, `README.md`,
+`tools2d/eval_lidar2d.py` (thêm `--cameras all`, `--all-variants`; in kết quả từng camera).
+
+**Ảnh hưởng tới người khác:** Config đổi: `qa.risk.weights` 0.60 / 0.25 / 0 / 0.15, `qa.risk.levels` 0.17 / 0.40,
+`issue_floor` 0.17, `qa.confidence.low_threshold` 0.60, `qa.temporal.recover_min_score` 1.0,
+`recover_weak_min_score` null, `detection.lidar3d.no_lidar_scale` 0.3, `no_lidar_max_points` 0. Box nhỏ không có điểm LiDAR
+nào giờ bị gắn `NO_LIDAR_SUPPORT`. Hệ quả trên UI: ít box xanh
+(low) hơn hẳn, nhiều box đỏ (high); box nét đứt RECOVERED_BY_TRACK chỉ còn xuất hiện khi người đã xác nhận / vẽ vật ở
+sweep hai bên. Frame đã gán nhãn giữ risk cũ cho tới khi chạy lại (`run --overwrite` hoặc "Áp dụng lại"). Schema và API
+không đổi.
+
+**Cách kiểm tra:** `ruff check src tests` sạch, `pytest` 237 passed. Đo lại: `python tools2d/eval_temporal.py --dataroot
+..\v1.0-trainval --workspace data\eval_temporal\ws_heldout_full --out data\eval_temporal\result_heldout_qa --variants base
+qa-old --no-propagation`; `python tools2d/eval_lidar2d.py --dataroot ..\v1.0-trainval --cameras all` (GPU ~6 phút cho ảnh
+chưa có cache).
+
+**Còn dở / việc tiếp:** Thêm thao tác "xoá theo lô nhóm high" trên UI (25% số box, 95% sai). QA Agent 2D mới chỉ đo ở dự
+án có LiDAR, CAM_FRONT; CAM_BACK_RIGHT yếu nhất sau khi gộp box 3D (F1 0.674), chưa tìm nguyên nhân; dự án chỉ có camera thì risk gần như chỉ còn là score. Chưa đo lại với `rescore` và optical flow cho QA
+temporal. Precision detector vẫn ~0.48.
+
 ## 2026-10-04 (2) · Kiên · nhánh `kien`
 
 **Làm gì:** (1) Chấm bản fine-tune toàn mạng trên tập test 957 keyframe của laptop: mAP50 **0.589**, P 0.487, R 0.806,

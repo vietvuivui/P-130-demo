@@ -35,6 +35,7 @@ Chỉ số dùng trong bảng:
 | 1 | 2D | YOLOE-26-L thay YOLO-World | mAP50 (40 keyframe) | 0.311 | 0.452 | +0.141 | 3.75 → 3.31 s/ảnh, CPU (−12%) | ✅ |
 | 2 | 2D | Fine-tune YOLOE-26-L trên nuImages, linear probe | mAP50 test | 0.312 | 0.366 | +0.054 (R +0.058, P −0.015) | không đổi: cùng kiến trúc, cùng 1280 px; GPU 0.076 s/ảnh | thay bằng 2b |
 | 2b | 2D | **Fine-tune toàn mạng YOLOE-26-L trên nuImages** (mặc định từ 04/10) | mAP50 test | 0.366 (linear probe) | 0.589 | +0.223 (R +0.226, P +0.003); so với zero-shot +0.277 | không đổi: cùng kiến trúc, cùng 1280 px; GPU 0.069 s/ảnh | ✅ mới |
+| 2c | 2D | Gộp box 3D vào nhãn 2D, box chỉ camera không có điểm LiDAR ×0.3 (đo 6 camera, 04/10) | mAP50 / box phải sửa (test 5742 ảnh) | 0.560 / 23432 (chỉ detector ảnh) | 0.672 / 15184 | +0.112 / −35% (riêng hệ số ×0.3: phải sửa 17348 → 15184) | cần chạy 4 mô hình LiDAR; phần gộp chạy CPU | ✅ mới |
 | 3 | 2D | Ngưỡng giữ box 0.30 | precision (40 keyframe) | 0.34 | 0.51 | +0.17 | 0 | ✅ |
 | 4 | 2D | TTA: đổi prompt, lật ảnh, ảnh 1600 px | mAP50 dev | 0.395 | 0.365–0.392 | giảm | thêm một lần suy luận cho mỗi biến thể (chưa đo) | ❌ |
 | 5 | 2D | Optical flow khi lan truyền | nhãn đúng / đổi ID (test) | 2866 / 205 | 3220 / 82 | +12% / −60% | 0.33 → 1.39 s/lần lan truyền, GPU (×4.2) | ✅ |

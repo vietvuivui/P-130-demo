@@ -31,6 +31,13 @@ VARIANTS = {
                                                         "qa.temporal.carry_prev": True}),  # fmt: skip
     "carry-only": dict(flow=False, rescore="off", overrides={"qa.temporal.recover_weak_min_score": None,
                                                              "qa.temporal.carry_prev": True}),  # fmt: skip
+    # QA Agent trước 04/10/2026 (trọng số, ngưỡng, điểm LiDAR, đề xuất RECOVERED_BY_TRACK cũ), để so với "base"
+    "qa-old": dict(flow=False, rescore="off", overrides={
+        "qa.confidence.low_threshold": 0.35, "qa.lidar.no_points_term": 0.2, "qa.lidar.few_points_term": 0.2,
+        "qa.lidar.sparse_term": 0.0, "qa.temporal.recover_min_score": 0.35, "qa.temporal.recover_weak_min_score": 0.2,
+        "qa.risk.weights.detection": 0.35, "qa.risk.weights.lidar": 0.30, "qa.risk.weights.temporal": 0.20,
+        "qa.risk.weights.geometric": 0.15, "qa.risk.issue_floor": 0.30, "qa.risk.levels.medium": 0.30,
+        "qa.risk.levels.high": 0.60, "qa.lidar.zero_points_issue": False}),  # fmt: skip
 }
 # Mặc định chỉ chạy 5 cấu hình chính (nút trên web); "low*" = nhận cả box sweep score ≥ 0.1 làm bằng chứng (kiểu
 # ByteTrack) — đã đo, làm lỗi lọt qua tăng (report.md mục 5), chạy thêm bằng --variants nếu cần.
@@ -68,6 +75,7 @@ def metrics_2d(store) -> dict:
         "low_risk_error_rate": qa["low_risk_error_rate"],
         "flag_recall": qa["flag_recall"],
         "flag_precision": qa["flag_precision"],
+        "by_level": qa["by_level"],
         "flicker": qa["by_issue"].get("FLICKER"),
         "fn_total": qa["fn_total"],
         "fn_recovered": qa["fn_recovered_by_track"],

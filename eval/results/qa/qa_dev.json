@@ -1,0 +1,178 @@
+{
+ "workspace": "data\\eval_temporal\\ws_dev_full",
+ "as_run": {
+  "frames": 119,
+  "mAP50": 0.6076,
+  "mAP70": 0.3176,
+  "ap50": {
+   "barrier": 0.6535,
+   "bicycle": 0.2724,
+   "bus": 0.8457,
+   "car": 0.8578,
+   "construction_vehicle": 0.0,
+   "motorcycle": 0.8375,
+   "pedestrian": 0.5492,
+   "traffic_cone": 0.8151,
+   "truck": 0.6374
+  },
+  "tp": 888,
+  "fp": 995,
+  "fn": 188,
+  "n_gt": 1076,
+  "precision": 0.4716,
+  "recall": 0.8253,
+  "f1": 0.6002,
+  "objects": 1883,
+  "need_fix": 995,
+  "low_risk_share": 0.8423,
+  "low_risk_error_rate": 0.4918,
+  "flag_recall": 0.2161,
+  "flag_precision": 0.7239,
+  "by_level": {
+   "low": {
+    "n": 1586,
+    "needs_fix": 780,
+    "error_rate": 0.4918
+   },
+   "medium": {
+    "n": 294,
+    "needs_fix": 212,
+    "error_rate": 0.7211
+   },
+   "high": {
+    "n": 3,
+    "needs_fix": 3,
+    "error_rate": 1.0
+   }
+  },
+  "flicker": {
+   "n": 185,
+   "needs_fix": 140,
+   "precision": 0.7568
+  },
+  "fn_total": 184,
+  "fn_recovered": 4,
+  "track_proposals": 113,
+  "track_precision": 0.0354,
+  "ap50_small": null,
+  "s_per_frame": 0.563
+ },
+ "variants": {
+  "base": {
+   "frames": 119,
+   "mAP50": 0.6076,
+   "mAP70": 0.3176,
+   "ap50": {
+    "barrier": 0.6535,
+    "bicycle": 0.2724,
+    "bus": 0.8457,
+    "car": 0.8578,
+    "construction_vehicle": 0.0,
+    "motorcycle": 0.8375,
+    "pedestrian": 0.5492,
+    "traffic_cone": 0.8151,
+    "truck": 0.6374
+   },
+   "tp": 888,
+   "fp": 995,
+   "fn": 188,
+   "n_gt": 1076,
+   "precision": 0.4716,
+   "recall": 0.8253,
+   "f1": 0.6002,
+   "objects": 1883,
+   "need_fix": 995,
+   "low_risk_share": 0.3186,
+   "low_risk_error_rate": 0.0517,
+   "flag_recall": 0.9688,
+   "flag_precision": 0.7514,
+   "by_level": {
+    "low": {
+     "n": 600,
+     "needs_fix": 31,
+     "error_rate": 0.0517
+    },
+    "medium": {
+     "n": 803,
+     "needs_fix": 509,
+     "error_rate": 0.6339
+    },
+    "high": {
+     "n": 480,
+     "needs_fix": 455,
+     "error_rate": 0.9479
+    }
+   },
+   "flicker": {
+    "n": 185,
+    "needs_fix": 140,
+    "precision": 0.7568
+   },
+   "fn_total": 184,
+   "fn_recovered": 0,
+   "track_proposals": 0,
+   "track_precision": null,
+   "ap50_small": null,
+   "s_per_frame": 0.166
+  },
+  "qa-old": {
+   "frames": 119,
+   "mAP50": 0.6076,
+   "mAP70": 0.3176,
+   "ap50": {
+    "barrier": 0.6535,
+    "bicycle": 0.2724,
+    "bus": 0.8457,
+    "car": 0.8578,
+    "construction_vehicle": 0.0,
+    "motorcycle": 0.8375,
+    "pedestrian": 0.5492,
+    "traffic_cone": 0.8151,
+    "truck": 0.6374
+   },
+   "tp": 888,
+   "fp": 995,
+   "fn": 188,
+   "n_gt": 1076,
+   "precision": 0.4716,
+   "recall": 0.8253,
+   "f1": 0.6002,
+   "objects": 1883,
+   "need_fix": 995,
+   "low_risk_share": 0.8423,
+   "low_risk_error_rate": 0.4918,
+   "flag_recall": 0.2161,
+   "flag_precision": 0.7239,
+   "by_level": {
+    "low": {
+     "n": 1586,
+     "needs_fix": 780,
+     "error_rate": 0.4918
+    },
+    "medium": {
+     "n": 294,
+     "needs_fix": 212,
+     "error_rate": 0.7211
+    },
+    "high": {
+     "n": 3,
+     "needs_fix": 3,
+     "error_rate": 1.0
+    }
+   },
+   "flicker": {
+    "n": 185,
+    "needs_fix": 140,
+    "precision": 0.7568
+   },
+   "fn_total": 184,
+   "fn_recovered": 4,
+   "track_proposals": 113,
+   "track_precision": 0.0354,
+   "ap50_small": null,
+   "s_per_frame": 0.035
+  }
+ },
+ "started_at": "2026-10-04 16:01",
+ "finished_at": "2026-10-04 16:02"
+}

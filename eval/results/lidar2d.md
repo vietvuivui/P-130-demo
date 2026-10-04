@@ -69,3 +69,77 @@ IoU >= 0.2, cùng qua ngưỡng 0.30.
 Chọn 0.4 trên dev (F1 giữ nguyên, trùng -58%); 0.3 ghép nhầm cọc tiêu sang cọc bên cạnh (AP cọc tiêu dev 0.68 -> 0.60).
 Ghép theo IoU giảm dần thay vì theo điểm 3D: kém hơn (test 0.620). Khớp rồi giữ box 2D cho lớp nhỏ: kém hẳn (người 0.58 ->
 0.46 trên dev) vì nhãn gốc là hộp bao của box 3D.
+
+## Đo lại với detector fine-tune toàn mạng (2026-10-04)
+
+`python tools2d/eval_lidar2d.py --dataroot ..\v1.0-trainval` với `yoloe-26l-nuimages-full-1280.pt`, CPU từ cache. Dev 119
+keyframe, test 957 keyframe (6733 vật), ngưỡng giữ 0.30. Số liệu: `eval/results/qa/lidar2d_full.json`.
+
+| Cấu hình | dev mAP50 | test mAP50 | test P | test R | test F1 | Box thừa | Vật sót | Phải sửa |
+|---|---|---|---|---|---|---|---|---|
+| Chỉ detector ảnh | 0.616 | 0.589 | 0.487 | 0.807 | 0.607 | 5722 | 1301 | 7023 |
+| **Gộp box 3D (mặc định, box chỉ camera x0.5)** | 0.775 | **0.697** | 0.615 | 0.821 | 0.703 | 3467 | 1206 | **4673 (−33%)** |
+
+Tỉ lệ sai theo nguồn của box (test, trước khi hạ điểm, score ≥ 0.30):
+
+| Nhóm | Số box | Sai |
+|---|---|---|
+| Cả detector ảnh và box 3D | 5196 | 15% |
+| Chỉ box 3D | 680 | 67% |
+| Chỉ detector ảnh, có điểm LiDAR trong box | 3209 | 68% |
+| Chỉ detector ảnh, không có điểm LiDAR nào | 2744 | 95% |
+
+Mô phỏng từ cùng dự đoán (khớp lần chạy thật ở cấu hình mặc định: test mAP50 0.695, phải sửa 4673), dò hệ số hạ điểm:
+
+| Hệ số cho box chỉ camera | dev mAP50 | dev phải sửa | test mAP50 | test P | test R | test F1 | test phải sửa |
+|---|---|---|---|---|---|---|---|
+| x1.0 | 0.752 | 1258 | 0.677 | 0.490 | 0.861 | 0.625 | 6964 |
+| x0.7 | 0.774 | 1114 | 0.696 | 0.537 | 0.850 | 0.658 | 5952 |
+| x0.5 (mặc định) | 0.775 | 886 | 0.695 | 0.615 | 0.821 | 0.703 | 4673 |
+| x0.4 | 0.772 | 657 | 0.691 | 0.706 | 0.775 | 0.739 | 3691 |
+| x0.3 | 0.764 | 614 | 0.680 | 0.790 | 0.689 | 0.736 | 3327 |
+| **x0.5, riêng box 0 điểm LiDAR x0.3** | **0.779** | 626 | **0.698** | 0.713 | 0.804 | **0.755** | 3504 |
+
+Dòng cuối tốt nhất trên dev về mAP50 và gần tốt nhất về số box phải sửa; cấu hình tương ứng là
+`detection.lidar3d.no_lidar_scale: 0.3`, `no_lidar_max_points: 0`. Đã áp vào config và chạy bằng code thật trên 6 camera
+(mục dưới).
+
+Dùng box 3D chỉ làm ý kiến thứ hai cho QA (không đổi nhãn): AUC xếp box sai trên test 0.913 → 0.918, nhóm medium phải xem
+kỹ 4115 → 3597 box. Lợi ích nhỏ, vì số điểm LiDAR trong box đã cho gần hết thông tin đó. Lợi ích lớn đến từ việc gộp box
+3D vào nhãn (bảng đầu), không phải từ QA.
+
+Giới hạn như mục 1: nhãn gốc 2D là box 3D chiếu xuống nên một phần mức tăng do cùng kiểu hộp; chỉ áp dụng cho dự án có
+LiDAR và đã chạy 4 mô hình 3D.
+
+## Cả 6 camera, cấu hình mới (2026-10-04)
+
+`python tools2d/eval_lidar2d.py --dataroot ..\v1.0-trainval --cameras all`, chạy bằng code thật (detector trên GPU cho 5
+camera chưa có cache, phần gộp trên CPU). 1076 keyframe × 6 camera: dev 714 ảnh (4594 vật), test 5742 ảnh (25991 vật).
+Số liệu: `eval/results/qa/lidar2d_6cam.json`.
+
+Test, cả 6 camera:
+
+| Cấu hình | mAP50 | P | R | F1 | Box thừa | Vật sót | Phải sửa |
+|---|---|---|---|---|---|---|---|
+| Chỉ detector ảnh | 0.560 | 0.534 | 0.763 | 0.628 | 17262 | 6170 | 23432 |
+| Gộp box 3D, mọi box chỉ camera x0.5 (trước 04/10) | 0.671 | 0.628 | 0.818 | 0.710 | 12612 | 4736 | 17348 |
+| **Gộp box 3D, box 0 điểm LiDAR x0.3 (mặc định mới)** | **0.672** | **0.672** | 0.812 | **0.735** | 10287 | 4897 | **15184 (−35%)** |
+
+Dev: mAP50 0.564 → 0.678 → 0.680; phải sửa 4063 → 3555 → 3176.
+
+Từng camera trên test (chỉ detector ảnh → mặc định mới):
+
+| Camera | Số vật | mAP50 | P | R | F1 | Phải sửa |
+|---|---|---|---|---|---|---|
+| CAM_FRONT | 6733 | 0.589 → 0.700 | 0.487 → 0.713 | 0.807 → 0.804 | 0.607 → 0.755 | 7023 → 3504 |
+| CAM_FRONT_LEFT | 2936 | 0.602 → 0.741 | 0.545 → 0.692 | 0.765 → 0.839 | 0.637 → 0.758 | 2562 → 1572 |
+| CAM_FRONT_RIGHT | 3456 | 0.553 → 0.662 | 0.522 → 0.622 | 0.759 → 0.839 | 0.618 → 0.714 | 3238 → 2322 |
+| CAM_BACK | 7191 | 0.576 → 0.685 | 0.603 → 0.702 | 0.735 → 0.788 | 0.663 → 0.742 | 5384 → 3932 |
+| CAM_BACK_LEFT | 2338 | 0.557 → 0.684 | 0.560 → 0.694 | 0.756 → 0.837 | 0.643 → 0.759 | 1958 → 1244 |
+| CAM_BACK_RIGHT | 3337 | 0.579 → 0.658 | 0.507 → 0.578 | 0.739 → 0.808 | 0.602 → 0.674 | 3268 → 2611 |
+
+- Gộp box 3D có lợi ở cả 6 camera: mAP50 +0.08 đến +0.14, số box phải sửa −20% đến −50%.
+- Hệ số riêng x0.3 cho box 0 điểm LiDAR giúp nhiều nhất ở CAM_FRONT (phải sửa 4673 → 3504); cả 6 camera: 17348 →
+  15184 (−12%), precision 0.628 → 0.672, recall 0.818 → 0.812, mAP50 gần như không đổi.
+- CAM_BACK_RIGHT yếu nhất sau khi gộp (P 0.578, F1 0.674); chưa tìm nguyên nhân.
+- Số của CAM_FRONT khớp phần mô phỏng ở mục trên (mAP50 0.700 so với 0.698, phải sửa 3504).
