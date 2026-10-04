@@ -2675,10 +2675,10 @@ body.readonly .oc-btns, body.readonly #btn-approve-low, body.readonly #btn-appro
 .tip { position: relative; }
 .tip::after {
   content: attr(data-tip); position: absolute; left: 0; top: calc(100% + 6px); z-index: 60;
-  width: max-content; max-width: min(360px, 70vw); padding: 8px 10px;
+  width: max-content; max-width: min(420px, 70vw); padding: 10px 12px;
   background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
   box-shadow: 0 6px 20px rgba(15, 23, 42, .12); font-size: 12px; font-weight: 400; line-height: 1.45; text-transform: none;
-  letter-spacing: 0; white-space: normal; pointer-events: none; opacity: 0; transform: translateY(-2px);
+  letter-spacing: 0; white-space: pre-line; pointer-events: none; opacity: 0; transform: translateY(-2px);
   transition: opacity .12s ease, transform .12s ease;
 }
 .tip:hover::after, .tip:focus::after { opacity: 1; transform: none; }

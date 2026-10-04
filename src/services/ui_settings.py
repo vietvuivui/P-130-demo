@@ -16,7 +16,8 @@ SETTINGS_FILE = "settings.json"
 REPO_ROOT = Path(__file__).resolve().parents[2]  # đường dẫn trọng số trong config tính từ gốc repo
 
 # path trong config -> mô tả cho UI. kind: choice | bool | float | int
-# label / choices / help: ngắn, hiện thẳng trên trang. detail: số đo làm căn cứ, chỉ hiện khi rê chuột vào ⓘ.
+# label / choices: ngắn, hiện thẳng trên trang. detail: tác dụng của mục và của từng lựa chọn + khuyên dùng, hiện khi rê
+# chuột vào ⓘ (mỗi dòng một ý; không ghi số đo eval ở đây, số đo nằm trong eval/report).
 # group: tiêu đề nhóm trên trang. applies: now = có hiệu lực ngay | relabel = cần bấm "Áp dụng lại" cho frame cũ
 FIELDS: dict[str, dict] = {
     "propagation.flow": {
@@ -25,15 +26,23 @@ FIELDS: dict[str, dict] = {
         "label": "Dự đoán chuyển động",
         "choices": {
             "always": "Optical flow",
-            "dam4sam": "DAM4SAM (cần GPU)",
-            "flow+dam4sam": "Optical flow + DAM4SAM (cần GPU)",
+            "dam4sam": "DAM4SAM",
+            "flow+dam4sam": "Optical flow + DAM4SAM",
             "missing": "Optical flow, chỉ ảnh chưa detect",
             "off": "Vận tốc không đổi",
         },
-        "help": "Khuyên dùng: Optical flow.",
-        "detail": "Held-out 20 scene (795 keyframe): optical flow ở mọi ảnh cho thêm 14% nhãn lan truyền đúng "
-        "(2910 → 3329), đổi ID 265 → 97, mất dấu −22%; tốn ~1 s cho mỗi lần lan truyền 10 keyframe trên CPU. "
-        "DAM4SAM + BoT-SORT: HOTA 0.573 so với 0.563, chậm hơn 3,4 lần.",
+        "help": "",
+        "detail": "\n".join(
+            [
+                "Khi chép nhãn sang frame sau, hệ thống phải đoán vật đã di chuyển tới đâu. Mục này chọn cách đoán.",
+                "• Optical flow: dời box theo chuyển động của điểm ảnh. Nhanh, chạy được trên CPU.",
+                "• DAM4SAM: mô hình bám theo hình dạng từng vật. Chính xác hơn một chút, chậm hơn nhiều, cần GPU.",
+                "• Optical flow + DAM4SAM: dùng optical flow, chỉ gọi DAM4SAM cho vật đang bị che.",
+                "• Optical flow, chỉ ảnh chưa detect: chỉ tính ở ảnh chưa có kết quả phát hiện. Nhẹ hơn, kém chính xác hơn.",
+                "• Vận tốc không đổi: coi vật đi đều như trước. Nhanh nhất, kém chính xác nhất.",
+                "Khuyên dùng: Optical flow.",
+            ]
+        ),
         "applies": "now",
     },
     "propagation.association": {
@@ -45,19 +54,31 @@ FIELDS: dict[str, dict] = {
             "botsort": "BoT-SORT",
             "single": "IoU một lượt",
         },
-        "help": "Khuyên dùng: ByteTrack.",
-        "detail": "ByteTrack ghép box score cao trước, box score thấp chỉ cho track còn thiếu. Dev: box lan truyền sai "
-        "224 → 203, nhãn đúng giữ nguyên; held-out 4 scene: sai 329 → 300. BoT-SORT thêm ngoại hình (màu) và bù chuyển "
-        "động camera, gần như không đổi khi đã có optical flow.",
+        "help": "",
+        "detail": "\n".join(
+            [
+                "Sau khi đoán vị trí, hệ thống ghép box dự đoán với box mô hình phát hiện ở frame mới để giữ đúng ID của vật.",
+                "• ByteTrack: ghép box có độ tin cậy cao trước, rồi dùng box tin cậy thấp cho vật còn thiếu. Giữ được vật mờ, bị che.",
+                "• BoT-SORT: như ByteTrack, thêm so màu sắc của vật và bù chuyển động camera.",
+                "• IoU một lượt: ghép một lần theo độ chồng lấn giữa các box. Đơn giản nhất, dễ mất vật mờ.",
+                "Khuyên dùng: ByteTrack.",
+            ]
+        ),
         "applies": "now",
     },
     "propagation.oc_recover": {
         "kind": "bool",
         "group": "Lan truyền 2D",
         "label": "Nhận lại vật bị che (OC-SORT)",
-        "help": "Không khuyên bật.",
-        "detail": "Track đang mất được ghép lại theo box quan sát cuối. 20 scene test: box ghi ra đúng 3192 → 3215 "
-        "(+0.7%) nhưng đổi ID 76 → 87, box sai 860 → 868.",
+        "help": "",
+        "detail": "\n".join(
+            [
+                "Vật bị che rồi hiện lại được nối vào ID cũ theo vị trí lần cuối nhìn thấy.",
+                "• Bật: giữ thêm được một ít vật, nhưng dễ gán nhầm ID.",
+                "• Tắt: chỉ nối lại theo vị trí dự đoán.",
+                "Khuyên dùng: Tắt.",
+            ]
+        ),
         "applies": "now",
     },
     "propagation.max_keyframes": {
@@ -67,7 +88,12 @@ FIELDS: dict[str, dict] = {
         "min": 1,
         "max": 200,
         "help": "",
-        "detail": "Lan truyền dừng sau bấy nhiêu keyframe, hoặc trước frame đã có người mở.",
+        "detail": "\n".join(
+            [
+                "Mỗi lần lan truyền, nhãn được chép sang tối đa bấy nhiêu keyframe tiếp theo. Lan truyền cũng dừng trước frame đã có người mở.",
+                "Số lớn: đỡ phải bấm nhiều lần, nhưng sai lệch dồn lại ở các frame xa.",
+            ]
+        ),
         "applies": "now",
     },
     "propagation3d.max_misses": {
@@ -77,16 +103,27 @@ FIELDS: dict[str, dict] = {
         "min": 1,
         "max": 10,
         "help": "",
-        "detail": "Vật bị che quá bấy nhiêu keyframe thì dừng. 2 → 4 (mặc định): test 24 scene nhãn đúng +1.6% "
-        "(23355 → 23731), đổi ID 470 → 543.",
+        "detail": "\n".join(
+            [
+                "Số keyframe liên tiếp một vật 3D còn được theo dõi khi không thấy nữa (bị che). Quá số này thì dừng theo dõi vật đó.",
+                "Số lớn: giữ được vật bị che lâu, nhưng dễ nối nhầm sang vật khác.",
+            ]
+        ),
         "applies": "now",
     },
     "propagation3d.oc_recover": {
         "kind": "bool",
         "group": "Lan truyền 3D",
         "label": "Nhận lại theo vị trí cuối (OC-SORT)",
-        "help": "Không khuyên bật.",
-        "detail": "Thêm nhãn đúng trên test (23731 → 23872) nhưng không trên dev, và thêm đổi ID.",
+        "help": "",
+        "detail": "\n".join(
+            [
+                "Vật 3D bị che rồi hiện lại được nối vào ID cũ theo vị trí lần cuối nhìn thấy.",
+                "• Bật: giữ thêm được một ít vật, nhưng dễ gán nhầm ID.",
+                "• Tắt: chỉ nối lại theo vị trí dự đoán.",
+                "Khuyên dùng: Tắt.",
+            ]
+        ),
         "applies": "now",
     },
     "detection.yoloe.weights": {
@@ -98,11 +135,16 @@ FIELDS: dict[str, dict] = {
             "weights/yoloe-26l-nuimages-lp-1280.pt": "Fine-tune mini",
             "yoloe-26l-seg.pt": "Original",
         },
-        "help": "Khuyên dùng: Fine-tune full. Cần lớp ngoài 10 lớp nuScenes: chọn Original.",
-        "detail": "Held-out nuScenes CAM_FRONT 4852 keyframe, mAP50 / recall: Original (YOLOE gốc, open-vocab) "
-        "0.266 / 0.478, Fine-tune mini (linear probe) 0.305 / 0.530, Fine-tune full (toàn mạng) 0.585 / 0.782. Hai bản "
-        "fine-tune (nuImages) chỉ nhận 10 lớp nuScenes, "
-        "không nhận prompt chữ mới. Đổi mô hình thì 'Áp dụng lại' chạy lại detector trên các frame chưa ai sửa.",
+        "help": "",
+        "detail": "\n".join(
+            [
+                "Mô hình tìm vật trên ảnh.",
+                "• Fine-tune full: huấn luyện lại toàn bộ mô hình trên ảnh đường phố. Chính xác nhất, chỉ nhận 10 lớp nuScenes.",
+                "• Fine-tune mini: chỉ huấn luyện lại lớp cuối. Kém bản full, cũng chỉ nhận 10 lớp.",
+                "• Original: YOLOE gốc. Kém chính xác hơn, nhưng nhận được lớp mới bằng prompt chữ.",
+                "Khuyên dùng: Fine-tune full. Cần lớp ngoài 10 lớp nuScenes thì chọn Original.",
+            ]
+        ),
         "applies": "relabel",
     },
     "detection.min_score": {
@@ -112,8 +154,14 @@ FIELDS: dict[str, dict] = {
         "min": 0.05,
         "max": 0.9,
         "step": 0.05,
-        "help": "Thấp: ít sót, nhiều box phải xoá.",
-        "detail": "Box có score dưới ngưỡng bị bỏ trước khi duyệt. Đổi ngưỡng không phải chạy lại detector.",
+        "help": "",
+        "detail": "\n".join(
+            [
+                "Box có độ tin cậy dưới ngưỡng này bị bỏ.",
+                "• Ngưỡng thấp: ít sót vật, nhiều box sai phải xoá.",
+                "• Ngưỡng cao: ít box sai, dễ sót vật.",
+            ]
+        ),
         "applies": "relabel",
     },
     "qa.temporal.rescore": {
@@ -125,20 +173,31 @@ FIELDS: dict[str, dict] = {
             "mean": "Trung bình 5 ảnh",
             "linked": "Trung bình các lần thấy",
         },
-        "help": "Khuyên dùng: Tắt.",
-        "detail": "mAP gần như không đổi ở cả ba. Held-out 20 scene, 'Trung bình 5 ảnh': box phải xem tay 1707 → 648, "
-        "box sai 2980 → 1860, tổng lỗi còn lại sau duyệt như cũ (4197 → 4190), nhưng vật sót phải vẽ thêm 2565 → 2791. "
-        "'Trung bình các lần thấy': ít sót hơn, nhiều box sai hơn. Bật cùng so khớp bằng optical flow thì lỗi còn lại "
-        "tăng ~9%.",
+        "help": "",
+        "detail": "\n".join(
+            [
+                "Tính lại độ tin cậy của mỗi box dựa trên các ảnh ngay trước và sau keyframe: vật xuất hiện đều ở các ảnh đó thì được tin hơn.",
+                "• Tắt: giữ độ tin cậy của mô hình.",
+                "• Trung bình 5 ảnh: lấy trung bình trên 5 ảnh quanh keyframe. Ít box sai hơn, dễ sót vật hơn.",
+                "• Trung bình các lần thấy: chỉ tính những ảnh có thấy vật. Ít sót hơn, nhiều box sai hơn.",
+                "Khuyên dùng: Tắt.",
+            ]
+        ),
         "applies": "relabel",
     },
     "qa.temporal.flow": {
         "kind": "bool",
         "group": "Gán nhãn",
         "label": "So khớp sweep bằng optical flow",
-        "help": "Không khuyên bật.",
-        "detail": "Box ở sweep t−2…t+2 được dời về thời điểm keyframe trước khi so: cờ FLICKER đúng hơn (precision "
-        "0.79 → 0.90) nhưng bắt ít lỗi hơn hẳn — lỗi lọt qua duyệt theo lô 1632 → 2082 (held-out 20 scene).",
+        "help": "",
+        "detail": "\n".join(
+            [
+                "Khi kiểm tra một box có xuất hiện đều ở các ảnh lân cận không, dời box về đúng thời điểm keyframe bằng optical flow trước khi so.",
+                "• Bật: cảnh báo nhấp nháy chính xác hơn, nhưng bỏ lọt nhiều lỗi hơn.",
+                "• Tắt: so trực tiếp vị trí box.",
+                "Khuyên dùng: Tắt.",
+            ]
+        ),
         "applies": "relabel",
     },
 }
