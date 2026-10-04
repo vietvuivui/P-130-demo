@@ -158,6 +158,11 @@ qa:
   confidence:
     # Detector fine-tune toàn mạng: box score < 0.6 sai 85% (held-out 795 keyframe), 0.9+ chỉ sai 2%
     low_threshold: 0.6
+    # Box chỉ camera thấy trong dự án có LiDAR: score đã bị hạ x0.5 / x0.3 khi gộp box 3D. true = xét LOW_CONFIDENCE và
+    # tính risk theo điểm gốc của detector, gắn cờ CAMERA_ONLY (không bao giờ vào nhóm duyệt theo lô). Trước 05/10 dùng
+    # score đã hạ: mọi box chỉ camera thấy đều LOW_CONFIDENCE, xe detector thấy rõ (0.9) cũng thành rủi ro cao. Mô phỏng
+    # trên dump CAM_FRONT test 957 keyframe: nhóm high 2274 -> 334 box, nhóm low (duyệt theo lô) không đổi (4166).
+    camera_only_uses_det_score: true
     # Cùng vị trí có lớp khác với score >= ratio * score lớp chính -> CLASS_CONFLICT
     class_conflict_ratio: 0.6
   lidar:

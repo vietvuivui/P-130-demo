@@ -2163,6 +2163,14 @@ select {
   color: var(--primary);
 }
 
+.tabs .mode,
+.tabs .tab {
+  height: 26px;
+  padding: 0 10px;
+  white-space: nowrap;
+  flex: none;
+}
+
 .tab.active {
   background: #ffffff;
   color: var(--primary);

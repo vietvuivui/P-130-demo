@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from src.agents.nodes.confidence import check_confidence
 from src.agents.nodes.issues import check_geometry
@@ -25,6 +26,19 @@ def codes(result):
 
 
 # ---- 3.1 confidence ----
+
+
+def test_camera_only_box_is_judged_by_detector_score(config):
+    """Box chỉ camera thấy (score đã hạ khi gộp box 3D): LOW_CONFIDENCE xét theo điểm gốc của detector, luôn có cờ
+    CAMERA_ONLY để không vào nhóm duyệt theo lô."""
+    sure = LabelObject(object_id="1", bbox=[0, 0, 10, 10], label="car", score=0.45, det_score=0.9)
+    r = check_confidence(sure, config)
+    assert codes(r) == ["CAMERA_ONLY"] and r["term"] == pytest.approx(0.1)
+    weak = LabelObject(object_id="2", bbox=[0, 0, 10, 10], label="car", score=0.31, det_score=0.52)
+    assert codes(check_confidence(weak, config)) == ["LOW_CONFIDENCE", "CAMERA_ONLY"]
+    config.qa.confidence.camera_only_uses_det_score = False
+    r = check_confidence(sure, config)
+    assert codes(r) == ["LOW_CONFIDENCE"] and r["term"] == pytest.approx(0.55)
 
 
 def test_low_confidence(config):

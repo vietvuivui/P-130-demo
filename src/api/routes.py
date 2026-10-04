@@ -54,6 +54,7 @@ log = logging.getLogger(__name__)
 ISSUE_HELP = {
     "LOW_CONFIDENCE": "Model không chắc chắn về box này",
     "CLASS_CONFLICT": "Cùng vị trí, model phân vân giữa nhiều lớp",
+    "CAMERA_ONLY": "Chỉ camera thấy, mô hình LiDAR không có box ở đây: vật ngoài tầm LiDAR / bị che, hoặc detector nhầm",
     "NO_LIDAR_SUPPORT": "Box đủ lớn nhưng gần như không có điểm LiDAR: có thể là phản chiếu, poster, bóng",
     "SIZE_DEPTH_MISMATCH": "Chiều cao suy từ độ sâu LiDAR không hợp với lớp: sai lớp hoặc box sai kích thước",
     "FLICKER": "Box không xuất hiện lại ở các sweep lân cận: dễ là FP ngẫu nhiên",
@@ -777,9 +778,11 @@ def _engines(config: AutoLabelConfig) -> list[dict]:
 
     p = config.propagation
     problems = dam4sam.check_install(p.dam4sam_model)
+    slow = p.flow in ("dam4sam", "flow+dam4sam")  # Cài đặt chọn DAM4SAM: chậm, giao diện cho chạy nền
     return [
-        {"id": "default", "label": "Nhanh", "available": True, "reason": None,
-         "detail": f"Theo ⚙ Cài đặt: flow {p.flow} + ghép {p.association}. Chạy CPU, khoảng 1 giây."},
+        {"id": "default", "label": "Theo Cài đặt", "available": True, "reason": None, "slow": slow,
+         "detail": f"Theo ⚙ Cài đặt: flow {p.flow} + ghép {p.association}. "
+                   + ("Cần GPU, chạy nền vài phút." if slow else "Chạy CPU, khoảng 1 giây.")},
         {"id": "dam4sam", "label": "Chính xác", "available": not problems, "reason": "; ".join(problems) or None,
          "detail": "DAM4SAM (SAM 2.1) phân đoạn từng vật + BoT-SORT. Cần GPU, chậm hơn 3–12 lần, chạy nền. Trên 20 scene "
                    "held-out: nhãn đúng +7%, mất dấu −25%, HOTA 0.573 so với 0.563 của luồng Nhanh; box sai +13%."},

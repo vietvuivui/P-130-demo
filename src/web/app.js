@@ -1026,7 +1026,7 @@ async function approveFrame() {
     const cur = S.frame;
     if (S.viewMode === 'video') {
       // Video: lan truyền sang các frame sau rồi mở frame kế tiếp (nơi vừa nhận nhãn lan truyền)
-      if (S.autoProp && engineInfo().id !== 'default') {
+      if (S.autoProp && (await slowProp())) {
         // Luồng chậm (DAM4SAM) chạy nền: không chờ và không tự mở frame kế (frame người đã mở sẽ không nhận nhãn lan
         // truyền); xong thì tải lại timeline
         propagate(cur.frame_id).then(() => refreshVideo());
@@ -1104,7 +1104,13 @@ async function loadEngines() {
   updateTopModelSwitch(validSaved);
   resumePropJob();
 }
-const engineInfo = () => (S.engines || []).find((e) => e.id === ($('prop-engine')?.value || storageGet('propEngine', 'default'))) || { id: 'default' };
+// Luồng lan truyền chỉ còn chọn ở tab Cài đặt (Dự đoán chuyển động + Ghép với detection): mọi lần bấm dùng cấu hình đó
+const engineInfo = () => (S.engines || []).find((e) => e.id === 'default') || { id: 'default' };
+// Cài đặt đang chọn DAM4SAM (chậm, cần GPU)? Hỏi lại máy chủ mỗi lần vì Cài đặt có thể vừa đổi
+async function slowProp() {
+  try { S.engines = await api('/propagation/engines'); } catch { /* giữ danh sách cũ */ }
+  return !!engineInfo().slow;
+}
 
 function showPropJob(job) {
   const el = $('prop-job');
@@ -1137,14 +1143,14 @@ async function resumePropJob() { // mở lại trang khi việc nền còn chạ
 
 async function propagate(frameId) {
   try {
-    const engine = engineInfo().id;
+    const engine = 'default';
     let r;
-    if (engine === 'default') {
+    if (!(await slowProp())) {
       r = await api(`/frames/${encodeURIComponent(frameId)}/propagate`, { method: 'POST', body: {} });
     } else {
       const job = await api(`/frames/${encodeURIComponent(frameId)}/propagate-async`, { method: 'POST', body: { engine } });
       if (job.state === 'running' && job.message && !job.message.includes(frameId)) toast('Đang có một lần lan truyền khác chạy nền, đợi nó xong');
-      else toast(`Luồng ${engineInfo().label}: chạy nền, vài phút. Bạn vẫn duyệt tiếp được.`);
+      else toast('Lan truyền bằng DAM4SAM: chạy nền, vài phút. Bạn vẫn duyệt tiếp được.');
       r = await waitPropJob();
       if (!r) return null;
     }
@@ -1564,7 +1570,7 @@ async function setMode(mode) {
   stopPlay({ reopen: false });
   S.viewMode = mode;
   storageSet('viewMode', mode);
-  document.querySelectorAll('.mode').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
+  markTabs();
   // Chỉ hiển thị player-controls trên topbar khi ở chế độ video
   const playerControls = document.getElementById('topbar-player-controls') || document.querySelector('.player-controls');
   if (playerControls) {
@@ -1857,7 +1863,12 @@ async function uploadVideo(file) {
   }
 }
 
-document.querySelectorAll('.mode').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+// Bấm Ảnh / Video / 3D từ bất kỳ tab nào (Log, Cài đặt…) đều về màn hình duyệt của chế độ đó
+document.querySelectorAll('.mode').forEach((b) => b.addEventListener('click', () => {
+  const onReview = document.querySelector('.tab.active')?.dataset.tab === 'review';
+  if (!onReview) switchTab('review');
+  if (!onReview || S.viewMode !== b.dataset.mode) setMode(b.dataset.mode);
+}));
 $('video-list').addEventListener('click', (e) => {
   const li = e.target.closest('[data-video]');
   if (!li) return;
@@ -2273,8 +2284,16 @@ function fmtTime(s) {
 }
 setInterval(() => { $('timer').textContent = fmtTime(elapsed()); }, 500);
 
+// Thanh tab duy nhất: Ảnh / Video / 3D sáng khi đang ở màn hình duyệt của chế độ đó; Log / QC / Metrics / Cài đặt sáng
+// khi đang ở tab đó. Lúc nào cũng chỉ một nút sáng.
+function markTabs() {
+  const tab = document.querySelector('.tab.active')?.dataset.tab || 'review';
+  document.querySelectorAll('.mode').forEach((b) => b.classList.toggle('active', tab === 'review' && b.dataset.mode === S.viewMode));
+}
+
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
+  markTabs();
   ['review', 'log', 'qc', 'metrics', 'settings'].forEach((t) => $('tab-' + t).classList.toggle('hidden', t !== tab || (t === 'review' && S.viewMode === '3d')));
   $('tab-review3d').classList.toggle('hidden', !(tab === 'review' && S.viewMode === '3d'));
   window.dispatchEvent(new CustomEvent('autolabel:tab', { detail: tab }));
@@ -2607,7 +2626,7 @@ $('reject-send').addEventListener('click', sendReject);
 $('reject-cancel').addEventListener('click', () => $('reject-box').classList.add('hidden'));
 $('reject-reason').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendReject(); });
 $('btn-propagate').addEventListener('click', propagateCurrent);
-$('prop-engine').addEventListener('change', (e) => {
+$('prop-engine')?.addEventListener('change', (e) => {
   storageSet('propEngine', e.target.value);
   e.target.title = engineInfo().detail || '';
   updateTopModelSwitch(e.target.value);

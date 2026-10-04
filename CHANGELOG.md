@@ -32,7 +32,7 @@ Quy tắc:
 
 ## 2026-10-05 · Kiên · nhánh `kien`
 
-**Làm gì:** Năm việc quanh nhãn 2D và chế độ Video của dự án có LiDAR.
+**Làm gì:** Bảy việc quanh nhãn 2D, QA và giao diện của dự án có LiDAR.
 
 1. **Box biến mất ở một số keyframe** (scene-0097 keyframe 34: 6 box trong khi sweep quanh nó có 14 detection). Nguyên
    nhân: box chỉ camera thấy mà không có điểm LiDAR bị nhân 0.3, xe detector cho 0.91 còn 0.27 < ngưỡng giữ 0.30 nên
@@ -56,6 +56,17 @@ Quy tắc:
    14 / 40 box chỉ LiDAR thấy đổi toạ độ; tổng số box sau cả việc 1, 3, 5: 448 → 488. Chưa chấm lại mAP; nhãn gốc
    `gt_boxes_2d` vẫn cắt theo kiểu cũ nên box bị cắt ở mép ảnh sẽ lệch so với nhãn gốc.
 
+6. **Nhãn đỏ (rủi ro cao) quá nhiều, kể cả xe dễ.** Box chỉ camera thấy bị hạ điểm x0.5 / x0.3 khi gộp box 3D, rồi QA
+   lại xét LOW_CONFIDENCE trên điểm đã hạ: xe detector cho 0.9 cũng thành rủi ro cao. `qa.confidence.
+   camera_only_uses_det_score: true`: xét theo điểm gốc của detector, gắn cờ mới `CAMERA_ONLY` để box vẫn không vào nhóm
+   duyệt theo lô. Mô phỏng trên dump CAM_FRONT test 957 keyframe (bỏ qua điểm hình học): nhóm high 2274 → 334 box, nhóm
+   medium 2877 → 4817, nhóm low giữ nguyên 4166 nên số box sai lọt duyệt theo lô không đổi. Chưa chạy lại `evaltemporal`.
+7. **Thanh tab trên cùng** gộp thành một: Ảnh / Video / 3D / Log / QC / Metrics / Cài đặt, bấm nút nào là sang màn hình
+   đó (trước đây đang ở Log / Cài đặt bấm Ảnh / Video / 3D không chuyển). Bỏ nút Review (trùng với Ảnh / Video / 3D), bỏ
+   bộ chọn Nhanh / Chính xác trên thanh trên và cạnh nút Lan truyền: luồng lan truyền chỉ còn chọn ở tab Cài đặt; Cài
+   đặt chọn DAM4SAM thì lan truyền tự chạy nền. Lưu ý: nút Chính xác cũ chạy DAM4SAM với `dam4sam_stride` 3, còn chọn
+   DAM4SAM trong Cài đặt dùng stride của config (mặc định 1, chậm hơn).
+
 Việc 2 và 3 đã làm hôm 04/10 nhưng chưa commit và bị `git checkout -- .` xoá; bản này viết lại đúng theo bản cũ.
 
 **File chính:** `src/services/video.py`, `src/api/routes.py`, `src/web/app.js`, `src/services/lidar2d.py` (`box_blend`, `strong_camera_only`),
@@ -67,7 +78,7 @@ trường `sd` (khi đó `offset` nằm ngoài các sweep của frame). Config t
 đổi (toạ độ box gộp, thêm box rủi ro cao): dự án đã xử lý phải bấm **Áp dụng lại** ở tab Cài đặt mới có nhãn mới. Số
 mAP / P / R của phần gộp 3D trong report đo trước thay đổi này.
 
-**Cách kiểm tra:** `ruff check src tests` sạch, `pytest` 242 passed. UI: mở dự án nuScenes → Cài đặt → Áp dụng lại →
+**Cách kiểm tra:** `ruff check src tests` sạch, `pytest` 243 passed. UI: mở dự án nuScenes → Cài đặt → Áp dụng lại →
 Video → keyframe 35 của scene-0097 phải có thêm xe đỗ bên trái (nét rủi ro cao).
 
 **Còn dở / việc tiếp:** `box_blend` và `keep_det_score` mới đo trên CAM_FRONT; chưa có bộ nhãn 2D vẽ theo ảnh để biết

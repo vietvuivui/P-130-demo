@@ -116,6 +116,9 @@ class DetectionCfg(BaseModel):
 class ConfidenceCfg(BaseModel):
     low_threshold: float = 0.6
     class_conflict_ratio: float = 0.6
+    # Box chỉ camera thấy (dự án có LiDAR, score đã bị hạ khi gộp box 3D): xét LOW_CONFIDENCE và tính risk theo điểm gốc
+    # của detector, kèm cờ CAMERA_ONLY để box không vào nhóm duyệt theo lô. False = dùng score đã hạ (trước 05/10/2026).
+    camera_only_uses_det_score: bool = True
 
 
 class LidarCfg(BaseModel):
