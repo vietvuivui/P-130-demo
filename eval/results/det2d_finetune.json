@@ -27,7 +27,13 @@
    "construction_vehicle": 14
   },
   "images": 119,
-  "sec": 1.9
+  "sec": 28.9,
+  "ap_small": {
+   "0-32": "6/11",
+   "32-64": "205/328",
+   "64-128": "220/438",
+   "128-": "194/299"
+  }
  },
  "yoloe-26l-seg.pt@1280:heldout": {
   "mAP50": 0.3124,
@@ -59,7 +65,13 @@
    "trailer": 22
   },
   "images": 957,
-  "sec": 11.6
+  "sec": 90.1,
+  "ap_small": {
+   "0-32": "69/268",
+   "32-64": "891/1906",
+   "64-128": "1446/2570",
+   "128-": "1259/1989"
+  }
  },
  "yoloe-26l-nuimages-lp-1280.pt@1280:dev": {
   "mAP50": 0.4287,
@@ -122,5 +134,79 @@
   },
   "images": 957,
   "sec": 72.7
+ },
+ "yoloe-26l-nuimages-full-1280.pt@1280:dev": {
+  "mAP50": 0.6159,
+  "P": 0.4716,
+  "R": 0.8253,
+  "F1": 0.6002,
+  "ap": {
+   "barrier": 0.679,
+   "bicycle": 0.314,
+   "bus": 0.846,
+   "car": 0.858,
+   "construction_vehicle": 0.0,
+   "motorcycle": 0.838,
+   "pedestrian": 0.552,
+   "traffic_cone": 0.819,
+   "truck": 0.637
+  },
+  "n_gt": {
+   "car": 440,
+   "pedestrian": 173,
+   "bicycle": 13,
+   "truck": 46,
+   "motorcycle": 8,
+   "bus": 22,
+   "traffic_cone": 203,
+   "barrier": 157,
+   "construction_vehicle": 14
+  },
+  "images": 119,
+  "sec": 8.6,
+  "ap_small": {
+   "0-32": "8/11",
+   "32-64": "290/328",
+   "64-128": "343/438",
+   "128-": "251/299"
+  }
+ },
+ "yoloe-26l-nuimages-full-1280.pt@1280:heldout": {
+  "mAP50": 0.5893,
+  "P": 0.4868,
+  "R": 0.8065,
+  "F1": 0.6071,
+  "ap": {
+   "barrier": 0.676,
+   "bicycle": 0.63,
+   "bus": 0.887,
+   "car": 0.853,
+   "construction_vehicle": 0.111,
+   "motorcycle": 0.541,
+   "pedestrian": 0.563,
+   "traffic_cone": 0.798,
+   "trailer": 0.224,
+   "truck": 0.611
+  },
+  "n_gt": {
+   "pedestrian": 1604,
+   "traffic_cone": 908,
+   "car": 2375,
+   "bus": 210,
+   "truck": 543,
+   "bicycle": 134,
+   "construction_vehicle": 112,
+   "barrier": 744,
+   "motorcycle": 81,
+   "trailer": 22
+  },
+  "images": 957,
+  "sec": 66.5,
+  "ap_small": {
+   "0-32": "184/268",
+   "32-64": "1575/1906",
+   "64-128": "2246/2570",
+   "128-": "1575/1989"
+  }
  }
 }

@@ -1,6 +1,6 @@
 # Report đánh giá mô hình — AutoLabel 3D
 
-Cập nhật 2026-10-03 · nhóm P-130 · biểu đồ: notebook [figures.ipynb](figures.ipynb) (matplotlib, hiện ngay trong notebook)
+Cập nhật 2026-10-04 · nhóm P-130 · biểu đồ: notebook [figures.ipynb](figures.ipynb) (matplotlib, hiện ngay trong notebook)
 
 Report gom mọi mô hình đã thử nghiệm, các chỉ số đánh giá và các phương pháp tối ưu cho hai phần:
 
@@ -15,7 +15,7 @@ nuScenes** và đọc từ các file trong `eval/results/`; nguồn của từng
 | Phần | Cấu hình đang dùng | Kết quả trên tập test | Thời gian |
 |---|---|---|---|
 | Detector 3D | Gộp 4 mô hình LiDAR + tinh chỉnh theo track | **mAP 0.668 · NDS 0.713** · P 0.777 · R 0.809 · F1 0.793 | 2.56 s / keyframe (GPU) |
-| Detector 2D | YOLOE-26-L fine-tune trên nuImages | **mAP50 0.366** · P 0.484 · R 0.581 · F1 0.528 | 0.076 s / ảnh (GPU) |
+| Detector 2D | YOLOE-26-L fine-tune toàn mạng trên nuImages | **mAP50 0.589** · P 0.487 · R 0.806 · F1 0.607 | 0.069 s / ảnh (GPU) |
 | Lan truyền 2D | Optical flow + ghép kiểu ByteTrack | P 0.773 · R 0.711 · F1 0.741 · đổi ID 76 | 1.39 s / lần lan truyền |
 | Lan truyền 3D | Vận tốc mô hình + giữ track 4 keyframe | P 0.940 · R 0.653 · F1 0.770 | ≈ 0, không chạy mô hình |
 | QA Agent 3D | Kiểm chứng box bằng 6 camera | 51% box được tự duyệt, 93% trong số đó đúng; bắt 86% box sai | — |
@@ -23,7 +23,7 @@ nuScenes** và đọc từ các file trong `eval/results/`; nguồn của từng
 So với điểm xuất phát:
 
 - **3D:** mAP tăng từ 0.578 lên 0.668 (+0.090) so với CenterPoint voxel, mô hình đơn tốt nhất.
-- **2D:** mAP50 tăng từ 0.312 lên 0.366 (+17%) so với YOLOE zero-shot.
+- **2D:** mAP50 tăng từ 0.312 lên 0.589 (+89%) so với YOLOE zero-shot; bản linear probe trước đó đạt 0.366.
 - **Lan truyền 2D:** nhãn đúng tăng 12% và đổi ID giảm 60% so với khi không có optical flow.
 
 ## Luồng hệ thống hiện tại: mặc định và tuỳ chọn (cập nhật 2026-10-03)
@@ -49,7 +49,7 @@ Dữ liệu vào (video / bộ ảnh / nuScenes / KITTI)
 
 | Bước | Mặc định (đang chạy) | Tuỳ chọn (có sẵn, đang tắt hoặc người dùng tự chọn) | Vì sao chọn mặc định này |
 |---|---|---|---|
-| ① Detector 2D | YOLOE-26-L fine-tune nuImages, 1280 px, ngưỡng giữ 0.30 | YOLOE zero-shot (open-vocab, đổi được lớp bằng chữ), YOLO26, YOLO-World, Grounding DINO, Florence-2, gộp nhiều model; chạy 1920 px; lưới ô 2×2 (`yoloe.tiles`); lật ngang (`tta_flip`) | Fine-tune: mAP50 0.312 → 0.366. 1920 kém hơn (0.344). Lưới ô bắt thêm vật nhỏ nhưng box sai +60% (`improve.md`) |
+| ① Detector 2D | YOLOE-26-L fine-tune nuImages, 1280 px, ngưỡng giữ 0.30 | YOLOE zero-shot (open-vocab, đổi được lớp bằng chữ), YOLO26, YOLO-World, Grounding DINO, Florence-2, gộp nhiều model; chạy 1920 px; lưới ô 2×2 (`yoloe.tiles`); lật ngang (`tta_flip`) | Fine-tune toàn mạng: mAP50 0.312 → 0.589 (linear probe 0.366). 1920 kém hơn (0.344, đo với linear probe). Lưới ô bắt thêm vật nhỏ nhưng box sai +60% (`improve.md`) |
 | ② Detector 3D | Gộp CenterPoint voxel + pillar + SSN + PointPillars, tinh chỉnh theo track | Một mô hình đơn; thêm lật trục (TTA, chậm ~4 lần); mô hình camera FCOS3D / PGD | mAP 0.578 (mô hình đơn tốt nhất) → 0.668 |
 | ③ Gộp 2D + 3D | Bật; ghép khi IoU ≥ 0.4; box chỉ camera thấy ×0.5 | Tắt gộp; không hạ điểm khi box không có điểm LiDAR (`no_lidar_scale`) | Gộp: việc phải sửa 6990 → 3748. Không hạ điểm: box sai gấp đôi |
 | ④ QA temporal | So box keyframe với 4 sweep trực tiếp; đề xuất vật sót (sweep ≥ 0.35) và vật thấy mờ (≥ 0.20, hai bên đều thấy) | Optical flow cho so khớp (`flow`); tính lại score theo sweep (`rescore: mean / linked`); mang nhãn frame trước bằng tracker (`carry_prev`) | Flow / rescore làm lỗi lọt qua duyệt lô tăng. Thấy mờ: bù 108 vật sót thay vì 35 trên held-out, đổi lại 88% đề xuất sai |
@@ -255,14 +255,19 @@ Biểu đồ: [Chọn detector 2D và fine-tune](figures.ipynb) (mục 5 trong n
 | YOLO26-L (tập lớp COCO, không có lớp barrier) | 40 keyframe | 0.398 | 0.265 | — | — | — | 2.14 s CPU |
 | YOLOE-26-L zero-shot | 40 keyframe | **0.452** | **0.278** | 0.506 | 0.616 | 0.556 | 3.31 s CPU |
 | YOLOE-26-L zero-shot | dev 119 keyframe | 0.392 | — | 0.566 | 0.578 | 0.572 | |
-| YOLOE-26-L fine-tune nuImages | dev 119 keyframe | **0.429** | — | 0.525 | **0.633** | **0.574** | |
+| YOLOE-26-L linear probe nuImages | dev 119 keyframe | 0.429 | — | 0.525 | 0.633 | 0.574 | |
+| YOLOE-26-L fine-tune toàn mạng nuImages | dev 119 keyframe | **0.616** | — | 0.472 | **0.825** | **0.600** | |
 | YOLOE-26-L zero-shot | test 957 keyframe | 0.312 | — | **0.499** | 0.523 | 0.511 | như dòng dưới |
-| **YOLOE-26-L fine-tune nuImages (mặc định)** | **test 957 keyframe** | **0.366** | — | 0.484 | **0.581** | **0.528** | **0.076 s GPU** |
+| YOLOE-26-L linear probe nuImages | test 957 keyframe | 0.366 | — | 0.484 | 0.581 | 0.528 | 0.076 s GPU |
+| **YOLOE-26-L fine-tune toàn mạng nuImages (mặc định)** | **test 957 keyframe** | **0.589** | — | 0.487 | **0.806** | **0.607** | **0.069 s GPU** |
 
 Ghi chú:
 
 - **Bộ 40 keyframe** (scene-0031, 0065) chỉ có nhãn của 6 lớp, nên mAP ở đây cao hơn trên test 10 lớp.
-- **Bản fine-tune** là linear probe 10 epoch ở 1280 px trên nuImages, chạy trên RTX 3090. Checkpoint chọn theo nuImages
+- **Bản fine-tune toàn mạng** (mặc định từ 04/10): 30 epoch ở 1280 px trên nuImages, RTX 3090, mở cả backbone, neck và
+  nhánh box; checkpoint chọn theo nuImages val (mAP50 0.782). Trên UI là lựa chọn "Fine-tune full"; "Fine-tune mini" là
+  linear probe, "Original" là bản zero-shot.
+- **Bản linear probe:** 10 epoch ở 1280 px trên nuImages, chạy trên RTX 3090. Checkpoint chọn theo nuImages
   val (mAP50 0.509). Linear probe chỉ học lại đầu phân lớp, nên kiến trúc và tốc độ không đổi.
 - **Thời gian zero-shot trên GPU:** lần chấm đó đọc từ cache detection nên không có số riêng.
 
@@ -271,12 +276,15 @@ Biểu đồ: [AP50 từng lớp 2D](figures.ipynb) (mục 6 trong notebook).
 | Lớp | barrier | bicycle | bus | car | constr. | motorcycle | pedestrian | traffic cone | trailer | truck |
 |---|---|---|---|---|---|---|---|---|---|---|
 | AP50 zero-shot | 0.127 | 0.123 | 0.805 | 0.707 | 0.019 | 0.210 | 0.226 | 0.390 | 0.000 | 0.518 |
-| AP50 fine-tune | **0.333** | **0.233** | 0.779 | **0.728** | **0.029** | **0.275** | **0.294** | **0.500** | **0.015** | 0.470 |
+| AP50 linear probe | 0.333 | 0.233 | 0.779 | 0.728 | 0.029 | 0.275 | 0.294 | 0.500 | 0.015 | 0.470 |
+| AP50 fine-tune toàn mạng | **0.676** | **0.630** | **0.887** | **0.853** | **0.111** | **0.541** | **0.563** | **0.798** | **0.224** | **0.611** |
 | Số vật trong nhãn gốc | 744 | 134 | 210 | 2375 | 112 | 81 | 1604 | 908 | 22 | 543 |
 
-Fine-tune tăng ở 8/10 lớp, mạnh nhất ở các lớp nhỏ mà model zero-shot yếu: barrier ×2.6, xe đạp ×1.9, cone +0.11. Bus và
-truck giảm nhẹ. Model fine-tune chỉ nhận tập lớp đóng gồm 10 lớp nuScenes; dự án dùng lớp khác phải quay về bản
-zero-shot (open-vocab).
+Linear probe tăng ở 8/10 lớp (barrier ×2.6, xe đạp ×1.9, cone +0.11), bus và truck giảm nhẹ. Fine-tune toàn mạng tăng ở
+cả 10 lớp so với cả hai bản trước; recall 0.523 → 0.806, còn precision gần như không đổi (0.499 → 0.487), tức người
+duyệt vẫn phải xoá khoảng một nửa số box ở ngưỡng 0.30. Hai lớp còn yếu là construction vehicle (0.111) và trailer
+(0.224, chỉ 22 vật trên test). Hai bản fine-tune chỉ nhận tập lớp đóng gồm 10 lớp nuScenes; dự án dùng lớp khác phải
+quay về bản zero-shot (open-vocab).
 
 **Các biến thể TTA đã thử** (dev 119 keyframe, YOLOE zero-shot):
 
@@ -301,7 +309,23 @@ scene (795 keyframe):
 | Recall | 0.524 |
 | F1 | 0.504 |
 
-Pipeline với model fine-tune chưa được chạy lại (xem mục 9).
+Chạy lại ngày 04/10 với model fine-tune toàn mạng trên cùng 795 keyframe (`eval/results/temporal/full_heldout20.json`):
+
+| Chỉ số | Zero-shot | Fine-tune toàn mạng |
+|---|---|---|
+| mAP50 | 0.296 | **0.611** |
+| mAP70 | 0.077 | **0.269** |
+| Precision | 0.486 | 0.475 |
+| Recall | 0.524 | **0.815** |
+| F1 | 0.504 | **0.600** |
+| Vật sót phải vẽ thêm | 2565 | **994** |
+| Box sai phải xoá | 2980 | 4851 |
+| Box sai lọt vào nhóm low (duyệt theo lô) | 1632 | 3621 |
+
+Vật sót giảm 61%, đổi lại box sai tăng vì mô hình ra nhiều box hơn mà precision không đổi. QA Agent bắt lỗi kém hơn
+với detector mới (tỉ lệ box sai được gắn cờ 45% → 25%), nên ngưỡng risk cần dò lại (xem mục 9). Lan truyền nhãn với
+cấu hình mặc định trên cùng tập: nhãn đúng 4074 / 5139 box ghi ra (79.3%), đổi ID 225, box sai 840; chi tiết ở
+`eval/results/temporal/report.md`, mục 0b.
 
 ## 4. QA Agent
 
@@ -409,7 +433,7 @@ Biểu đồ: [Lịch sử tối ưu](figures.ipynb) (mục 9 trong notebook).
 | # | Phương pháp | Phần | Chỉ số quyết định | Trước | Sau | Thời gian thêm | Dùng? |
 |---|---|---|---|---|---|---|---|
 | 1 | YOLOE-26-L thay YOLO-World | 2D | mAP50 (40 keyframe) | 0.311 | 0.452 | −12% (CPU) | ✅ |
-| 2 | Fine-tune YOLOE-26-L trên nuImages | 2D | mAP50 test | 0.312 | 0.366 | 0 | ✅ |
+| 2 | Fine-tune toàn mạng YOLOE-26-L trên nuImages (linear probe: 0.366) | 2D | mAP50 test | 0.312 | 0.589 | 0 | ✅ |
 | 3 | Ngưỡng giữ box 0.30 | 2D | precision (40 keyframe) | 0.34 | 0.51 | 0 | ✅ |
 | 4 | TTA: prompt, lật ảnh, 1600 px | 2D | mAP50 dev | 0.395 | 0.365–0.392 | ×1.5–2 (ước tính) | ❌ |
 | 5 | Optical flow khi lan truyền | 2D | nhãn đúng / đổi ID | 2866 / 205 | 3220 / 82 | ×4.2 | ✅ |
@@ -448,7 +472,7 @@ Biểu đồ: [Thời gian suy luận](figures.ipynb) (mục 11 trong notebook).
 |---|---|---|---|---|---|---|---|
 | 1 | Detector 2D: YOLO-World → YOLOE-26-L | s / ảnh (CPU) | 3.75 | 3.31 | −12% | mAP50 0.311 → 0.452 | ✅ |
 | 2 | Detector 2D: YOLO26 → YOLOE-26-L | s / ảnh (CPU) | 2.14 | 3.31 | +55% | mAP50 0.398 → 0.452, có lớp barrier | ✅ |
-| 3 | YOLOE-26-L zero-shot → fine-tune nuImages | s / ảnh (GPU) | 0.076¹ | 0.076 | không đổi | mAP50 0.312 → 0.366 | ✅ |
+| 3 | YOLOE-26-L zero-shot → fine-tune nuImages | s / ảnh (GPU) | 0.076¹ | 0.076 | không đổi | mAP50 0.312 → 0.589 (linear probe 0.366) | ✅ |
 | 4 | Detector 3D: PointPillars → CenterPoint voxel | s / keyframe (GPU) | 0.85 | 0.62 | −27% | mAP 0.473 → 0.578 | ✅ |
 | 5 | CenterPoint voxel → + tinh chỉnh theo track | s / keyframe (GPU) | 0.62 | 0.63 | +1% | mAP 0.578 → 0.616 | — |
 | 6 | CenterPoint voxel → gộp 4 LiDAR | s / keyframe (GPU) | 0.62 | 2.55 | ×4.1 | mAP 0.578 → 0.637 | ✅ |
@@ -467,7 +491,7 @@ Biểu đồ: [Thời gian suy luận](figures.ipynb) (mục 11 trong notebook).
 Ghi chú:
 
 1. Lần chấm zero-shot trên GPU đọc lại từ cache, nên không có số riêng. Hai bản cùng kiến trúc YOLOE-26-L và cùng 1280
-   px; linear probe chỉ học lại đầu phân lớp.
+   px; linear probe chỉ học lại đầu phân lớp, bản toàn mạng đo được 0.069 s / ảnh (957 ảnh / 66.5 s).
 2. Đo trên máy ảo CPU với optical flow đã tính sẵn, để so riêng phần ghép của tracker.
 
 GPU mạnh hơn không làm accuracy cao hơn khi dùng cùng một mô hình, vì cấu hình CPU và GPU giống hệt nhau, chỉ khác FP16.
@@ -475,14 +499,17 @@ GPU cho phép chạy được những phần tăng accuracy: 4 mô hình LiDAR, 
 
 ## 9. Hạn chế và việc tiếp theo
 
-- **Pipeline 2D và lan truyền 2D** trong report vẫn dùng detection zero-shot. Cần chạy lại với model fine-tune bằng
-  `scripts\tasks.ps1 evaltemporal`.
+- **Bảng lan truyền 2D và QA Agent 2D** ở các mục trên vẫn là số đo với detection zero-shot / linear probe. Số với model
+  fine-tune toàn mạng ở `eval/results/temporal/report.md`, mục 0b (chạy 04/10).
+- **QA Agent 2D cần dò lại ngưỡng risk** cho detector fine-tune toàn mạng: box sai lọt vào nhóm duyệt theo lô tăng từ
+  1632 lên 3621 trên 795 keyframe test.
+- **Precision của detector 2D** vẫn quanh 0.48 ở ngưỡng 0.30; construction vehicle và trailer còn yếu (AP50 0.11 / 0.22).
 - **P/R/F1 của 3D** đo trên 20/24 scene test. Đây là phần có sẵn bảng nhãn đã lọc trên máy; mAP và NDS vẫn dùng đủ 24
   scene.
 - **Ngưỡng score 0.3** dùng chung cho mọi mô hình 3D nên không công bằng với PGD, vốn cho điểm thấp.
 - **Kiểm tra temporal của QA** so box bằng IoU mà không bù chuyển động, nên báo sai với vật ở gần đang chạy nhanh qua ảnh
   (`docs/eval-evidence.md`, TC-11).
-- **Chưa làm:** BEVFusion (công bố 68.6 mAP, cần biên dịch op CUDA), fine-tune toàn phần YOLOE, TTA lật
+- **Chưa làm:** BEVFusion (công bố 68.6 mAP, cần biên dịch op CUDA), TTA lật
   trục cho mô hình LiDAR, ByteTrack cho 3D.
 
 ## Nguồn số liệu

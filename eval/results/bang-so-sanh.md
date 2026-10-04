@@ -33,7 +33,8 @@ Chỉ số dùng trong bảng:
 | # | Phần | Phương pháp | Chỉ số quyết định | Không dùng | Có dùng | Thay đổi | Thời gian thêm / bớt | Dùng? |
 |---|---|---|---|---|---|---|---|---|
 | 1 | 2D | YOLOE-26-L thay YOLO-World | mAP50 (40 keyframe) | 0.311 | 0.452 | +0.141 | 3.75 → 3.31 s/ảnh, CPU (−12%) | ✅ |
-| 2 | 2D | **Fine-tune YOLOE-26-L trên nuImages** | mAP50 test | 0.312 | 0.366 | +0.054 (R +0.058, P −0.015) | không đổi: cùng kiến trúc, cùng 1280 px; GPU 0.076 s/ảnh | ✅ mới |
+| 2 | 2D | Fine-tune YOLOE-26-L trên nuImages, linear probe | mAP50 test | 0.312 | 0.366 | +0.054 (R +0.058, P −0.015) | không đổi: cùng kiến trúc, cùng 1280 px; GPU 0.076 s/ảnh | thay bằng 2b |
+| 2b | 2D | **Fine-tune toàn mạng YOLOE-26-L trên nuImages** (mặc định từ 04/10) | mAP50 test | 0.366 (linear probe) | 0.589 | +0.223 (R +0.226, P +0.003); so với zero-shot +0.277 | không đổi: cùng kiến trúc, cùng 1280 px; GPU 0.069 s/ảnh | ✅ mới |
 | 3 | 2D | Ngưỡng giữ box 0.30 | precision (40 keyframe) | 0.34 | 0.51 | +0.17 | 0 | ✅ |
 | 4 | 2D | TTA: đổi prompt, lật ảnh, ảnh 1600 px | mAP50 dev | 0.395 | 0.365–0.392 | giảm | thêm một lần suy luận cho mỗi biến thể (chưa đo) | ❌ |
 | 5 | 2D | Optical flow khi lan truyền | nhãn đúng / đổi ID (test) | 2866 / 205 | 3220 / 82 | +12% / −60% | 0.33 → 1.39 s/lần lan truyền, GPU (×4.2) | ✅ |
@@ -64,29 +65,40 @@ Chỉ số dùng trong bảng:
 | YOLO26 (tập lớp COCO, không có barrier) | 40 keyframe | 0.398 | | | | 2.14 s CPU |
 | YOLOE-26-L zero-shot | 40 keyframe | 0.452 | | | | 3.31 s CPU |
 | YOLOE-26-L zero-shot | dev 119 keyframe | 0.392 | 0.566 | 0.578 | 0.572 | |
-| YOLOE-26-L fine-tune nuImages | dev 119 keyframe | 0.429 | 0.525 | 0.633 | 0.574 | |
+| YOLOE-26-L linear probe nuImages | dev 119 keyframe | 0.429 | 0.525 | 0.633 | 0.574 | |
+| YOLOE-26-L fine-tune toàn mạng nuImages | dev 119 keyframe | 0.616 | 0.472 | 0.825 | 0.600 | |
 | YOLOE-26-L zero-shot | **test 957 keyframe** | 0.312 | 0.499 | 0.523 | 0.511 | như dòng dưới (cùng kiến trúc) |
-| **YOLOE-26-L fine-tune nuImages** | **test 957 keyframe** | **0.366** | 0.484 | **0.581** | **0.528** | **0.076 s GPU** (957 ảnh / 72.7 s, batch 8) |
+| YOLOE-26-L linear probe nuImages | **test 957 keyframe** | 0.366 | 0.484 | 0.581 | 0.528 | 0.076 s GPU (957 ảnh / 72.7 s, batch 8) |
+| **YOLOE-26-L fine-tune toàn mạng nuImages (mặc định)** | **test 957 keyframe** | **0.589** | 0.487 | **0.806** | **0.607** | **0.069 s GPU** (957 ảnh / 66.5 s, batch 8) |
 
-Bản fine-tune là linear probe 10 epoch ở 1280 px trên nuImages, đã loại ảnh cùng xe, cùng ngày với log val nuScenes.
+Bản fine-tune toàn mạng: 30 epoch ở 1280 px trên nuImages (RTX 3090), mở cả backbone, neck và nhánh box; checkpoint chọn
+theo nuImages val (mAP50 0.782). Chấm trên laptop ngày 04/10, cùng 957 keyframe test (`weights/results-full-1280.csv`).
+
+Bản linear probe: 10 epoch ở 1280 px trên nuImages, đã loại ảnh cùng xe, cùng ngày với log val nuScenes.
 Checkpoint được chọn theo nuImages val (mAP50 0.509). Linear probe chỉ học lại đầu phân lớp nên kiến trúc và lượng tính
 toán không đổi. Lần chấm zero-shot trên GPU đọc lại detection từ cache, vì vậy không có số thời gian riêng. Số liệu:
 `det2d_finetune.json`, `compare/speed.json`, `weights/results-lp-1280.csv`.
 
-AP50 từng lớp trên test, zero-shot → fine-tune:
+AP50 từng lớp trên test, zero-shot → linear probe → fine-tune toàn mạng:
 
 | barrier | bicycle | bus | car | constr. | motorcycle | pedestrian | traffic cone | trailer | truck |
 |---|---|---|---|---|---|---|---|---|---|
-| 0.127 → **0.333** | 0.123 → **0.233** | 0.805 → 0.779 | 0.707 → 0.728 | 0.019 → 0.029 | 0.210 → 0.275 | 0.226 → 0.294 | 0.390 → **0.500** | 0.000 → 0.015 | 0.518 → 0.470 |
+| 0.127 → 0.333 → **0.676** | 0.123 → 0.233 → **0.630** | 0.805 → 0.779 → **0.887** | 0.707 → 0.728 → **0.853** | 0.019 → 0.029 → **0.111** | 0.210 → 0.275 → **0.541** | 0.226 → 0.294 → **0.563** | 0.390 → 0.500 → **0.798** | 0.000 → 0.015 → **0.224** | 0.518 → 0.470 → **0.611** |
 
 Kết quả theo lớp:
 
-- **Lớp nhỏ tăng mạnh:** barrier ×2.6, traffic cone +0.11, xe đạp gần ×2.
-- **Bus và truck giảm nhẹ.**
-- **Precision giảm 0.015**, vì mô hình nhận nhiều box hơn.
+- **Linear probe:** lớp nhỏ tăng mạnh (barrier ×2.6, traffic cone +0.11, xe đạp gần ×2); bus và truck giảm nhẹ;
+  precision giảm 0.015 vì mô hình nhận nhiều box hơn.
+- **Fine-tune toàn mạng:** tăng ở cả 10 lớp so với cả hai bản trước. Recall 0.523 → 0.806; recall theo chiều cao vật:
+  dưới 32 px 26% → 69%, 32–64 px 47% → 83%, 64–128 px 56% → 87%, từ 128 px 63% → 79%.
+- **Precision gần như không đổi** (0.499 → 0.487 so với zero-shot): ở ngưỡng 0.30 người duyệt vẫn phải xoá khoảng một
+  nửa số box.
+- **Còn yếu:** construction vehicle 0.111 và trailer 0.224 (trailer chỉ có 22 vật trên test).
 
-Quyết định dựa trên mAP50 và recall trên test: **dùng** (`detection.yoloe.weights`). Mô hình fine-tune chỉ biết tập lớp
-đóng gồm 10 lớp nuScenes. Dự án dùng tập lớp khác thì quay về `yoloe-26l-seg.pt` (open-vocab).
+Quyết định dựa trên mAP50 và recall trên test: **dùng bản fine-tune toàn mạng** (`detection.yoloe.weights`). Hai bản
+fine-tune chỉ biết tập lớp đóng gồm 10 lớp nuScenes. Dự án dùng tập lớp khác thì vào tab ⚙ Cài đặt > "Mô hình phát hiện
+2D" chọn Original (`yoloe-26l-seg.pt`, open-vocab); ba lựa chọn trên UI là Fine-tune full / Fine-tune mini (linear
+probe) / Original.
 
 ## 3. 2D — lan truyền nhãn: optical flow × ByteTrack × OC-SORT
 

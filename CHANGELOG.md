@@ -30,6 +30,64 @@ Quy tắc:
 
 ---
 
+## 2026-10-04 (2) · Kiên · nhánh `kien`
+
+**Làm gì:** (1) Chấm bản fine-tune toàn mạng trên tập test 957 keyframe của laptop: mAP50 **0.589**, P 0.487, R 0.806,
+F1 0.607 (gốc 0.312, linear probe 0.366); dev 119 keyframe 0.616. (2) Ba lựa chọn "Mô hình phát hiện 2D" ở tab ⚙ Cài
+đặt đổi tên thành **Fine-tune full / Fine-tune mini (linear probe) / Original**. (3) Chạy lại `evaltemporal` với detector
+mới trên 20 scene held-out (795 keyframe): pipeline 2D mAP50 0.347 → 0.611, vật sót phải vẽ thêm 2243 → 994; lan truyền
+mặc định nhãn đúng 3438 → 4074 (72.0% → 79.3%), box sai 1170 → 840, đổi ID 167 → 225. (4) Report, bảng so sánh, eval
+evidence, README dùng số của bản full; WORKLOG ghi bù 28/09 → 04/10. (5) Dọn repo: xoá `plan.md`,
+`PLAN-2D-AutoLabel-VLM-Agent.md`, `AutoLabel3D_Brief.md`, `README_boilerplate.md`, thư mục `mockup/`; commit các kết quả
+`eval/results/improve`, `trackall*`, `trackeval` trước đây chưa đưa lên.
+
+**File chính:** `src/services/ui_settings.py`, `eval/results/det2d_finetune.json`, `eval/results/temporal/report.md`
+(mục 0b) + `full_dev.json`, `full_heldout20.json`, `eval/report/REPORT.md`, `eval/results/bang-so-sanh.md`,
+`docs/eval-evidence.md`, `WORKLOG.md`.
+
+**Ảnh hưởng tới người khác:** Không đổi schema / API / giá trị config. Chỉ đổi tên hiển thị của 3 lựa chọn mô hình
+(giá trị lưu trong `settings.json` giữ nguyên). `mockup/` và 4 file tài liệu cũ bị xoá; giao diện thật vẫn ở `src/web/`.
+
+**Cách kiểm tra:** `ruff check src tests` sạch, `pytest` 235 passed. Chấm lại: `scripts\tasks.ps1 eval2d -Weights
+weights\yoloe-26l-nuimages-full-1280.pt`.
+
+**Còn dở / việc tiếp:** QA Agent 2D bắt lỗi kém hơn với detector mới (box sai lọt vào nhóm duyệt theo lô 1979 → 3621
+trên held-out): cần dò lại ngưỡng risk. Precision detector vẫn ~0.48; construction_vehicle / trailer còn thấp.
+`JOURNAL.md`, `eval/results/report.md`, `presentation/README.md` vẫn là mẫu BTC chưa điền.
+
+## 2026-10-04 · Kiên · nhánh `kien`
+
+**Làm gì:** Fine-tune toàn mạng YOLOE-26L trên nuImages xong (30 epoch, 1280 px, RTX 3090) và thành detector 2D mặc
+định. Tab ⚙ Cài đặt có thêm ô **"Mô hình phát hiện 2D"** (nhóm Gán nhãn) để đổi giữa 3 bản theo từng workspace / dự án:
+fine-tune toàn mạng (mặc định), linear probe, YOLOE gốc open-vocab. Chấm trên nuScenes CAM_FRONT (`tools2d/eval2d.py`,
+ngưỡng 0.30, IoU 0.5; held-out lần này là 4852 keyframe trên PC, không phải 957 ảnh của laptop):
+
+| | nuImages val | dev (119 ảnh) | held-out (4852 ảnh) | P held-out | R held-out |
+|---|---|---|---|---|---|
+| zero-shot `yoloe-26l-seg.pt` | 0.389 | 0.391 | 0.266 | 0.500 | 0.478 |
+| linear probe | 0.509 | 0.428 | 0.305 | 0.503 | 0.530 |
+| fine-tune toàn mạng | **0.782** | **0.616** | **0.585** | **0.530** | **0.782** |
+
+AP50 held-out bản full: car 0.80, bus 0.80, traffic_cone 0.75, barrier 0.74, motorcycle 0.63, truck 0.63, bicycle 0.63,
+pedestrian 0.52; còn yếu trailer 0.24, construction_vehicle 0.10.
+
+**File chính:** `weights/yoloe-26l-nuimages-full-1280.pt` (+ `.sha256`, `results-full-1280.csv`),
+`src/services/ui_settings.py` (trường `detection.yoloe.weights`, `missing_weights`), `src/api/routes.py` (PUT `/settings`
+trả 422 nếu file trọng số được chọn chưa có trên máy), `configs/autolabel.yaml`, `tests/test_api/test_settings.py`.
+
+**Ảnh hưởng tới người khác:** Config đổi `detection.yoloe.weights` sang bản full. Cần `git pull` để có file `.pt`
+(50.6 MB, `git add -f`). Bản full và linear probe là **tập lớp đóng 10 lớp nuScenes**: prompt chữ / lớp thêm mới không
+có tác dụng; cần open-vocab thì vào ⚙ Cài đặt chọn "YOLOE gốc, open-vocab" (không phải sửa yaml). Đổi mô hình chỉ ảnh
+hưởng frame gán nhãn sau đó; frame cũ cần bấm "Áp dụng lại" (bỏ qua frame đã có người sửa). Cache detection khoá theo
+tên trọng số nên không lẫn giữa các bản. API `/settings` không đổi dạng, chỉ thêm một trường.
+
+**Cách kiểm tra:** `ruff check src tests` sạch, `pytest` 233 passed, 2 skipped (PC train). Chấm lại:
+`powershell -ExecutionPolicy Bypass -File scripts\tasks.ps1 eval2d -Weights weights\yoloe-26l-nuimages-full-1280.pt`.
+UI: ⚙ Cài đặt > Gán nhãn > "Mô hình phát hiện 2D" > Lưu > "Áp dụng lại".
+
+**Còn dở / việc tiếp:** (Đã chấm bản full trên 957 ảnh của laptop, xem mục 2026-10-04 (2).) trailer / construction_vehicle còn
+thấp (ít mẫu trong nuImages). Bản full chưa được thử trên ảnh ngoài nuScenes.
+
 ## 2026-10-03 · Danh · nhánh `danh`
 
 **Làm gì:** Thêm cụm chuyển đổi nhanh mô hình (Model Switcher: ⚡ Nhanh / 🎯 Chính xác) trực tiếp trên Topbar giao diện đánh dấu (`index.html`). Đồng bộ hai chiều với dropdown chọn luồng lan truyền ở timeline và `localStorage`; hỗ trợ tự động nhận diện tính khả dụng của backend DAM4SAM (SAM 2.1) kèm tooltip và thông báo toast.

@@ -1,0 +1,224 @@
+{
+ "yoloe-26l-nuimages-lp-1280.pt@1280:dev": {
+  "mAP50": 0.4287,
+  "P": 0.5247,
+  "R": 0.6329,
+  "F1": 0.5737,
+  "ap": {
+   "barrier": 0.273,
+   "bicycle": 0.206,
+   "bus": 0.624,
+   "car": 0.783,
+   "construction_vehicle": 0.0,
+   "motorcycle": 0.458,
+   "pedestrian": 0.264,
+   "traffic_cone": 0.615,
+   "truck": 0.635
+  },
+  "n_gt": {
+   "car": 440,
+   "pedestrian": 173,
+   "bicycle": 13,
+   "truck": 46,
+   "motorcycle": 8,
+   "bus": 22,
+   "traffic_cone": 203,
+   "barrier": 157,
+   "construction_vehicle": 14
+  },
+  "images": 119,
+  "sec": 23.0,
+  "ap_small": {
+   "0-32": "7/11",
+   "32-64": "231/328",
+   "64-128": "251/438",
+   "128-": "199/299"
+  }
+ },
+ "yoloe-26l-nuimages-lp-1280.pt@1280:heldout": {
+  "mAP50": 0.3656,
+  "P": 0.4843,
+  "R": 0.5807,
+  "F1": 0.5281,
+  "ap": {
+   "barrier": 0.333,
+   "bicycle": 0.233,
+   "bus": 0.779,
+   "car": 0.728,
+   "construction_vehicle": 0.029,
+   "motorcycle": 0.275,
+   "pedestrian": 0.294,
+   "traffic_cone": 0.5,
+   "trailer": 0.015,
+   "truck": 0.47
+  },
+  "n_gt": {
+   "pedestrian": 1604,
+   "traffic_cone": 908,
+   "car": 2375,
+   "bus": 210,
+   "truck": 543,
+   "bicycle": 134,
+   "construction_vehicle": 112,
+   "barrier": 744,
+   "motorcycle": 81,
+   "trailer": 22
+  },
+  "images": 957,
+  "sec": 60.2,
+  "ap_small": {
+   "0-32": "98/268",
+   "32-64": "999/1906",
+   "64-128": "1622/2570",
+   "128-": "1323/1989"
+  }
+ },
+ "yoloe-26l-nuimages-lp-1280.pt@1920:dev": {
+  "mAP50": 0.3696,
+  "P": 0.4761,
+  "R": 0.6106,
+  "F1": 0.535,
+  "ap": {
+   "barrier": 0.176,
+   "bicycle": 0.108,
+   "bus": 0.585,
+   "car": 0.761,
+   "construction_vehicle": 0.0,
+   "motorcycle": 0.435,
+   "pedestrian": 0.225,
+   "traffic_cone": 0.55,
+   "truck": 0.486
+  },
+  "n_gt": {
+   "car": 440,
+   "pedestrian": 173,
+   "bicycle": 13,
+   "truck": 46,
+   "motorcycle": 8,
+   "bus": 22,
+   "traffic_cone": 203,
+   "barrier": 157,
+   "construction_vehicle": 14
+  },
+  "images": 119,
+  "sec": 28.8,
+  "ap_small": {
+   "0-32": "7/11",
+   "32-64": "235/328",
+   "64-128": "240/438",
+   "128-": "182/299"
+  }
+ },
+ "yoloe-26l-nuimages-lp-1280.pt@1920:heldout": {
+  "mAP50": 0.3438,
+  "P": 0.4578,
+  "R": 0.5731,
+  "F1": 0.509,
+  "ap": {
+   "barrier": 0.327,
+   "bicycle": 0.197,
+   "bus": 0.675,
+   "car": 0.713,
+   "construction_vehicle": 0.067,
+   "motorcycle": 0.338,
+   "pedestrian": 0.281,
+   "traffic_cone": 0.483,
+   "trailer": 0.0,
+   "truck": 0.358
+  },
+  "n_gt": {
+   "pedestrian": 1604,
+   "traffic_cone": 908,
+   "car": 2375,
+   "bus": 210,
+   "truck": 543,
+   "bicycle": 134,
+   "construction_vehicle": 112,
+   "barrier": 744,
+   "motorcycle": 81,
+   "trailer": 22
+  },
+  "images": 957,
+  "sec": 103.4,
+  "ap_small": {
+   "0-32": "106/268",
+   "32-64": "1074/1906",
+   "64-128": "1641/2570",
+   "128-": "1206/1989"
+  }
+ },
+ "yoloe-26l-nuimages-lp-1280.pt@1280+tiles2:dev": {
+  "mAP50": 0.4269,
+  "P": 0.3902,
+  "R": 0.6654,
+  "F1": 0.4919,
+  "ap": {
+   "barrier": 0.292,
+   "bicycle": 0.224,
+   "bus": 0.649,
+   "car": 0.785,
+   "construction_vehicle": 0.0,
+   "motorcycle": 0.411,
+   "pedestrian": 0.285,
+   "traffic_cone": 0.606,
+   "truck": 0.59
+  },
+  "n_gt": {
+   "car": 440,
+   "pedestrian": 173,
+   "bicycle": 13,
+   "truck": 46,
+   "motorcycle": 8,
+   "bus": 22,
+   "traffic_cone": 203,
+   "barrier": 157,
+   "construction_vehicle": 14
+  },
+  "images": 119,
+  "sec": 56.2,
+  "ap_small": {
+   "0-32": "7/11",
+   "32-64": "251/328",
+   "64-128": "261/438",
+   "128-": "205/299"
+  }
+ },
+ "yoloe-26l-nuimages-lp-1280.pt@1280+tiles2:heldout": {
+  "mAP50": 0.3753,
+  "P": 0.3852,
+  "R": 0.6202,
+  "F1": 0.4752,
+  "ap": {
+   "barrier": 0.332,
+   "bicycle": 0.252,
+   "bus": 0.783,
+   "car": 0.726,
+   "construction_vehicle": 0.023,
+   "motorcycle": 0.341,
+   "pedestrian": 0.314,
+   "traffic_cone": 0.503,
+   "trailer": 0.027,
+   "truck": 0.451
+  },
+  "n_gt": {
+   "pedestrian": 1604,
+   "traffic_cone": 908,
+   "car": 2375,
+   "bus": 210,
+   "truck": 543,
+   "bicycle": 134,
+   "construction_vehicle": 112,
+   "barrier": 744,
+   "motorcycle": 81,
+   "trailer": 22
+  },
+  "images": 957,
+  "sec": 310.1,
+  "ap_small": {
+   "0-32": "122/268",
+   "32-64": "1148/1906",
+   "64-128": "1719/2570",
+   "128-": "1341/1989"
+  }
+ }
+}

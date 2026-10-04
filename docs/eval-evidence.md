@@ -25,7 +25,7 @@ keyframe CAM_FRONT. Nhãn máy do YOLOE-26-L zero-shot + QA Agent sinh ra.
 | TC-05 | Duyệt theo lô nhóm rủi ro thấp rồi approve frame | ✅ Đạt |
 | TC-06 | Metrics cập nhật sau khi duyệt | ✅ Đạt |
 | TC-07 | Xuất dataset COCO chỉ gồm frame đã approve | ✅ Đạt |
-| TC-08 | Detector 2D fine-tune so với zero-shot trên tập test | ✅ Đạt (mAP50 0.312 → 0.366) |
+| TC-08 | Detector 2D fine-tune so với zero-shot trên tập test | ✅ Đạt (mAP50 0.312 → 0.589) |
 | TC-09 | Lan truyền nhãn 2D qua các keyframe sau | ✅ Đạt (77% box ghi ra đúng vật) |
 | TC-10 | Auto-label 3D trên tập test | ✅ Đạt (mAP 0.668 / NDS 0.713) |
 | TC-11 | Kiểm tra temporal với vật ở gần đang chạy nhanh qua ảnh | ⚠️ Lỗi đã biết |
@@ -171,7 +171,8 @@ annotation đầu: {"category_id": 10 (barrier), "object_id": "18", "source": "m
 
 ## TC-08 · Detector 2D fine-tune so với zero-shot
 
-- **Lệnh:** `scripts\tasks.ps1 eval2d -Weights weights\yoloe-26l-nuimages-lp-1280.pt`, chạy trên GPU laptop.
+- **Lệnh:** `scripts\tasks.ps1 eval2d -Weights weights\yoloe-26l-nuimages-full-1280.pt` (và `…-lp-1280.pt` cho bản linear
+  probe), chạy trên GPU laptop.
 - **Dữ liệu:** 957 keyframe CAM_FRONT của 24 scene test, so với nhãn gốc nuScenes.
 - **Mong đợi:** mô hình fine-tune tốt hơn zero-shot trên test.
 - **Output thực tế** (`eval/results/det2d_finetune.json`):
@@ -180,9 +181,13 @@ annotation đầu: {"category_id": 10 (barrier), "object_id": "18", "source": "m
 yoloe-26l-seg.pt               heldout  mAP50 0.312  P 0.499  R 0.523  F1 0.511  (957 ảnh)
 yoloe-26l-nuimages-lp-1280.pt  heldout  mAP50 0.366  P 0.484  R 0.581  F1 0.528  (957 ảnh)
    AP: barrier 0.13→0.33  bicycle 0.12→0.23  traffic_cone 0.39→0.50  pedestrian 0.23→0.29  bus 0.81→0.78  truck 0.52→0.47
+yoloe-26l-nuimages-full-1280.pt heldout mAP50 0.589  P 0.487  R 0.806  F1 0.607  (957 ảnh)   [chấm 2026-10-04]
+   AP: barrier 0.68  bicycle 0.63  bus 0.89  car 0.85  construction_vehicle 0.11  motorcycle 0.54  pedestrian 0.56  traffic_cone 0.80  trailer 0.22  truck 0.61
+   recall theo cỡ vật (cao px): 0-32 184/268  32-64 1575/1906  64-128 2246/2570  128- 1575/1989
 ```
 
-- **Kết luận:** Đạt. Đã đặt làm detector mặc định.
+- **Kết luận:** Đạt. Bản fine-tune toàn mạng (`full-1280`) là detector mặc định; linear probe và bản gốc chọn được ở tab ⚙
+  Cài đặt (Fine-tune mini / Original).
 
 ## TC-09 · Lan truyền nhãn 2D
 

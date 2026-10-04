@@ -46,6 +46,46 @@ Chạy lại trên GPU của Kiên với toàn bộ 20 scene val có đủ dữ 
   bớt 62% box phải xem và 38% box sai phải xoá, đổi lại thêm 9% vật sót phải vẽ. Mặc định vẫn tắt (đã chọn trên dev);
   nhóm có thể bật ở tab ⚙ Cài đặt nếu muốn đổi việc xoá / xem lấy việc vẽ thêm.
 
+## 0b. Chạy lại với detector fine-tune toàn mạng (2026-10-04)
+
+Cùng 20 scene held-out (795 keyframe) và 3 scene dev, cùng lệnh, nhưng detector là `yoloe-26l-nuimages-full-1280.pt`
+(mặc định từ 04/10). Workspace riêng (`ws_dev_full`, `ws_heldout_full`) nên không lẫn cache với các lần trước. Số
+liệu: `full_heldout20.json`, `full_dev.json`. Cột "linear probe" lấy từ lần chạy 02/10 trên cùng tập.
+
+**Pipeline 2D** (detector + fusion + ngưỡng 0.30 + QA, cấu hình `base`), held-out:
+
+| Chỉ số | Zero-shot | Linear probe | Fine-tune toàn mạng |
+|---|---|---|---|
+| mAP50 | 0.296 | 0.347 | **0.611** |
+| mAP70 | 0.077 | 0.090 | **0.269** |
+| Precision / Recall / F1 | 0.486 / 0.524 / 0.504 | 0.470 / 0.583 / 0.521 | 0.475 / **0.815** / **0.600** |
+| Box ghi ra | 5799 | 6686 | 9241 |
+| Box sai phải xoá | 2980 | 3545 | 4851 |
+| Vật sót phải vẽ thêm | 2565 | 2243 | **994** |
+| Box phải xem tay (medium / high) | 1707 | 1956 | 1668 |
+| Box sai lọt vào nhóm low (duyệt theo lô) | 1632 | 1979 | 3621 |
+| Tỉ lệ lỗi trong nhóm low | 39.9% | 41.8% | 47.8% |
+
+- Vật sót giảm hơn một nửa (2243 → 994), nhưng box sai tăng 37% vì mô hình ra nhiều box hơn mà precision không đổi.
+- **QA bắt lỗi kém hơn với detector mới:** tỉ lệ box sai được gắn cờ giảm từ 44% xuống 25%, nên box sai lọt vào nhóm
+  duyệt theo lô tăng từ 1979 lên 3621. Ngưỡng risk của QA được chọn với detector cũ và cần dò lại.
+
+**Lan truyền nhãn** (154 lần, 1060 object), held-out, fine-tune toàn mạng; trong ngoặc là linear probe:
+
+| `propagation.flow` + ghép | Nhãn đúng / box ra | Đổi ID | Mất dấu | Box sai | IoU TB | Giây (tổng) |
+|---|---|---|---|---|---|---|
+| off | 3675 / 5286 (69.5%) | 393 | 661 | 1218 | 0.548 | 35 |
+| missing | 3788 / 5134 (73.8%) | 331 | 630 | 1015 | 0.582 | 50 |
+| always | 4098 / 5242 (78.2%) | 200 | 501 | 944 | 0.612 | 204 |
+| **always + ByteTrack** (mặc định) | **4074 / 5139 (79.3%)** (3438 / 4775, 72.0%) | 225 (167) | 578 (850) | **840** (1170) | 0.620 (0.569) | 214 |
+| always + BoT-SORT | 4107 / 5134 (80.0%) | 185 | 580 | 842 | 0.625 | 293 |
+| off + BoT-SORT | 3812 / 4902 (77.8%) | 194 | 723 | 896 | 0.610 | 300 |
+
+- Cấu hình mặc định: nhãn lan truyền đúng +18% (3438 → 4074), box sai −28%, mất dấu −32%; đổi ID tăng 167 → 225.
+- Thứ tự các cấu hình không đổi so với trước: optical flow vẫn là phần đóng góp lớn nhất; BoT-SORT hơn ByteTrack rất ít
+  (đúng +0.8%, đổi ID −18%) và chậm hơn 37%.
+- Dev (119 keyframe): pipeline mAP50 0.398 → 0.608, lan truyền mặc định 848 / 1092 (77.7%) → 975 / 1197 (81.5%).
+
 ## 1. Box sweep khớp keyframe (flow có dời đúng không)
 
 Box detector ở sweep so với box gần nhất ở keyframe:

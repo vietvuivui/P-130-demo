@@ -13,6 +13,7 @@ from pathlib import Path
 from src.models.qa_config import AutoLabelConfig
 
 SETTINGS_FILE = "settings.json"
+REPO_ROOT = Path(__file__).resolve().parents[2]  # đường dẫn trọng số trong config tính từ gốc repo
 
 # path trong config -> mô tả cho UI. kind: choice | bool | float | int
 # label / choices / help: ngắn, hiện thẳng trên trang. detail: số đo làm căn cứ, chỉ hiện khi rê chuột vào ⓘ.
@@ -87,6 +88,22 @@ FIELDS: dict[str, dict] = {
         "help": "Không khuyên bật.",
         "detail": "Thêm nhãn đúng trên test (23731 → 23872) nhưng không trên dev, và thêm đổi ID.",
         "applies": "now",
+    },
+    "detection.yoloe.weights": {
+        "kind": "choice",
+        "group": "Gán nhãn",
+        "label": "Mô hình phát hiện 2D",
+        "choices": {
+            "weights/yoloe-26l-nuimages-full-1280.pt": "Fine-tune full",
+            "weights/yoloe-26l-nuimages-lp-1280.pt": "Fine-tune mini",
+            "yoloe-26l-seg.pt": "Original",
+        },
+        "help": "Khuyên dùng: Fine-tune full. Cần lớp ngoài 10 lớp nuScenes: chọn Original.",
+        "detail": "Held-out nuScenes CAM_FRONT 4852 keyframe, mAP50 / recall: Original (YOLOE gốc, open-vocab) "
+        "0.266 / 0.478, Fine-tune mini (linear probe) 0.305 / 0.530, Fine-tune full (toàn mạng) 0.585 / 0.782. Hai bản "
+        "fine-tune (nuImages) chỉ nhận 10 lớp nuScenes, "
+        "không nhận prompt chữ mới. Đổi mô hình thì 'Áp dụng lại' chạy lại detector trên các frame chưa ai sửa.",
+        "applies": "relabel",
     },
     "detection.min_score": {
         "kind": "float",
@@ -163,6 +180,14 @@ def validate(values: dict) -> dict:
                 raise ValueError(f"{spec['label']}: trong khoảng {spec['min']}–{spec['max']}")
         out[path] = v
     return out
+
+
+def missing_weights(values: dict) -> str | None:
+    """File trọng số được chọn mà chưa có trên máy (None nếu đủ). Tên trần như yoloe-26l-seg.pt thì Ultralytics tự tải."""
+    for path, v in values.items():
+        if path.endswith(".weights") and "/" in str(v) and not (REPO_ROOT / v).exists():
+            return str(v)
+    return None
 
 
 def load(root: str | Path) -> dict:
