@@ -1720,7 +1720,7 @@ function stepVideo(delta) {
 }
 
 // ---------- phát video ----------
-// Phát mọi ảnh đã cắt (keyframe 2 fps + sweep t-2 … t+2 ở 10 fps) theo đúng thời gian thực, box lấy sẵn từ
+// Phát mọi ảnh của video (keyframe 2 fps, sweep t-2 … t+2 và ảnh nằm giữa hai cửa sổ sweep) theo đúng thời gian thực, box lấy sẵn từ
 // GET /videos/{id}/playback trong một lần gọi. Lúc phát chỉ vẽ lại khung ảnh (không mở frame, không vẽ lại panel);
 // ảnh phía trước được tải trước, ảnh chưa kịp tải thì đồng hồ đứng chờ. Dừng ở đâu thì mở keyframe gần đó để duyệt.
 const PLAY_AHEAD = 15; // số ảnh tải trước
@@ -1752,7 +1752,10 @@ function playImage(pb, j) {
   if (!im) {
     im = new Image();
     im.decoding = 'async';
-    im.src = `${API}/frames/${encodeURIComponent(it.frame_id)}/image${it.offset ? `?offset=${it.offset}` : ''}`;
+    // Ảnh nằm ngoài cửa sổ sweep của mọi keyframe (có "sd") lấy theo sd_token của video
+    im.src = it.sd
+      ? `${API}/videos/${encodeURIComponent(pb.videoId)}/image?sd=${encodeURIComponent(it.sd)}`
+      : `${API}/frames/${encodeURIComponent(it.frame_id)}/image${it.offset ? `?offset=${it.offset}` : ''}`;
     im.decode?.().catch(() => {});
     pb.imgs.set(j, im);
   }
@@ -1814,7 +1817,7 @@ async function togglePlay() {
   if (S.playback) { stopPlay(); return; }
   const v = S.video;
   if (!v || (v.frames || []).length < 2) return;
-  const pb = { items: [], i: 0, imgs: new Map(), raf: 0, clock: 0, last: null, drawn: false, frameId: null };
+  const pb = { items: [], i: 0, imgs: new Map(), raf: 0, clock: 0, last: null, drawn: false, frameId: null, videoId: v.video_id };
   S.playback = pb;
   setPlayButtons(true, '…');
   try {

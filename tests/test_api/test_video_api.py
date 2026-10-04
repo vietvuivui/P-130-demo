@@ -51,6 +51,11 @@ async def test_upload_then_review_and_propagate(video_client, demo_mp4):
     f0 = detail["frames"][0]["frame_id"]
     img = await video_client.get(f"/api/v1/frames/{f0}/image")
     assert img.status_code == 200 and img.headers["content-type"] == "image/jpeg"
+    # ảnh bất kỳ của video theo sd_token (dùng khi phát ảnh nằm ngoài cửa sổ sweep)
+    sd = (await video_client.get(f"/api/v1/frames/{f0}")).json()["sweeps"][0]["sd_token"]
+    by_sd = await video_client.get(f"/api/v1/videos/{vid}/image", params={"sd": sd})
+    assert by_sd.status_code == 200 and by_sd.headers["content-type"] == "image/jpeg"
+    assert (await video_client.get(f"/api/v1/videos/{vid}/image", params={"sd": "nope"})).status_code == 404
 
     await video_client.post(f"/api/v1/frames/{f0}/approve-low-risk", json={})
     frame = (await video_client.get(f"/api/v1/frames/{f0}")).json()

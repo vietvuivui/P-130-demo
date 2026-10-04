@@ -223,3 +223,22 @@ def test_smooth_track_boxes_follows_keyframe_and_clamps():
     grow = smooth_track_boxes([100, 100, 200, 200], {"1": [150, 150, 350, 350]}, [-1, 1])
     assert 160 <= grow["1"][2] - grow["1"][0] <= 240
     assert smooth_track_boxes(key, {"1": None}, [1]) == {}
+
+
+def test_playback_fills_images_outside_every_sweep_window(labeled):
+    """Ảnh nằm giữa hai keyframe mà ngoài cửa sổ t±2 của cả hai (nuScenes 12 Hz) vẫn được phát, kèm box nội suy."""
+    from src.services.nuscenes_data import TimelineImage
+
+    store, _, vid = labeled
+    base = vs.playback(store, vid)
+    real = [TimelineImage(**e.model_dump()) for e in store.load_video(vid).timeline]
+    assert len(vs.playback(store, vid, real)) == len(base)  # video 10 fps: cửa sổ t±2 đã phủ kín, không chèn gì
+    # chèn một ảnh giữa sweep +2 của keyframe 0 và sweep -2 của keyframe 1
+    gap = TimelineImage(sd_token="gap", timestamp=(real[2].timestamp + real[3].timestamp) // 2, path="x.jpg")
+    items = vs.playback(store, vid, real[:3] + [gap] + real[3:])
+    assert len(items) == len(base) + 1 and [it["t"] for it in items] == sorted(it["t"] for it in items)
+    (it,) = [it for it in items if it.get("sd")]
+    key0 = next(b for b in base if b["frame_id"] == f"{vid}_000" and b["offset"] == 0)
+    assert it["sd"] == "gap" and it["frame_id"] == f"{vid}_000" and it["offset"] == 3
+    assert [b["id"] for b in it["boxes"]] == [b["id"] for b in key0["boxes"]]
+    assert all(len(b["bbox"]) == 4 for b in it["boxes"])

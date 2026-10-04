@@ -368,20 +368,26 @@ def _play_box(o, bbox: list[float]) -> dict:
     }  # fmt: skip
 
 
-def playback(store: WorkspaceStore, video_id: str) -> list[dict] | None:
+def playback(store: WorkspaceStore, video_id: str, timeline: list | None = None) -> list[dict] | None:
     """Chuỗi ảnh để phát video mượt trên UI: keyframe + các sweep quanh nó (mặc định t-2 … t+2 ở 10 fps, phủ kín khoảng
     giữa hai keyframe 2 fps), sắp theo thời gian, kèm box cần vẽ ở từng ảnh. Một lần gọi thay cho việc mở từng frame.
 
     Box ở keyframe là nhãn cuối; ở sweep: box người đã sửa ở sweep đó nếu có, không thì track của detector ở sweep (tâm và kích
-    thước làm mượt, smooth_track_boxes), thiếu hết track thì giữ box keyframe. Ảnh lấy qua GET /frames/{frame_id}/image?offset=…"""
+    thước làm mượt, smooth_track_boxes), thiếu hết track thì giữ box keyframe. Ảnh lấy qua GET /frames/{frame_id}/image?offset=…
+
+    timeline: mọi ảnh của camera theo thời gian (TimelineImage). Ảnh nằm giữa hai keyframe mà ngoài cửa sổ sweep của cả
+    hai (nuScenes 12 Hz: 6 ảnh mỗi keyframe, cửa sổ t±2 phủ 5) được chèn thêm với trường "sd" (lấy ảnh qua
+    GET /videos/{id}/image?sd=…); box là box của keyframe gần hơn, kéo dài theo đường thẳng của smooth_track_boxes."""
     frames = sorted((f for f in store.list_frames() if f.scene == video_id), key=lambda f: f.index)
     if not frames:
         return None
     t0 = min([frames[0].image.timestamp, *(s.timestamp for s in frames[0].sweeps)])
     items: dict[str, dict] = {}
+    keys: dict[str, tuple] = {}  # sd_token của keyframe -> (frame, objs, key_box)
     for f in frames:
         objs = [o for o in f.objects if o.review.status != "deleted"]
         key_box = {o.object_id: o.review.final_bbox or o.bbox for o in objs}
+        keys[f.image.sd_token] = (f, objs, key_box)
         offsets = [s.offset for s in f.sweeps]
         smooth = {o.object_id: smooth_track_boxes(key_box[o.object_id], o.track, offsets) for o in objs}
         items[f.image.sd_token] = {
@@ -400,6 +406,20 @@ def playback(store: WorkspaceStore, video_id: str) -> list[dict] | None:
             else:
                 boxes = [_play_box(o, smooth[o.object_id].get(str(s.offset)) or key_box[o.object_id]) for o in objs]
             items[s.sd_token] = {"t": (s.timestamp - t0) / 1e6, "frame_id": f.frame_id, "offset": s.offset, "boxes": boxes}
+    pos = [i for i, im in enumerate(timeline or []) if im.sd_token in keys]
+    for i, im in enumerate(timeline or []):
+        if im.sd_token in items or not pos or not pos[0] < i < pos[-1]:
+            continue
+        before, after = max(p for p in pos if p < i), min(p for p in pos if p > i)
+        k = before if i - before <= after - i else after
+        f, objs, key_box = keys[timeline[k].sd_token]
+        off = i - k
+        boxes = [
+            _play_box(o, smooth_track_boxes(key_box[o.object_id], o.track, [off]).get(str(off)) or key_box[o.object_id])
+            for o in objs
+        ]
+        items[im.sd_token] = {"t": (im.timestamp - t0) / 1e6, "frame_id": f.frame_id, "offset": off, "sd": im.sd_token,
+                              "boxes": boxes}  # fmt: skip
     return sorted(items.values(), key=lambda x: x["t"])
 
 
