@@ -94,13 +94,14 @@ FIELDS: dict[str, dict] = {
         "group": "Gán nhãn",
         "label": "Mô hình phát hiện 2D",
         "choices": {
-            "weights/yoloe-26l-nuimages-full-1280.pt": "YOLOE fine-tune toàn mạng",
-            "weights/yoloe-26l-nuimages-lp-1280.pt": "YOLOE linear probe",
-            "yoloe-26l-seg.pt": "YOLOE gốc, open-vocab",
+            "weights/yoloe-26l-nuimages-full-1280.pt": "Fine-tune full",
+            "weights/yoloe-26l-nuimages-lp-1280.pt": "Fine-tune mini",
+            "yoloe-26l-seg.pt": "Original",
         },
-        "help": "Khuyên dùng: fine-tune toàn mạng. Cần lớp ngoài 10 lớp nuScenes: chọn bản gốc.",
-        "detail": "Held-out nuScenes CAM_FRONT 4852 keyframe, mAP50 / recall: gốc 0.266 / 0.478, linear probe "
-        "0.305 / 0.530, fine-tune toàn mạng 0.585 / 0.782. Hai bản fine-tune (nuImages) chỉ nhận 10 lớp nuScenes, "
+        "help": "Khuyên dùng: Fine-tune full. Cần lớp ngoài 10 lớp nuScenes: chọn Original.",
+        "detail": "Held-out nuScenes CAM_FRONT 4852 keyframe, mAP50 / recall: Original (YOLOE gốc, open-vocab) "
+        "0.266 / 0.478, Fine-tune mini (linear probe) 0.305 / 0.530, Fine-tune full (toàn mạng) 0.585 / 0.782. Hai bản "
+        "fine-tune (nuImages) chỉ nhận 10 lớp nuScenes, "
         "không nhận prompt chữ mới. Đổi mô hình thì 'Áp dụng lại' chạy lại detector trên các frame chưa ai sửa.",
         "applies": "relabel",
     },
