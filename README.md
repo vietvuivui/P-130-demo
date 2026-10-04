@@ -281,8 +281,8 @@ Phím: `↑/↓` chọn box · `K` `D` `C` `E` · `B` vẽ box · `A` · `Enter`
 
 Bảng so sánh mọi phương pháp đã dùng (2D, 3D, có / không dùng thì tăng / giảm bao nhiêu):
 [eval/results/bang-so-sanh.md](eval/results/bang-so-sanh.md). Test case thủ công với output thực tế:
-[docs/eval-evidence.md](docs/eval-evidence.md). Detector 2D: YOLOE-26-L fine-tune trên nuImages, test 24 scene mAP50
-0.366 (zero-shot 0.312). Xem thêm [eval/results/autolabel2d_eval.md](eval/results/autolabel2d_eval.md). Optical flow cho lan truyền và QA
+[docs/eval-evidence.md](docs/eval-evidence.md). Detector 2D: YOLOE-26-L fine-tune toàn mạng trên nuImages, test 24 scene mAP50
+0.589 (zero-shot 0.312, linear probe 0.366). Report đầy đủ: [eval/report/REPORT.md](eval/report/REPORT.md). Optical flow cho lan truyền và QA
 temporal (trước / sau, dev + held-out): [eval/results/temporal/report.md](eval/results/temporal/report.md).
 
 **Tracking 2D** ([eval/results/tracking.md](eval/results/tracking.md)): từng thuật toán (vận tốc không đổi, optical flow,
@@ -487,7 +487,7 @@ tests/                     pytest, dữ liệu tổng hợp (không cần GPU/da
 - Vật bị che hoàn toàn quá `max_coast_images` ảnh thì track dừng; khi hiện lại nó là object mới cần duyệt. Chạy lại `run --overwrite`
   trên frame "auto" sẽ xoá nhãn lan truyền của frame đó (dựng lại từ cache detection).
 
-Template gốc AI20K (hướng dẫn hook ghi log AI, Technical Guidebook) xem `README_boilerplate.md` và `docs/guide/`.
+Template gốc AI20K (hướng dẫn hook ghi log AI, Technical Guidebook) xem `docs/guide/`.
 
 ## License
 

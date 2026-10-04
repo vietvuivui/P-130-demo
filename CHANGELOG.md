@@ -30,6 +30,31 @@ Quy tắc:
 
 ---
 
+## 2026-10-04 (2) · Kiên · nhánh `kien`
+
+**Làm gì:** (1) Chấm bản fine-tune toàn mạng trên tập test 957 keyframe của laptop: mAP50 **0.589**, P 0.487, R 0.806,
+F1 0.607 (gốc 0.312, linear probe 0.366); dev 119 keyframe 0.616. (2) Ba lựa chọn "Mô hình phát hiện 2D" ở tab ⚙ Cài
+đặt đổi tên thành **Fine-tune full / Fine-tune mini (linear probe) / Original**. (3) Chạy lại `evaltemporal` với detector
+mới trên 20 scene held-out (795 keyframe): pipeline 2D mAP50 0.347 → 0.611, vật sót phải vẽ thêm 2243 → 994; lan truyền
+mặc định nhãn đúng 3438 → 4074 (72.0% → 79.3%), box sai 1170 → 840, đổi ID 167 → 225. (4) Report, bảng so sánh, eval
+evidence, README dùng số của bản full; WORKLOG ghi bù 28/09 → 04/10. (5) Dọn repo: xoá `plan.md`,
+`PLAN-2D-AutoLabel-VLM-Agent.md`, `AutoLabel3D_Brief.md`, `README_boilerplate.md`, thư mục `mockup/`; commit các kết quả
+`eval/results/improve`, `trackall*`, `trackeval` trước đây chưa đưa lên.
+
+**File chính:** `src/services/ui_settings.py`, `eval/results/det2d_finetune.json`, `eval/results/temporal/report.md`
+(mục 0b) + `full_dev.json`, `full_heldout20.json`, `eval/report/REPORT.md`, `eval/results/bang-so-sanh.md`,
+`docs/eval-evidence.md`, `WORKLOG.md`.
+
+**Ảnh hưởng tới người khác:** Không đổi schema / API / giá trị config. Chỉ đổi tên hiển thị của 3 lựa chọn mô hình
+(giá trị lưu trong `settings.json` giữ nguyên). `mockup/` và 4 file tài liệu cũ bị xoá; giao diện thật vẫn ở `src/web/`.
+
+**Cách kiểm tra:** `ruff check src tests` sạch, `pytest` 235 passed. Chấm lại: `scripts\tasks.ps1 eval2d -Weights
+weights\yoloe-26l-nuimages-full-1280.pt`.
+
+**Còn dở / việc tiếp:** QA Agent 2D bắt lỗi kém hơn với detector mới (box sai lọt vào nhóm duyệt theo lô 1979 → 3621
+trên held-out): cần dò lại ngưỡng risk. Precision detector vẫn ~0.48; construction_vehicle / trailer còn thấp.
+`JOURNAL.md`, `eval/results/report.md`, `presentation/README.md` vẫn là mẫu BTC chưa điền.
+
 ## 2026-10-04 · Kiên · nhánh `kien`
 
 **Làm gì:** Fine-tune toàn mạng YOLOE-26L trên nuImages xong (30 epoch, 1280 px, RTX 3090) và thành detector 2D mặc
@@ -60,7 +85,7 @@ tên trọng số nên không lẫn giữa các bản. API `/settings` không đ
 `powershell -ExecutionPolicy Bypass -File scripts\tasks.ps1 eval2d -Weights weights\yoloe-26l-nuimages-full-1280.pt`.
 UI: ⚙ Cài đặt > Gán nhãn > "Mô hình phát hiện 2D" > Lưu > "Áp dụng lại".
 
-**Còn dở / việc tiếp:** Chưa chấm bản full trên tập held-out 957 ảnh của laptop. trailer / construction_vehicle còn
+**Còn dở / việc tiếp:** (Đã chấm bản full trên 957 ảnh của laptop, xem mục 2026-10-04 (2).) trailer / construction_vehicle còn
 thấp (ít mẫu trong nuImages). Bản full chưa được thử trên ảnh ngoài nuScenes.
 
 ## 2026-10-02 · Kiên · nhánh `kien-mentor`

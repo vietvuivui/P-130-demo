@@ -1,0 +1,46 @@
+{
+ "_run": {
+  "workspace": "data\\eval_temporal\\ws_dev",
+  "scenes": [
+   "scene-0035",
+   "scene-0097",
+   "scene-0101"
+  ],
+  "max_frames": 10,
+  "model": "sam21pp-L",
+  "fast": true
+ },
+ "flow+byte": {
+  "seconds": 119.0,
+  "outputs": 1087,
+  "correct": 846,
+  "wrong": 209,
+  "id_switch": 32,
+  "lost": 201,
+  "HOTA": 0.5799,
+  "DetA": 0.4806,
+  "AssA": 0.7329,
+  "MOTA": 0.5461,
+  "IDF1": 0.7571,
+  "IDSW": 3
+ },
+ "flow+botsort": {
+  "seconds": 135.5,
+  "outputs": 1083,
+  "correct": 846,
+  "wrong": 209,
+  "id_switch": 28,
+  "lost": 203,
+  "HOTA": 0.5802,
+  "DetA": 0.4794,
+  "AssA": 0.7356,
+  "MOTA": 0.5478,
+  "IDF1": 0.7584,
+  "IDSW": 1,
+  "botsort": {
+   "calls": 1770,
+   "changed": 8,
+   "rescued": 0
+  }
+ }
+}
