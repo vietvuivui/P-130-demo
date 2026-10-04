@@ -30,6 +30,38 @@ Quy tắc:
 
 ---
 
+## 2026-10-05 · Kiên · nhánh `kien`
+
+**Làm gì:** Ba việc quanh box ở chế độ Video của dự án có LiDAR.
+
+1. **Box biến mất ở một số keyframe** (scene-0097 keyframe 34: 6 box trong khi sweep quanh nó có 14 detection). Nguyên
+   nhân: box chỉ camera thấy mà không có điểm LiDAR bị nhân 0.3, xe detector cho 0.91 còn 0.27 < ngưỡng giữ 0.30 nên
+   bị bỏ, keyframe sau có box 3D nên hiện lại. Thêm `detection.lidar3d.keep_det_score: 0.8`: điểm gốc của detector
+   >= 0.8 thì vẫn giữ, điểm đã hạ giữ nguyên (box vào nhóm rủi ro cao). Keyframe 34: 6 → 10 box. Theo nhãn gốc nuScenes
+   (không gán vật không có điểm LiDAR) thì kém hơn: CAM_FRONT test P 0.707 → 0.673, R 0.800 → 0.813, phải sửa +10%.
+2. **Box đổi kích thước liên tục khi phát video**: `video.smooth_track_boxes` — tâm và cỡ box ở sweep khớp đường thẳng
+   qua box keyframe, cỡ chặn ±20% so với detection; sweep thiếu detection thì nội suy. Tỉ lệ giật > 5%: dashcam 43% →
+   2.8%, video trong p-nusc3d-0101 41% → 3.9% (`eval/results/playback_jitter.md`).
+3. **Box gộp hơi to**: `detection.lidar3d.box_blend: 0.5` — box trùng cả detector và box 3D lấy trung bình toạ độ.
+   CAM_FRONT test: mAP50 0.677 → 0.687, F1 @IoU 0.75 0.367 → 0.394, diện tích 1.31 → 1.15 lần box detector.
+
+Việc 2 và 3 đã làm hôm 04/10 nhưng chưa commit và bị `git checkout -- .` xoá; bản này viết lại đúng theo bản cũ.
+
+**File chính:** `src/services/video.py`, `src/services/lidar2d.py` (`box_blend`, `strong_camera_only`),
+`src/services/pipeline.py`, `src/models/qa_config.py`, `configs/autolabel.yaml`, `tools2d/eval_lidar2d.py` (biến thể toạ
+độ), `eval/results/lidar2d.md` (hai mục cuối), test trong `tests/test_services/test_lidar2d.py`, `test_video.py`.
+
+**Ảnh hưởng tới người khác:** Config thêm `detection.lidar3d.box_blend`, `keep_det_score`. Nhãn 2D của dự án có LiDAR
+đổi (toạ độ box gộp, thêm box rủi ro cao): dự án đã xử lý phải bấm **Áp dụng lại** ở tab Cài đặt mới có nhãn mới. Số
+mAP / P / R của phần gộp 3D trong report đo trước thay đổi này.
+
+**Cách kiểm tra:** `ruff check src tests` sạch, `pytest` 240 passed. UI: mở dự án nuScenes → Cài đặt → Áp dụng lại →
+Video → keyframe 35 của scene-0097 phải có thêm xe đỗ bên trái (nét rủi ro cao).
+
+**Còn dở / việc tiếp:** `box_blend` và `keep_det_score` mới đo trên CAM_FRONT; chưa có bộ nhãn 2D vẽ theo ảnh để biết
+bao nhiêu box "không có điểm LiDAR" là vật thật. Khi phát video nuScenes vẫn bỏ qua 1 trong 6 ảnh 12 Hz (ảnh nằm giữa hai
+keyframe, ngoài cửa sổ t±2).
+
 ## 2026-10-04 (3) · Kiên · nhánh `kien`
 
 **Làm gì:** Dò lại QA Agent 2D cho detector fine-tune toàn mạng. Risk cũ xếp box sai không hơn gì score detector (AUC

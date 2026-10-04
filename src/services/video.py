@@ -324,6 +324,43 @@ def list_videos(store: WorkspaceStore) -> list[VideoSummary]:
     return uploads + [v for v in out if v.source == "nuscenes"]
 
 
+def smooth_track_boxes(key_box: list[float], track: dict[str, list[float] | None], offsets: list[int],
+                       clamp: float = 0.2) -> dict[str, list[float]]:  # fmt: skip
+    """Box để vẽ ở từng sweep (offset -> bbox) từ box keyframe và track của detector (offset -> bbox hoặc None).
+
+    Tâm và kích thước khớp đường thẳng bình phương tối thiểu theo offset, ép đi qua box keyframe (offset 0). Sweep có
+    detection: tâm theo detection, kích thước lấy trên đường thẳng nhưng không lệch quá ±clamp so với detection đó.
+    Sweep thiếu detection: cả tâm lẫn kích thước lấy trên đường thẳng. Không có detection nào ở sweep thì trả {} (vẽ
+    box keyframe như cũ)."""
+    pts = [(int(k), b) for k, b in track.items() if b is not None and k.lstrip("-").isdigit() and int(k) != 0]
+    if not pts:
+        return {}
+    kx, ky = (key_box[0] + key_box[2]) / 2, (key_box[1] + key_box[3]) / 2
+    kw, kh = key_box[2] - key_box[0], key_box[3] - key_box[1]
+    den = sum(t * t for t, _ in pts)
+
+    def slope(value, base):
+        return sum(t * (value(b) - base) for t, b in pts) / den
+
+    sx, sy = slope(lambda b: (b[0] + b[2]) / 2, kx), slope(lambda b: (b[1] + b[3]) / 2, ky)
+    sw, sh = slope(lambda b: b[2] - b[0], kw), slope(lambda b: b[3] - b[1], kh)
+    seen = dict(pts)
+    out = {}
+    for t in offsets:
+        if t == 0:
+            continue
+        w, h = kw + sw * t, kh + sh * t
+        if (b := seen.get(t)) is not None:
+            w0, h0 = b[2] - b[0], b[3] - b[1]
+            w = min(max(w, (1 - clamp) * w0), (1 + clamp) * w0)
+            h = min(max(h, (1 - clamp) * h0), (1 + clamp) * h0)
+            cx, cy = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
+        else:
+            cx, cy = kx + sx * t, ky + sy * t
+        out[str(t)] = [round(cx - w / 2, 1), round(cy - h / 2, 1), round(cx + w / 2, 1), round(cy + h / 2, 1)]
+    return out
+
+
 def _play_box(o, bbox: list[float]) -> dict:
     return {
         "id": o.object_id, "bbox": bbox, "label": o.review.final_label or o.label, "source": o.source,
@@ -335,8 +372,8 @@ def playback(store: WorkspaceStore, video_id: str) -> list[dict] | None:
     """Chuỗi ảnh để phát video mượt trên UI: keyframe + các sweep quanh nó (mặc định t-2 … t+2 ở 10 fps, phủ kín khoảng
     giữa hai keyframe 2 fps), sắp theo thời gian, kèm box cần vẽ ở từng ảnh. Một lần gọi thay cho việc mở từng frame.
 
-    Box ở keyframe là nhãn cuối; ở sweep: box người đã sửa ở sweep đó nếu có, không thì track của detector ở sweep,
-    thiếu track thì giữ box keyframe. Ảnh lấy qua GET /frames/{frame_id}/image?offset=…"""
+    Box ở keyframe là nhãn cuối; ở sweep: box người đã sửa ở sweep đó nếu có, không thì track của detector ở sweep (tâm và kích
+    thước làm mượt, smooth_track_boxes), thiếu hết track thì giữ box keyframe. Ảnh lấy qua GET /frames/{frame_id}/image?offset=…"""
     frames = sorted((f for f in store.list_frames() if f.scene == video_id), key=lambda f: f.index)
     if not frames:
         return None
@@ -344,9 +381,12 @@ def playback(store: WorkspaceStore, video_id: str) -> list[dict] | None:
     items: dict[str, dict] = {}
     for f in frames:
         objs = [o for o in f.objects if o.review.status != "deleted"]
+        key_box = {o.object_id: o.review.final_bbox or o.bbox for o in objs}
+        offsets = [s.offset for s in f.sweeps]
+        smooth = {o.object_id: smooth_track_boxes(key_box[o.object_id], o.track, offsets) for o in objs}
         items[f.image.sd_token] = {
             "t": (f.image.timestamp - t0) / 1e6, "frame_id": f.frame_id, "offset": 0,
-            "boxes": [_play_box(o, o.review.final_bbox or o.bbox) for o in objs],
+            "boxes": [_play_box(o, key_box[o.object_id]) for o in objs],
         }  # fmt: skip
         for s in f.sweeps:
             if s.sd_token in items and items[s.sd_token]["offset"] == 0:
@@ -358,7 +398,7 @@ def playback(store: WorkspaceStore, video_id: str) -> list[dict] | None:
                     for b in s.boxes if b.review.status != "deleted"
                 ]  # fmt: skip
             else:
-                boxes = [_play_box(o, o.track.get(str(s.offset)) or o.review.final_bbox or o.bbox) for o in objs]
+                boxes = [_play_box(o, smooth[o.object_id].get(str(s.offset)) or key_box[o.object_id]) for o in objs]
             items[s.sd_token] = {"t": (s.timestamp - t0) / 1e6, "frame_id": f.frame_id, "offset": s.offset, "boxes": boxes}
     return sorted(items.values(), key=lambda x: x["t"])
 

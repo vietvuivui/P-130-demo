@@ -28,6 +28,10 @@ detection:
     min_score: 0.05
     match_iou: 0.4
     camera_only_scale: 0.5
+    # Box trùng cả hai nguồn: toạ độ = box_blend * box detector + (1 - box_blend) * box 3D chiếu (0 = box 3D, 1 = box
+    # detector). Box 3D chiếu là hộp bao 8 đỉnh, rộng 1.31 lần box detector. Test CAM_FRONT 957 keyframe, 0 / 0.5 / 1:
+    # mAP50 0.677 / 0.687 / 0.663, F1 @IoU 0.75 0.367 / 0.394 / 0.278. eval/results/lidar2d.md.
+    box_blend: 0.5
     # Box chỉ camera thấy mà trong box có <= no_lidar_max_points điểm LiDAR dùng hệ số này thay cho camera_only_scale.
     # 04/10/2026, detector fine-tune toàn mạng: 95% box loại này không khớp nhãn gốc, nên hạ mạnh hơn (x0.3 thay vì
     # x0.5); chọn trên dev. Test 6 camera (5742 ảnh): precision 0.628 -> 0.672, recall 0.818 -> 0.812, box phải sửa
@@ -35,6 +39,12 @@ detection:
     # null = hạ như box chỉ camera khác
     no_lidar_scale: 0.3
     no_lidar_max_points: 0
+    # Box chỉ camera thấy mà điểm gốc của detector ảnh >= ngưỡng này thì vẫn giữ dù điểm đã hạ < min_score; điểm đã hạ
+    # giữ nguyên nên box vào nhóm rủi ro cao. Lý do: xe detector thấy rõ (0.91) nhưng không có điểm LiDAR bị hạ còn 0.27
+    # và biến mất ở một keyframe rồi hiện lại ở keyframe sau (scene-0097_034: 6 box, sau khi sửa 10 box). Nhãn gốc
+    # nuScenes không gán vật không có điểm LiDAR nên tính theo nhãn gốc thì precision giảm (CAM_FRONT test 957 keyframe:
+    # P 0.707 -> 0.673, R 0.800 -> 0.813, thêm 564 box). null = tắt. eval/results/lidar2d.md.
+    keep_det_score: 0.8
     # Hai box 3D của xe 4 bánh trở lên chồng nhau trên mặt đường >= 15% (so với box nhỏ hơn) là một xe: giữ box điểm cao
     # hơn, lớp của box bị bỏ thành lớp phụ. Sửa lỗi một xe tải dài có hai nhãn (scene-0035_023). null = tắt
     dedup_bev_overlap: 0.15

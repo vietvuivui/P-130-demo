@@ -199,3 +199,27 @@ def test_sparse_video_skips_temporal_check(tmp_path, demo_config, demo_mp4):
     frames = [f for f in store.list_frames() if f.scene == video.video_id]
     assert len(frames) == 6 and all(not f.sweeps for f in frames)
     assert not any(i.code == "FLICKER" for f in frames for o in f.objects for i in o.qa.issues)
+
+
+def test_smooth_track_boxes_follows_keyframe_and_clamps():
+    from src.services.video import smooth_track_boxes
+
+    key = [100.0, 100.0, 200.0, 200.0]
+    # vật đi sang phải, detector cho cỡ box lệch vài % mỗi ảnh
+    track = {"-2": [78, 98, 182, 202], "-1": [91.5, 100, 188.5, 200], "1": [118.5, 98.5, 221.5, 201.5],
+             "2": [132, 102, 228, 198], "prev": [0, 0, 1, 1]}  # fmt: skip
+    out = smooth_track_boxes(key, track, [-2, -1, 1, 2])
+    assert set(out) == {"-2", "-1", "1", "2"}
+    sizes = [out[k][2] - out[k][0] for k in ("-2", "-1")] + [100.0] + [out[k][2] - out[k][0] for k in ("1", "2")]
+    for a, b, c in zip(sizes, sizes[1:], sizes[2:], strict=False):
+        assert abs(c - 2 * b + a) < 0.3  # chiều rộng nằm trên một đường thẳng qua box keyframe
+    assert abs((out["1"][0] + out["1"][2]) / 2 - 170) < 1e-6  # tâm vẫn theo detection ở sweep đó
+
+    # sweep thiếu detection: tâm và cỡ nội suy trên đường thẳng
+    gap = smooth_track_boxes(key, {"-1": [95, 95, 175, 175], "1": [105, 105, 225, 225]}, [-1, 1, 2])
+    assert abs(gap["2"][2] - gap["2"][0] - 140) < 0.2 and abs((gap["2"][0] + gap["2"][2]) / 2 - 180) < 0.2
+
+    # detection khác hẳn xu hướng: cỡ không lệch quá ±20% so với detection đó
+    grow = smooth_track_boxes([100, 100, 200, 200], {"1": [150, 150, 350, 350]}, [-1, 1])
+    assert 160 <= grow["1"][2] - grow["1"][0] <= 240
+    assert smooth_track_boxes(key, {"1": None}, [1]) == {}

@@ -15,7 +15,7 @@ from src.models.schemas import FrameRecord, ImageInfo, LabelObject, SweepInfo
 from src.services.detectors import DetectorEnsemble
 from src.services.flow import FlowProvider
 from src.services.lidar2d import SOURCE as LIDAR3D
-from src.services.lidar2d import merge_detections, project_boxes
+from src.services.lidar2d import merge_detections, project_boxes, strong_camera_only
 from src.services.nuscenes_data import CameraFrame, NuScenesMini
 from src.services.review import now_iso
 from src.services.store import WORKSPACE_PREFIX, WorkspaceStore
@@ -185,9 +185,17 @@ def label_keyframe(
     if boxes3d is not None:  # box 3D chiếu xuống ảnh (lidar2d.py): [{bbox, label, score}]
         l3 = det_cfg.lidar3d
         key_all = merge_detections(key_all, boxes3d, l3.match_iou, l3.camera_only_scale, uv=uv,
-                                   no_lidar_scale=l3.no_lidar_scale, no_lidar_max_points=l3.no_lidar_max_points)  # fmt: skip
-    key_dets = sorted((d for d in key_all if det_cfg.keep(d.label, d.score)), key=lambda d: -d.score)
-    weak_key = [d for d in key_all if not det_cfg.keep(d.label, d.score) and weak_lo is not None and d.score >= weak_lo]
+                                   no_lidar_scale=l3.no_lidar_scale, no_lidar_max_points=l3.no_lidar_max_points,
+                                   box_blend=l3.box_blend)  # fmt: skip
+    keep_det = det_cfg.lidar3d.keep_det_score if boxes3d is not None else None
+
+    def keep_key(d) -> bool:
+        # Box chỉ camera thấy bị hạ điểm (camera_only_scale / no_lidar_scale) xuống dưới ngưỡng giữ: vẫn giữ nếu điểm gốc
+        # của detector ảnh >= keep_det_score. Điểm đã hạ giữ nguyên nên box vào nhóm rủi ro cao, người duyệt quyết định.
+        return det_cfg.keep(d.label, d.score) or strong_camera_only(d, keep_det)
+
+    key_dets = sorted((d for d in key_all if keep_key(d)), key=lambda d: -d.score)
+    weak_key = [d for d in key_all if not keep_key(d) and weak_lo is not None and d.score >= weak_lo]
     carried = []
     if tcfg.carry_prev and prev is not None:
         from src.services.carry import carry_from_prev

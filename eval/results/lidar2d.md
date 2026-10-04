@@ -143,3 +143,54 @@ Từng camera trên test (chỉ detector ảnh → mặc định mới):
   15184 (−12%), precision 0.628 → 0.672, recall 0.818 → 0.812, mAP50 gần như không đổi.
 - CAM_BACK_RIGHT yếu nhất sau khi gộp (P 0.578, F1 0.674); chưa tìm nguyên nhân.
 - Số của CAM_FRONT khớp phần mô phỏng ở mục trên (mAP50 0.700 so với 0.698, phải sửa 3504).
+
+## Toạ độ của box trùng cả hai nguồn: `box_blend` (2026-10-04)
+
+Box 3D chiếu xuống ảnh là hộp bao 8 đỉnh nên rộng hơn vật: box gộp có cả hai nguồn rộng 1.31 lần box của detector ảnh.
+`detection.lidar3d.box_blend`: toạ độ = `box_blend` x box detector + (1 − `box_blend`) x box 3D chiếu. Chấm trên
+CAM_FRONT test 957 keyframe (nhãn gốc nuScenes là hình chiếu box 3D nên ưu ái box rộng), ngưỡng giữ 0.30:
+
+| Toạ độ | mAP50 | P | R | F1 | F1 @IoU 0.75 | Diện tích / box detector |
+|---|---|---|---|---|---|---|
+| Box 3D chiếu (0, trước đây) | 0.677 | 0.490 | 0.861 | 0.625 | 0.367 | 1.31 |
+| Box detector (1) | 0.663 | 0.483 | 0.851 | 0.616 | 0.278 | 1.00 |
+| **Trung bình (0.5, mặc định)** | **0.687** | 0.493 | 0.866 | **0.628** | **0.394** | 1.15 |
+| Giao hai box | 0.657 | 0.480 | 0.846 | 0.612 | 0.242 | 0.98 |
+
+Dev cùng chiều (mAP50 0.760 > 0.752 > 0.741). Mới đo trên CAM_FRONT; chạy lại cả 6 camera:
+`python tools2d/eval_lidar2d.py --dataroot ..\\v1.0-trainval --cameras all --all-variants`.
+
+## Giữ box detector thấy rõ dù không có điểm LiDAR: `keep_det_score` (2026-10-05)
+
+Lỗi trên giao diện: scene-0097 keyframe 34 chỉ còn 6 box trong khi các sweep quanh nó có 14 detection; xe đỗ bên trái
+detector cho 0.91 nhưng không có điểm LiDAR nào trong box nên điểm bị hạ còn 0.27 (x0.3), dưới ngưỡng giữ 0.30, và bị
+bỏ. Keyframe trước và sau có box 3D trùng xe đó nên nhãn hiện lại: box nhấp nháy giữa các keyframe.
+
+`detection.lidar3d.keep_det_score: 0.8`: box chỉ camera thấy mà điểm gốc của detector >= 0.8 thì vẫn giữ. Điểm đã hạ
+giữ nguyên, nên box vào nhóm rủi ro cao (LOW_CONFIDENCE + NO_LIDAR_SUPPORT) chứ không vào nhóm duyệt theo lô.
+Keyframe 34 của scene-0097: 6 → 10 box (thêm 4 xe 0.91 / 0.89 / 0.88 / 0.88).
+
+Chấm theo nhãn gốc nuScenes trên bản dump CAM_FRONT (`data/lidar2d_dump.json`, ghép IoU 0.5 cùng lớp, ngưỡng giữ 0.30;
+bộ ghép đơn giản hơn `eval2d.evaluate` nên số gốc lệch nhẹ so với bảng trên):
+
+| Luật giữ box | Tập | Số box | P | R | F1 | Box thừa | Vật sót | Phải sửa |
+|---|---|---|---|---|---|---|---|---|
+| Điểm đã hạ >= 0.30 (trước đây) | dev | 1423 | 0.668 | 0.821 | 0.737 | 438 | 193 | 631 |
+| + điểm gốc >= 0.90 | dev | 1424 | 0.668 | 0.821 | 0.736 | 439 | 193 | 632 |
+| **+ điểm gốc >= 0.80 (mặc định mới)** | dev | 1536 | 0.633 | 0.840 | 0.722 | 523 | 172 | 695 |
+| + điểm gốc >= 0.70 | dev | 1636 | 0.597 | 0.843 | 0.699 | 613 | 169 | 782 |
+| + điểm gốc >= 0.60 | dev | 1750 | 0.557 | 0.844 | 0.671 | 723 | 168 | 891 |
+| Điểm đã hạ >= 0.30 (trước đây) | test | 8753 | 0.707 | 0.800 | 0.751 | 2235 | 1346 | 3581 |
+| + điểm gốc >= 0.90 | test | 8755 | 0.707 | 0.800 | 0.751 | 2236 | 1345 | 3581 |
+| **+ điểm gốc >= 0.80 (mặc định mới)** | test | 9317 | 0.673 | 0.813 | 0.736 | 2664 | 1261 | 3925 |
+| + điểm gốc >= 0.70 | test | 9764 | 0.642 | 0.816 | 0.719 | 3059 | 1238 | 4297 |
+| + điểm gốc >= 0.60 | test | 10263 | 0.610 | 0.817 | 0.698 | 3521 | 1231 | 4752 |
+
+- Theo nhãn gốc nuScenes thì luật mới **kém hơn**: test thêm 564 box, trong đó 85 trùng nhãn gốc; precision 0.707 →
+  0.673, recall 0.800 → 0.813, phải sửa 3581 → 3925 (+10%).
+- Con số này không đo đúng thứ người dùng thấy: nuScenes chỉ gán nhãn cho vật có ít nhất một điểm LiDAR / radar, nên
+  xe thấy rõ trên ảnh mà không có điểm LiDAR không có nhãn gốc và bị tính là box thừa. Chưa có bộ nhãn 2D vẽ theo
+  ảnh để chấm công bằng; tỉ lệ box loại này là vật thật chưa được đo.
+- 0.90 gần như không giữ thêm gì (detector hiếm khi cho điểm trên 0.9); dưới 0.80 số box thừa tăng nhanh hơn số vật
+  tìm lại. Chọn 0.80. Tắt: `keep_det_score: null`.
+- Chỉ đo CAM_FRONT. Luật không đụng tới box có box 3D, nên mAP của phần gộp 3D không đổi.

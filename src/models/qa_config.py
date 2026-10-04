@@ -75,11 +75,18 @@ class Lidar3DCfg(BaseModel):
     # (cọc tiêu, người) hai nguồn lệch vài px nên 0.5 để sót nhiều cặp trùng; 0.3 ghép nhầm sang cọc bên cạnh.
     match_iou: float = 0.4
     camera_only_scale: float = 0.5  # hệ số điểm của box chỉ detector ảnh thấy
+    # Box trùng cả hai nguồn: toạ độ = box_blend * box detector + (1 - box_blend) * box 3D chiếu. Box 3D chiếu là hộp bao
+    # 8 đỉnh nên rộng hơn vật (1.31 lần box detector); 0.5 cho mAP50 và F1 @IoU 0.75 cao nhất trên CAM_FRONT test.
+    box_blend: float = 0.5
     # Box chỉ camera thấy mà trong box không có điểm LiDAR (vật ngoài tầm LiDAR / bị che) dùng hệ số riêng thay cho
     # camera_only_scale. None = hạ như box chỉ camera khác; 1.0 = giữ nguyên điểm detector. 0.3 từ 04/10/2026: với
     # detector fine-tune toàn mạng, 95% box loại này không khớp nhãn gốc (eval/results/lidar2d.md).
     no_lidar_scale: float | None = 0.3
     no_lidar_max_points: int = 0  # "không có điểm LiDAR" = số điểm trong box <= ngần này
+    # Box chỉ camera thấy mà điểm gốc của detector ảnh >= ngưỡng này thì không bị bỏ dù điểm đã hạ < detection.min_score
+    # (điểm đã hạ giữ nguyên -> nhóm rủi ro cao). Tránh việc một xe detector thấy rõ (0.9) biến mất ở keyframe mà LiDAR
+    # không có điểm nào trên nó rồi hiện lại ở keyframe sau. None = tắt (bỏ như trước 05/10/2026).
+    keep_det_score: float | None = 0.8
     # Hai box 3D của xe (car / truck / bus / trailer / construction_vehicle) chồng nhau trên mặt đường từ tỉ lệ này
     # (phần chồng / box nhỏ hơn) là một xe: giữ box điểm cao hơn. Ensemble đôi khi cho hai box lệch vài mét dọc thân xe
     # tải dài, hoặc car + truck ở cùng chỗ -> một xe có hai nhãn 2D. None = tắt.

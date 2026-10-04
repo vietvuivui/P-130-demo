@@ -146,12 +146,21 @@ def merge_boxes(boxes3d: Sequence[dict], boxes2d: Sequence[dict], match_iou: flo
     return out
 
 
+def strong_camera_only(d, keep_det_score: float | None) -> bool:
+    """Box chỉ detector ảnh thấy (không có box 3D) mà điểm gốc của detector >= keep_det_score: giữ lại dù điểm đã hạ
+    (camera_only_scale / no_lidar_scale) rơi dưới ngưỡng giữ box. None = không giữ thêm."""
+    return keep_det_score is not None and d.box3d is None and (d.det_score or 0.0) >= keep_det_score
+
+
 def merge_detections(
     dets: list, boxes3d: Sequence[dict], match_iou: float = 0.4, camera_only_scale: float = 0.5,
     uv: np.ndarray | None = None, no_lidar_scale: float | None = None, no_lidar_max_points: int = 2,
-    camera_label_wins: bool = False,
+    camera_label_wins: bool = False, box_blend: float = 0.0,
 ) -> list:  # fmt: skip
     """Gộp Detection của detector 2D với box 3D đã chiếu. Box lấy từ 3D bỏ mask (mask của detector không còn khớp).
+
+    box_blend: box trùng cả hai nguồn lấy toạ độ box_blend * detector + (1 - box_blend) * box 3D chiếu (hộp bao 8 đỉnh,
+    rộng hơn vật). 0 = box 3D, 1 = box detector. Lớp / điểm / liên kết box3d không phụ thuộc tham số này.
 
     uv + no_lidar_scale: box chỉ camera thấy mà có <= no_lidar_max_points điểm LiDAR bên trong (vật ngoài tầm LiDAR /
     bị che) dùng hệ số no_lidar_scale thay cho camera_only_scale — LiDAR không có cơ hội thấy vật đó nên không nên phạt."""
@@ -180,6 +189,8 @@ def merge_detections(
                 label = d.label if camera_label_wins or d.score >= p["score"] else p["label"]
                 alts[p["label"] if label == d.label else d.label] = round(min(p["score"], d.score), 4)
             alts.pop(label, None)
-            out.append(Detection(bbox=p["bbox"], label=label, score=score, alternatives=alts,
+            w, u = box_blend, 1 - box_blend
+            bbox = [round(float(w * a + u * b), 1) for a, b in zip(d.bbox, p["bbox"], strict=True)]
+            out.append(Detection(bbox=bbox, label=label, score=score, alternatives=alts,
                                  models={**d.models, SOURCE: round(p["score"], 4)}, box3d=p.get("box3d")))  # fmt: skip
     return sorted(out, key=lambda d: -d.score)

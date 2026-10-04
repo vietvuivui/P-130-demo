@@ -4,7 +4,7 @@ import numpy as np
 
 from src.models.qa_config import AutoLabelConfig
 from src.models.schemas import Detection
-from src.services.lidar2d import SOURCE, merge_boxes, merge_detections, project_boxes
+from src.services.lidar2d import SOURCE, merge_boxes, merge_detections, project_boxes, strong_camera_only
 
 K = np.array([[1000.0, 0, 800], [0, 1000.0, 450], [0, 0, 1]])
 CAM = np.eye(4)  # hệ toàn cục trùng hệ camera: z hướng ra trước
@@ -97,3 +97,35 @@ def test_merge_detections_carries_box3d():
     assert d.box3d is not None and d.box3d.yaw == 0.1 and d.box3d.center == [10, 0, 0]
     (d2,) = merge_detections([], b3, 0.5, 0.5)
     assert d2.box3d is not None
+
+
+def test_merge_detections_box_blend_mixes_coordinates():
+    """Box trùng cả hai nguồn: box_blend trộn toạ độ, lớp / điểm / box3d không đổi (0 = box 3D như cũ)."""
+    dets = [Detection(bbox=[110, 110, 190, 190], label="car", score=0.9, models={"yoloe": 0.9})]
+    box3d_ = {"center": [10, 0, 0], "size": [1, 2, 3], "yaw": 0.1}
+    b3 = [{"bbox": [100, 100, 200, 200], "label": "car", "score": 0.6, "box3d": box3d_}]
+    (keep,) = merge_detections(dets, b3, 0.5, 0.5)
+    assert keep.bbox == [100, 100, 200, 200]
+    (half,) = merge_detections(dets, b3, 0.5, 0.5, box_blend=0.5)
+    assert half.bbox == [105, 105, 195, 195]
+    assert half.score == keep.score and half.models == keep.models and half.box3d.size == keep.box3d.size
+    (cam,) = merge_detections(dets, b3, 0.5, 0.5, box_blend=1.0)
+    assert cam.bbox == [110, 110, 190, 190]
+    # box chỉ một nguồn thấy không đổi toạ độ
+    ped = Detection(bbox=[500, 100, 600, 200], label="pedestrian", score=0.4)
+    alone = merge_detections([ped], b3, 0.5, 0.5, box_blend=0.5)
+    assert sorted(d.bbox for d in alone) == [[100, 100, 200, 200], [500, 100, 600, 200]]
+
+
+def test_strong_camera_only_keeps_box_the_detector_is_sure_about():
+    """Xe detector thấy rõ (0.9) không có điểm LiDAR: điểm hạ còn 0.27 < 0.30 nhưng vẫn được giữ; box yếu thì không."""
+    uv = np.array([[900.0, 500.0]])  # không điểm nào rơi vào hai box bên dưới
+    strong = Detection(bbox=[100, 100, 200, 200], label="car", score=0.9)
+    weak = Detection(bbox=[300, 100, 400, 200], label="car", score=0.7)
+    box3d_ = {"center": [10, 0, 0], "size": [1, 2, 3], "yaw": 0.1}
+    b3 = [{"bbox": [600, 100, 700, 200], "label": "car", "score": 0.1, "box3d": box3d_}]
+    out = {d.bbox[0]: d for d in merge_detections([strong, weak], b3, 0.4, 0.5, uv=uv, no_lidar_scale=0.3)}
+    assert out[100].score == 0.27 and out[100].det_score == 0.9
+    assert strong_camera_only(out[100], 0.8) and not strong_camera_only(out[300], 0.8)
+    assert not strong_camera_only(out[600], 0.8)  # box chỉ LiDAR thấy: không thuộc luật này
+    assert not strong_camera_only(out[100], None)

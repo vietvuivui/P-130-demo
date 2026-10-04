@@ -48,6 +48,9 @@ EXTRA_VARIANTS = {
     "fuse khử khác lớp 0.50": dict(no_lidar_scale=None, dedup=0.50, cross_only=True),
     # Cặp box khác lớp ở cùng chỗ: lấy lớp của detector ảnh khi nó có box ở đó (thay vì lớp có điểm cao hơn)
     "fuse 0.15, lớp theo camera": dict(no_lidar_scale=None, dedup=0.15, camera_label=True),
+    # Toạ độ của box trùng cả hai nguồn: 0 = box 3D chiếu (trước 04/10), 1 = box detector; mặc định lấy theo config (0.5)
+    "fuse, toạ độ box 3D": dict(no_lidar_scale="cfg", box_blend=0.0),
+    "fuse, toạ độ detector": dict(no_lidar_scale="cfg", box_blend=1.0),
 }
 
 
@@ -158,6 +161,7 @@ def main() -> None:
             nls = l3.no_lidar_scale if opt["no_lidar_scale"] == "cfg" else opt["no_lidar_scale"]
             merged.append(merge_detections(dets, boxes3d, l3.match_iou, l3.camera_only_scale, uv=uv, no_lidar_scale=nls,
                                            camera_label_wins=opt.get("camera_label", False),
+                                           box_blend=opt.get("box_blend", l3.box_blend),
                                            no_lidar_max_points=l3.no_lidar_max_points))  # fmt: skip
         groups = [(split, None) for split in sorted(count)]
         if len(cameras) > 1:  # thêm từng camera của tập test
