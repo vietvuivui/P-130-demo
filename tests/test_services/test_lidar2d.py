@@ -31,6 +31,21 @@ def test_project_boxes_clips_to_image():
     assert b["bbox"][0] == 0.0 and 0 < b["bbox"][2] < 400
 
 
+def test_project_boxes_car_beside_camera_keeps_visible_part_only():
+    """Xe chạy song song sát bên trái: đỉnh gần camera chiếu ra rất xa. Hộp bao phải là phần xe thấy được trong ảnh,
+    không phải cả chiều cao ảnh (lỗi cũ: [0, 0, x, 900])."""
+    car = box3d(0, 0)
+    for z in (1.0, 0.8):  # mọi đỉnh ở trước camera / có đỉnh nằm sau mặt phẳng camera
+        car["translation"] = [-3.0, 0.6, z]  # nóc xe cao hơn camera 0.4 m, gầm thấp hơn 1.6 m, sườn xe cách trục 1 m
+        (b,) = project_boxes([car], CAM, K, 1600, 900)
+        x1, y1, x2, y2 = b["bbox"]
+        assert x1 == 0.0 and y2 == 900.0
+        assert 125 < y1 < 135  # mép nóc ở chỗ sườn xe chạm mép trái ảnh (z = 1.25): 450 - 400 / 1.25 = 130
+        assert 150 < x2 < 235
+    car["translation"] = [-3.0, 0.6, 0.0]  # xe nằm ngang camera: không phần nào lọt vào ảnh
+    assert project_boxes([car], CAM, K, 1600, 900) == []
+
+
 def test_merge_boxes_three_cases():
     b3 = [{"bbox": [100, 100, 200, 200], "label": "car", "score": 0.6},
           {"bbox": [500, 100, 600, 200], "label": "pedestrian", "score": 0.4}]  # fmt: skip

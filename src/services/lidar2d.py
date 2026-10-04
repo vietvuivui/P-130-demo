@@ -40,6 +40,44 @@ def ground_box(b: dict, ego_from_global: np.ndarray) -> dict:
     }
 
 
+# 6 mặt của box theo thứ tự đỉnh của nuscenes_data.box_corners (mỗi mặt là tứ giác đi vòng)
+_FACES = ((0, 1, 2, 3), (4, 5, 6, 7), (0, 3, 7, 4), (1, 2, 6, 5), (0, 1, 5, 4), (3, 2, 6, 7))
+
+
+def _visible_hull(cam: np.ndarray, intrinsic: np.ndarray, width: int, height: int, near: float = 0.1) -> np.ndarray | None:
+    """Phần nhìn thấy của box (8 đỉnh trong hệ camera) -> các điểm ảnh (N, 2) của đa giác đã cắt, None nếu không thấy.
+
+    Cắt từng mặt của box (Sutherland–Hodgman) theo mặt phẳng gần và 4 mặt bên của khối nhìn, rồi chiếu các đỉnh còn lại."""
+    k = np.asarray(intrinsic, float)
+    fx, fy, cx, cy = k[0, 0], k[1, 1], k[0, 2], k[1, 2]
+    planes = (  # (pháp tuyến, hằng số): điểm p nằm trong khi p . n >= c
+        (np.array([0.0, 0.0, 1.0]), near),
+        (np.array([fx, 0.0, cx]), 0.0),  # u >= 0
+        (np.array([-fx, 0.0, width - cx]), 0.0),  # u <= width
+        (np.array([0.0, fy, cy]), 0.0),  # v >= 0
+        (np.array([0.0, -fy, height - cy]), 0.0),  # v <= height
+    )
+    pts = []
+    for face in _FACES:
+        poly = [cam[i] for i in face]
+        for n, c in planes:
+            if not poly:
+                break
+            d = [float(p @ n) - c for p in poly]
+            nxt = []
+            for i, p in enumerate(poly):
+                q, dp, dq = poly[(i + 1) % len(poly)], d[i], d[(i + 1) % len(poly)]
+                if dp >= 0:
+                    nxt.append(p)
+                if (dp >= 0) != (dq >= 0):
+                    nxt.append(p + (q - p) * (dp / (dp - dq)))
+            poly = nxt
+        pts += poly
+    if not pts:
+        return None
+    return project_points(np.asarray(pts), k)
+
+
 def project_boxes(preds: Sequence[dict], cam_from_global: np.ndarray, intrinsic: np.ndarray, width: int, height: int,
                   min_score: float = 0.05, min_size_px: float = 2.0,
                   ego_from_global: np.ndarray | None = None, dedup_overlap: float | None = None) -> list[dict]:  # fmt: skip
@@ -57,6 +95,14 @@ def project_boxes(preds: Sequence[dict], cam_from_global: np.ndarray, intrinsic:
         if not front.any():
             continue
         uv = project_points(cam[front], intrinsic)
+        inside = (uv[:, 0] >= 0) & (uv[:, 0] <= width) & (uv[:, 1] >= 0) & (uv[:, 1] <= height)
+        if not (front.all() and inside.all()):
+            # Box thò ra ngoài ảnh hoặc cắt qua mặt phẳng camera (xe chạy song song sát bên): đỉnh ở sát camera chiếu ra
+            # rất xa, cắt hộp bao của 8 đỉnh theo khung ảnh sẽ ra box phủ kín chiều cao ảnh. Cắt box theo khối nhìn của
+            # camera trước, rồi mới lấy hộp bao của phần thấy được.
+            uv = _visible_hull(cam, intrinsic, width, height)
+            if uv is None:
+                continue
         bbox = clip_box([uv[:, 0].min(), uv[:, 1].min(), uv[:, 0].max(), uv[:, 1].max()], width, height)
         if bbox[2] - bbox[0] < min_size_px or bbox[3] - bbox[1] < min_size_px:
             continue

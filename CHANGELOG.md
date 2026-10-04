@@ -32,7 +32,7 @@ Quy tắc:
 
 ## 2026-10-05 · Kiên · nhánh `kien`
 
-**Làm gì:** Bốn việc quanh chế độ Video của dự án có LiDAR.
+**Làm gì:** Năm việc quanh nhãn 2D và chế độ Video của dự án có LiDAR.
 
 1. **Box biến mất ở một số keyframe** (scene-0097 keyframe 34: 6 box trong khi sweep quanh nó có 14 detection). Nguyên
    nhân: box chỉ camera thấy mà không có điểm LiDAR bị nhân 0.3, xe detector cho 0.91 còn 0.27 < ngưỡng giữ 0.30 nên
@@ -49,6 +49,13 @@ Quy tắc:
    `video.playback(timeline=)` chèn các ảnh đó, box kéo dài từ keyframe gần hơn theo đường thẳng của
    `smooth_track_boxes`; ảnh lấy qua API mới `GET /videos/{id}/image?sd=<sd_token>`. Video tải lên (10 fps) không đổi.
 
+5. **Box 3D chiếu phủ kín chiều cao ảnh** khi xe chạy song song sát bên (scene-0097 keyframe 17, 21: `car`
+   [0, 0, 362, 900]). `lidar2d.project_boxes` lấy hộp bao 8 đỉnh rồi mới cắt theo khung ảnh, mà đỉnh sát camera chiếu ra
+   rất xa. Giờ box thò ra ngoài ảnh được cắt theo khối nhìn của camera trước (`_visible_hull`) rồi mới lấy hộp bao:
+   [0, 0, 362, 900] → [0, 388, 362, 900], ghép được với box của detector thành một nhãn [0, 450, 329, 900]. Scene-0097:
+   14 / 40 box chỉ LiDAR thấy đổi toạ độ; tổng số box sau cả việc 1, 3, 5: 448 → 488. Chưa chấm lại mAP; nhãn gốc
+   `gt_boxes_2d` vẫn cắt theo kiểu cũ nên box bị cắt ở mép ảnh sẽ lệch so với nhãn gốc.
+
 Việc 2 và 3 đã làm hôm 04/10 nhưng chưa commit và bị `git checkout -- .` xoá; bản này viết lại đúng theo bản cũ.
 
 **File chính:** `src/services/video.py`, `src/api/routes.py`, `src/web/app.js`, `src/services/lidar2d.py` (`box_blend`, `strong_camera_only`),
@@ -60,7 +67,7 @@ trường `sd` (khi đó `offset` nằm ngoài các sweep của frame). Config t
 đổi (toạ độ box gộp, thêm box rủi ro cao): dự án đã xử lý phải bấm **Áp dụng lại** ở tab Cài đặt mới có nhãn mới. Số
 mAP / P / R của phần gộp 3D trong report đo trước thay đổi này.
 
-**Cách kiểm tra:** `ruff check src tests` sạch, `pytest` 241 passed. UI: mở dự án nuScenes → Cài đặt → Áp dụng lại →
+**Cách kiểm tra:** `ruff check src tests` sạch, `pytest` 242 passed. UI: mở dự án nuScenes → Cài đặt → Áp dụng lại →
 Video → keyframe 35 của scene-0097 phải có thêm xe đỗ bên trái (nét rủi ro cao).
 
 **Còn dở / việc tiếp:** `box_blend` và `keep_det_score` mới đo trên CAM_FRONT; chưa có bộ nhãn 2D vẽ theo ảnh để biết
