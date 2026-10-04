@@ -32,20 +32,75 @@ def _load(store: WorkspaceStore, model: str, frame_id: str) -> Frame3DRecord:
     return frame
 
 
+def _raw_models(store: WorkspaceStore) -> dict[str, Path]:
+    """Mô hình LiDAR đơn lẻ đã có dự đoán trong work3d của dự án (bước Dự đoán 3D chạy từng mô hình rồi mới gộp)."""
+    d = Path(store.root).parent / "work3d" / "preds"
+    if not d.is_dir():
+        return {}
+    files = {p.name: p / "pred_instances_3d" / "results_nusc.json" for p in sorted(d.iterdir()) if p.is_dir()}
+    return {m: f for m, f in files.items() if f.exists()}
+
+
 @router3d.get("/models")
 def models(store: WorkspaceStore = Depends(get_store)) -> list[dict]:
-    """Mô hình 3D đã có frame trong workspace, kèm số liệu so sánh (nếu đã chạy tools3d/run3d.py eval)."""
+    """Mô hình 3D chọn được trên UI, kèm số liệu so sánh (nếu đã chạy tools3d/run3d.py eval).
+
+    built = đã có frame 3D trong workspace. Mô hình đơn lẻ của dự án mới chỉ có dự đoán (built = false) được tạo frame
+    khi người dùng chọn lần đầu: POST /3d/models/{model}/build."""
     summary = _det3d_summary().get("models", {})
     out = []
-    for m in store.models3d():
+    built = store.models3d()
+    for m in built:
         frames = store.list_frames3d(m)
         s = summary.get(m, {})
         out.append({
             "model": m, "label": s.get("label", m), "sensor": s.get("sensor"), "frames": len(frames),
             "approved": sum(f.status == "approved" for f in frames), "mAP": s.get("mAP"), "NDS": s.get("NDS"),
+            "built": True,
         })  # fmt: skip
-    # mô hình tốt nhất (NDS cao nhất) đứng đầu: UI mở nó mặc định
-    return sorted(out, key=lambda r: (-(r["NDS"] or 0), r["model"]))
+    for m in _raw_models(store):
+        if m not in built:
+            s = summary.get(m, {})
+            out.append({"model": m, "label": s.get("label", m), "sensor": s.get("sensor", "LiDAR"), "frames": 0,
+                        "approved": 0, "mAP": s.get("mAP"), "NDS": s.get("NDS"), "built": False})  # fmt: skip
+    # Bản gộp (ensemble) của dự án đứng đầu: UI mở nó mặc định; còn lại theo NDS giảm dần
+    return sorted(out, key=lambda r: (r["model"] != "ensemble", -(r["NDS"] or 0), r["model"]))
+
+
+def _build_key(store: WorkspaceStore) -> str:
+    return f"{Path(store.root).resolve()}:build3d"
+
+
+@router3d.get("/models/build")
+def build_status(store: WorkspaceStore = Depends(get_store)):
+    from src.services import jobs
+
+    return jobs.status(_build_key(store))
+
+
+@router3d.post("/models/{model}/build")
+def build_model(model: str, request: Request, store: WorkspaceStore = Depends(get_store),
+                config: AutoLabelConfig = Depends(get_config)):  # fmt: skip
+    """Tạo frame 3D (kiểm chứng bằng camera) cho một mô hình đơn lẻ từ dự đoán đã có của dự án. Chạy nền."""
+    from src.services import jobs
+
+    raw = _raw_models(store)
+    if model not in raw:
+        raise _error(404, "MODEL_NOT_FOUND", f"Dự án không có dự đoán của mô hình {model}")
+    root, version = data_source(request)
+
+    def work(progress):
+        from src.services.label3d import auto_min_score, run_label3d
+        from src.services.nuscenes_data import NuScenesMini
+
+        progress(0.02, f"{model}: đọc dự đoán…")
+        preds = json.loads(raw[model].read_text(encoding="utf-8"))["results"]
+        min_score = auto_min_score(model, config.verify3d.min_score, DET3D_DIR)
+        n = run_label3d(store, NuScenesMini(root, version), config, model, preds, min_score=min_score,
+                        progress=lambda i, total: progress(i / max(total, 1), f"{model}: {i}/{total} keyframe"))  # fmt: skip
+        return {"model": model, "created": n, "frames": len(store.frame3d_ids(model)), "min_score": min_score}
+
+    return jobs.start(_build_key(store), work)
 
 
 @router3d.get("/frames", response_model=list[Frame3DSummary])

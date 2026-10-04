@@ -2643,6 +2643,8 @@ body.readonly .oc-btns, body.readonly #btn-approve-low, body.readonly #btn-appro
 
 /* ===== Chọn luồng lan truyền ===== */
 .prop-engine { height: 28px; padding: 2px 6px; font-size: 12px; border-radius: 6px; max-width: 140px; }
+.model-select { height: 28px; padding: 2px 6px; font-size: 12px; border-radius: 6px; max-width: 210px; }
+.model-pick { gap: 6px; }
 .prop-job { font-size: 12px; color: var(--accent); white-space: nowrap; font-variant-numeric: tabular-nums; }
 #btn-propagate.busy { opacity: .5; pointer-events: none; }
 

@@ -9,8 +9,8 @@
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="ui-flow.css?v=3d30">
-  <link rel="stylesheet" href="styles.css?v=3d30">
+  <link rel="stylesheet" href="ui-flow.css?v=3d31">
+  <link rel="stylesheet" href="styles.css?v=3d31">
 </head>
 
 <body class="workspace-page">
@@ -182,6 +182,8 @@
             <button id="btn-zoom-reset" class="btn btn-ghost btn-sm zoom-level" aria-label="Vừa khung">100%</button>
             <button id="btn-zoom-in" class="btn btn-ghost btn-sm" aria-label="Phóng to">+</button>
           </span>
+          <label class="toggle model-pick" title="Mô hình phát hiện 2D. Đổi ở đây = đổi trong Cài đặt, và tự áp dụng lại cho các frame chưa ai mở">Mô hình
+            <select id="model2d" class="model-select"></select></label>
           <button id="btn-click" class="btn btn-ghost" title="Bấm vào vật để tự tách (SAM 2.1) thay vì kéo vẽ box (M)">✨ Chọn vật <kbd>M</kbd></button>
           <button id="btn-add" class="btn btn-ghost" title="Vẽ box mới (B)">＋ Box <kbd>B</kbd></button>
         </div>
@@ -214,6 +216,7 @@
             <button id="btn-play" class="btn btn-ghost btn-sm" title="Phát (Space)">▶ Phát</button>
             <button id="btn-next" class="btn btn-ghost btn-sm" title="Frame sau (N)">▶|</button>
             <label class="toggle"><input type="checkbox" id="auto-prop" checked> Lan truyền khi approve</label>
+            <select id="prop-preset" class="model-select" title="Cách lan truyền nhãn. Đổi ở đây = đổi trong Cài đặt (Dự đoán chuyển động + Ghép với detection)"></select>
             <button id="btn-propagate" class="btn btn-ghost btn-sm" disabled>↦ Lan truyền <kbd>T</kbd></button>
             <span id="prop-job" class="prop-job hidden" role="status"></span>
           </span>
@@ -781,8 +784,8 @@
     }, 500);
   </script>
 
-  <script src="app.js?v=3d30"></script>
-  <script type="module" src="app3d.js?v=3d30"></script>
+  <script src="app.js?v=3d31"></script>
+  <script type="module" src="app3d.js?v=3d31"></script>
 
   <script>
     // ---------- Left Toolbar Interaction Controller ----------

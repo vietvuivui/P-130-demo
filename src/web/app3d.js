@@ -865,9 +865,10 @@ async function loadBevImage() {
 async function loadModels() {
   T.models = await api('/models');
   const sel = $('m3-model');
-  sel.innerHTML = T.models.map((m) => `<option value="${esc(m.model)}">${esc(m.label)}${m.NDS != null ? ` · NDS ${m.NDS.toFixed(3)} · mAP ${m.mAP.toFixed(3)}` : ''}</option>`).join('');
+  sel.innerHTML = T.models.map((m) => `<option value="${esc(m.model)}">${esc(m.label)}${m.NDS != null ? ` · NDS ${m.NDS.toFixed(3)} · mAP ${m.mAP.toFixed(3)}` : ''}${m.built === false ? ' · chưa tạo' : ''}</option>`).join('');
   const want = storage.get('model', '');
-  T.model = T.models.find((m) => m.model === want)?.model || T.models[0]?.model || null;
+  // Mặc định: mô hình đã chọn lần trước nếu đã có frame, không thì mô hình đầu danh sách (bản gộp của dự án)
+  T.model = T.models.find((m) => m.model === want && m.built !== false)?.model || T.models.find((m) => m.built !== false)?.model || null;
   if (T.model) sel.value = T.model;
   renderModelInfo();
   $('m3-empty').classList.toggle('hidden', !!T.models.length);
@@ -878,6 +879,29 @@ function renderModelInfo() {
   $('m3-model-info').innerHTML = m
     ? `${esc(m.sensor || '')}${m.mAP != null ? ` · mAP <b>${m.mAP.toFixed(3)}</b> · NDS <b>${m.NDS.toFixed(3)}</b> (scene val)` : ''}<br>${m.approved}/${m.frames} keyframe đã duyệt`
     : 'Chưa có mô hình nào';
+}
+
+// Mô hình đơn lẻ của dự án mới chỉ có dự đoán: tạo frame 3D (kiểm chứng bằng camera) khi chọn lần đầu, chạy nền
+async function ensureBuilt(model) {
+  const m = T.models.find((x) => x.model === model);
+  if (!m || m.built !== false) return true;
+  const sel = $('m3-model');
+  sel.disabled = true;
+  try {
+    let job = await api(`/models/${encodeURIComponent(model)}/build`, { method: 'POST', body: {} });
+    while (job.state === 'running') {
+      $('m3-model-info').textContent = `Đang tạo frame 3D: ${job.message || ''}`;
+      await new Promise((r) => setTimeout(r, 1500));
+      job = await api('/models/build');
+    }
+    if (job.state === 'error') throw new Error(job.message);
+    storage.set('model', model);
+    await loadModels();
+    return T.model === model;
+  } catch (err) {
+    toast('Không tạo được frame 3D: ' + err.message, true);
+    return false;
+  } finally { sel.disabled = false; }
 }
 
 async function loadQueue() {
@@ -1156,6 +1180,8 @@ async function export3d() {
 // ---------------------------------------------------------------- sự kiện
 function bind() {
   $('m3-model').addEventListener('change', async (e) => {
+    const prev = T.model;
+    if (!(await ensureBuilt(e.target.value))) { T.model = prev; e.target.value = prev || ''; renderModelInfo(); return; }
     T.model = e.target.value; storage.set('model', T.model); renderModelInfo();
     const keep = T.frame?.frame_id;
     await loadQueue();

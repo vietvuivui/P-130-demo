@@ -1102,6 +1102,7 @@ async function loadEngines() {
     sel.title = engineInfo().detail || '';
   }
   updateTopModelSwitch(validSaved);
+  loadMainModels();
   resumePropJob();
 }
 // Luồng lan truyền chỉ còn chọn ở tab Cài đặt (Dự đoán chuyển động + Ghép với detection): mọi lần bấm dùng cấu hình đó
@@ -2309,6 +2310,81 @@ document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () 
 
 // ---------- ⚙ Cài đặt ----------
 
+// Chọn mô hình ngay trên màn hình duyệt: hai ô chọn này ghi thẳng vào Cài đặt của dự án (một nguồn duy nhất), nên
+// tab Cài đặt và màn hình duyệt luôn khớp nhau.
+const PROP_PRESETS = [
+  { flow: 'always', association: 'byte', label: 'Optical flow + ByteTrack' },
+  { flow: 'always', association: 'botsort', label: 'Optical flow + BoT-SORT' },
+  { flow: 'flow+dam4sam', association: 'byte', label: 'Optical flow + DAM4SAM', gpu: true },
+  { flow: 'dam4sam', association: 'botsort', label: 'DAM4SAM + BoT-SORT', gpu: true },
+  { flow: 'dam4sam', association: 'byte', label: 'DAM4SAM + ByteTrack', gpu: true },
+  { flow: 'off', association: 'single', label: 'Vận tốc không đổi + IoU' },
+];
+function renderMainModels(fields) {
+  const get = (path) => fields.find((f) => f.path === path);
+  const det = get('detection.yoloe.weights');
+  const m2 = $('model2d');
+  if (m2 && det) {
+    m2.innerHTML = Object.entries(det.choices).map(([k, lab]) => `<option value="${esc(k)}">${esc(lab)}</option>`).join('');
+    m2.value = det.value;
+    m2.dataset.value = det.value;
+  }
+  const pp = $('prop-preset');
+  const flow = get('propagation.flow');
+  const assoc = get('propagation.association');
+  if (pp && flow && assoc) {
+    const samOk = (S.engines || []).find((e) => e.id === 'dam4sam')?.available !== false;
+    const cur = `${flow.value}|${assoc.value}`;
+    const opts = PROP_PRESETS.map((p) => ({ ...p, id: `${p.flow}|${p.association}` }));
+    if (!opts.some((p) => p.id === cur)) opts.push({ id: cur, label: `${flow.choices[flow.value] || flow.value} + ${assoc.choices[assoc.value] || assoc.value}` });
+    pp.innerHTML = opts.map((p) => `<option value="${esc(p.id)}" ${p.gpu && !samOk ? 'disabled' : ''}>${esc(p.label)}${p.gpu ? (samOk ? ' · GPU' : ' · chưa cài') : ''}</option>`).join('');
+    pp.value = cur;
+    pp.dataset.value = cur;
+  }
+}
+async function loadMainModels() {
+  try { renderMainModels((await api('/settings')).fields); } catch { /* chưa có dự án: để trống */ }
+}
+async function waitRelabel() {
+  for (;;) {
+    const job = await api('/relabel');
+    if (job.state !== 'running') return job;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+}
+$('model2d')?.addEventListener('change', async (e) => {
+  const sel = e.target;
+  const name = sel.options[sel.selectedIndex].textContent;
+  sel.disabled = true;
+  try {
+    const r = await api('/settings', { method: 'PUT', body: { values: { 'detection.yoloe.weights': sel.value } } });
+    renderMainModels(r.fields);
+    toast(`Mô hình ${name}: đang áp dụng lại cho các frame chưa ai mở…`);
+    await api('/relabel', { method: 'POST', body: {} });
+    const job = await waitRelabel();
+    if (job.state === 'error') throw new Error(job.message);
+    toast(`Mô hình ${name}: đã áp dụng lại ${job.result?.relabeled ?? 0} frame`);
+    await refreshLists();
+    if (S.frame) openFrame(S.frame.frame_id, { preview: true }).catch(() => {});
+  } catch (err) {
+    sel.value = sel.dataset.value || sel.value;
+    toast(err.message, true);
+    loadMainModels();
+  } finally { sel.disabled = false; }
+});
+$('prop-preset')?.addEventListener('change', async (e) => {
+  const sel = e.target;
+  const [flow, association] = sel.value.split('|');
+  try {
+    const r = await api('/settings', { method: 'PUT', body: { values: { 'propagation.flow': flow, 'propagation.association': association } } });
+    renderMainModels(r.fields);
+    toast(`Lan truyền: ${sel.options[sel.selectedIndex].textContent.replace(/ · .*/, '')}`);
+  } catch (err) {
+    sel.value = sel.dataset.value || sel.value;
+    toast(err.message, true);
+  }
+});
+
 const JOB_POLL = {};
 async function loadSettings() {
   const r = await api('/settings');
@@ -2363,6 +2439,7 @@ $('settings-save').addEventListener('click', async () => {
     S.settings = r.fields;
     $('settings-form').innerHTML = r.fields.map(settingRow).join('');
     $('settings-save').disabled = true;
+    renderMainModels(r.fields);
     const needs = r.fields.some((f) => f.applies === 'relabel' && f.changed);
     toast(needs ? 'Đã lưu. Bấm "Áp dụng lại" để frame chưa mở dùng cài đặt mới.' : 'Đã lưu.');
   } catch (err) { toast(err.message, true); }
@@ -2373,6 +2450,7 @@ $('settings-reset').addEventListener('click', async () => {
     S.settings = r.fields;
     $('settings-form').innerHTML = r.fields.map(settingRow).join('');
     $('settings-save').disabled = true;
+    renderMainModels(r.fields);
     toast('Đã về cài đặt mặc định.');
   } catch (err) { toast(err.message, true); }
 });

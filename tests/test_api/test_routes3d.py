@@ -179,3 +179,20 @@ async def test_propagate_3d_api(client, store3d):
     o = {x["object_id"]: x for x in f["objects"]}
     assert o["1"]["source"] == "propagated" and o["1"]["label"] == "truck" and o["1"]["propagation"]["distance_m"] == 0
     assert o["2"]["review"]["action"] == "PROPAGATED_DELETE"
+
+
+@pytest.mark.asyncio
+async def test_models_lists_project_models_not_built_yet(client, store3d):
+    """Mô hình đơn lẻ có dự đoán trong work3d của dự án hiện trong danh sách với built = false; bản đã có frame đứng trước."""
+    raw = store3d.root.parent / "work3d" / "preds" / "ssn" / "pred_instances_3d"
+    raw.mkdir(parents=True)
+    (raw / "results_nusc.json").write_text('{"results": {}}', encoding="utf-8")
+    try:
+        rows = (await client.get("/api/v1/3d/models")).json()
+        assert [(r["model"], r["built"]) for r in rows] == [("pointpillars", True), ("ssn", False)]
+        assert (await client.post("/api/v1/3d/models/nope/build", json={})).status_code == 404
+        assert (await client.get("/api/v1/3d/models/build")).status_code == 200
+    finally:
+        import shutil
+
+        shutil.rmtree(store3d.root.parent / "work3d")

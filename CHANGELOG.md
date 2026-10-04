@@ -32,7 +32,7 @@ Quy tắc:
 
 ## 2026-10-05 · Kiên · nhánh `kien`
 
-**Làm gì:** Bảy việc quanh nhãn 2D, QA và giao diện của dự án có LiDAR.
+**Làm gì:** Tám việc quanh nhãn 2D, QA và giao diện của dự án có LiDAR.
 
 1. **Box biến mất ở một số keyframe** (scene-0097 keyframe 34: 6 box trong khi sweep quanh nó có 14 detection). Nguyên
    nhân: box chỉ camera thấy mà không có điểm LiDAR bị nhân 0.3, xe detector cho 0.91 còn 0.27 < ngưỡng giữ 0.30 nên
@@ -67,6 +67,13 @@ Quy tắc:
    đặt chọn DAM4SAM thì lan truyền tự chạy nền. Lưu ý: nút Chính xác cũ chạy DAM4SAM với `dam4sam_stride` 3, còn chọn
    DAM4SAM trong Cài đặt dùng stride của config (mặc định 1, chậm hơn).
 
+8. **Chọn mô hình ngay trên màn hình duyệt** (không phải vào Cài đặt). 2D: ô "Mô hình" trên thanh công cụ (Fine-tune full /
+   Fine-tune mini / Original; đổi là tự Áp dụng lại cho frame chưa ai mở) và ô chọn cách lan truyền cạnh nút Lan truyền
+   (6 tổ hợp dự đoán chuyển động + ghép). Hai ô này ghi thẳng vào Cài đặt của dự án nên luôn khớp tab Cài đặt. 3D: ô
+   "Mô hình 3D" liệt kê thêm 4 mô hình LiDAR đơn lẻ của dự án (PointPillars, SSN, CenterPoint pillar / voxel); chọn lần
+   đầu thì tạo frame 3D từ dự đoán đã có (`POST /3d/models/{model}/build`, chạy nền). Phần tạo frame 3D cho mô hình đơn
+   lẻ chưa chạy thử trên dự án thật.
+
 Việc 2 và 3 đã làm hôm 04/10 nhưng chưa commit và bị `git checkout -- .` xoá; bản này viết lại đúng theo bản cũ.
 
 **File chính:** `src/services/video.py`, `src/api/routes.py`, `src/web/app.js`, `src/services/lidar2d.py` (`box_blend`, `strong_camera_only`),
@@ -78,7 +85,7 @@ trường `sd` (khi đó `offset` nằm ngoài các sweep của frame). Config t
 đổi (toạ độ box gộp, thêm box rủi ro cao): dự án đã xử lý phải bấm **Áp dụng lại** ở tab Cài đặt mới có nhãn mới. Số
 mAP / P / R của phần gộp 3D trong report đo trước thay đổi này.
 
-**Cách kiểm tra:** `ruff check src tests` sạch, `pytest` 243 passed. UI: mở dự án nuScenes → Cài đặt → Áp dụng lại →
+**Cách kiểm tra:** `ruff check src tests` sạch, `pytest` 244 passed. UI: mở dự án nuScenes → Cài đặt → Áp dụng lại →
 Video → keyframe 35 của scene-0097 phải có thêm xe đỗ bên trái (nét rủi ro cao).
 
 **Còn dở / việc tiếp:** `box_blend` và `keep_det_score` mới đo trên CAM_FRONT; chưa có bộ nhãn 2D vẽ theo ảnh để biết
