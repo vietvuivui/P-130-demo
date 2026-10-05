@@ -144,10 +144,9 @@ if (form) {
     const fd = new FormData();
     picked.forEach((f) => fd.append('files', f, f.name));
     fd.append('name', $('pj-name')?.value.trim() || picked[0].name);
-    fd.append('kind', $('pj-kind')?.value || 'auto');
+    fd.append('kind', 'auto'); // định dạng luôn tự nhận dạng; không giới hạn số frame
     fd.append('sequential', $('pj-seq')?.checked ? 'true' : 'false');
     fd.append('tta', $('pj-tta')?.checked ? 'true' : 'false');
-    if ($('pj-max')?.value) fd.append('max_frames', $('pj-max').value);
 
     const xhr = new XMLHttpRequest();
     xhr.open('POST', API);

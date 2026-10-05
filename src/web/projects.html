@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="ui-flow.css?v=3d31">
+  <link rel="stylesheet" href="ui-flow.css?v=3d32">
 </head>
 <body>
 
@@ -132,24 +132,6 @@
           </div>
         </div>
 
-        <div class="form-row">
-          <div class="form-item form-col">
-            <label class="form-label" for="pj-kind">Loại dữ liệu</label>
-            <select id="pj-kind" class="form-control">
-              <option value="auto">Tự nhận dạng định dạng</option>
-              <option value="video">Video (2D)</option>
-              <option value="images">Ảnh rời (2D)</option>
-              <option value="nuscenes">nuScenes (2D + 3D LiDAR)</option>
-              <option value="kitti">KITTI (2D + 3D LiDAR)</option>
-              <option value="lidar_cam">LiDAR + camera (2D + 3D)</option>
-            </select>
-          </div>
-          <div class="form-item form-col">
-            <label class="form-label" for="pj-max">Giới hạn frame (tùy chọn)</label>
-            <input id="pj-max" type="number" min="1" class="form-control" placeholder="Tất cả">
-          </div>
-        </div>
-
         <div class="form-item options-box">
           <label class="checkbox-option" title="Bỏ chọn: mỗi ảnh được gán nhãn riêng">
             <input type="checkbox" id="pj-seq">
@@ -194,6 +176,6 @@
 
   <div id="toastContainer" class="toast-container"></div>
 
-  <script src="projects.js?v=3d31"></script>
+  <script src="projects.js?v=3d32"></script>
 </body>
 </html>
