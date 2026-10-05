@@ -862,10 +862,14 @@ async function loadBevImage() {
 }
 
 // ---------------------------------------------------------------- dữ liệu
+// Tên ngắn của mô hình 3D trên ô chọn (không kèm số đo)
+const MODEL_NAMES = { ensemble: 'Ensemble', centerpoint_voxel: 'CenterPoint voxel', centerpoint_pillar: 'CenterPoint pillar', ssn: 'SSN', pointpillars: 'PointPillars' };
+const modelName = (m) => MODEL_NAMES[m.model] || m.label || m.model;
+
 async function loadModels() {
   T.models = await api('/models');
   const sel = $('m3-model');
-  sel.innerHTML = T.models.map((m) => `<option value="${esc(m.model)}">${esc(m.label)}${m.NDS != null ? ` · NDS ${m.NDS.toFixed(3)} · mAP ${m.mAP.toFixed(3)}` : ''}${m.built === false ? ' · chưa tạo' : ''}</option>`).join('');
+  sel.innerHTML = T.models.map((m) => `<option value="${esc(m.model)}">${esc(modelName(m))}</option>`).join('');
   const want = storage.get('model', '');
   // Mặc định: mô hình đã chọn lần trước nếu đã có frame, không thì mô hình đầu danh sách (bản gộp của dự án)
   T.model = T.models.find((m) => m.model === want && m.built !== false)?.model || T.models.find((m) => m.built !== false)?.model || null;
@@ -877,7 +881,7 @@ async function loadModels() {
 function renderModelInfo() {
   const m = T.models.find((x) => x.model === T.model);
   $('m3-model-info').innerHTML = m
-    ? `${esc(m.sensor || '')}${m.mAP != null ? ` · mAP <b>${m.mAP.toFixed(3)}</b> · NDS <b>${m.NDS.toFixed(3)}</b> (scene val)` : ''}<br>${m.approved}/${m.frames} keyframe đã duyệt`
+    ? `${m.approved}/${m.frames} keyframe đã duyệt`
     : 'Chưa có mô hình nào';
 }
 
