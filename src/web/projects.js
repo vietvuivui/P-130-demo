@@ -590,7 +590,7 @@ if (itemsContainer) {
       } else if (act === 'copy') {
         await navigator.clipboard.writeText(btn.dataset.link).then(() => toast('Đã sao chép link mời'), () => toast('Không sao chép được, chọn và copy tay', true));
       } else if (act === 'member-remove') {
-        if (!window.confirm('Gỡ thành viên này khỏi dự án? Frame đã giao cho họ sẽ thành chưa giao.')) return;
+        if (!(await uiConfirm('Frame đã giao cho thành viên này sẽ thành chưa giao.', { title: 'Gỡ thành viên khỏi dự án?', okText: 'Gỡ', danger: true }))) return;
         await api(`/${encodeURIComponent(pid)}/members/${encodeURIComponent(btn.dataset.user)}`, { method: 'DELETE' });
         await loadTeam(pid);
         render();
@@ -606,7 +606,7 @@ if (itemsContainer) {
         toast('Đã xếp hàng chạy lại pipeline');
         load();
       } else if (act === 'delete') {
-        if (!window.confirm(`Xoá dự án “${p?.name || pid}” cùng toàn bộ dữ liệu và nhãn? Thao tác này không thể hoàn tác.`)) return;
+        if (!(await uiConfirm('Toàn bộ dữ liệu và nhãn của dự án sẽ bị xoá. Thao tác này không thể hoàn tác.', { title: `Xoá dự án “${p?.name || pid}”?`, okText: 'Xoá dự án', danger: true }))) return;
         await api(`/${encodeURIComponent(pid)}`, { method: 'DELETE' });
         delete exportsCache[pid];
         toast('Đã xoá dự án thành công');

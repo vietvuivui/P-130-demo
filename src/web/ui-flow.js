@@ -503,8 +503,8 @@ async function initFramesPage() {
   // Edit Issue Tracker
   const btnEditTracker = document.getElementById("btnEditIssueTracker");
   if (btnEditTracker && trackerEl) {
-    btnEditTracker.onclick = () => {
-      const newUrl = prompt("Nhập đường dẫn hệ thống Issue Tracker (Jira, GitHub Issues,...):", trackerEl.href);
+    btnEditTracker.onclick = async () => {
+      const newUrl = await uiPrompt("Đường dẫn hệ thống theo dõi sự cố (Jira, GitHub Issues…)", trackerEl.href, { title: "Theo dõi sự cố" });
       if (newUrl && newUrl.trim()) {
         trackerEl.innerText = newUrl.trim();
         trackerEl.href = newUrl.trim();
@@ -567,9 +567,9 @@ async function initFramesPage() {
         </span>
       `;
       // Edit chip
-      chip.querySelector(".ri-edit-line").onclick = (e) => {
+      chip.querySelector(".ri-edit-line").onclick = async (e) => {
         e.stopPropagation();
-        const newName = prompt(`Nhập tên mới cho nhãn "${val.name}":`, val.name);
+        const newName = await uiPrompt("Tên mới của nhãn", val.name, { title: `Đổi tên nhãn “${val.name}”` });
         if (newName && newName.trim()) {
           taxonomy[key].name = newName.trim();
           saveTaxonomy();
@@ -579,9 +579,9 @@ async function initFramesPage() {
         }
       };
       // Delete chip
-      chip.querySelector(".ri-delete-bin-line").onclick = (e) => {
+      chip.querySelector(".ri-delete-bin-line").onclick = async (e) => {
         e.stopPropagation();
-        if (confirm(`Bạn có chắc chắn muốn xóa nhãn "${val.name}"?`)) {
+        if (await uiConfirm("Nhãn sẽ bị bỏ khỏi danh mục của dự án.", { title: `Xoá nhãn “${val.name}”?`, okText: "Xoá nhãn", danger: true })) {
           delete taxonomy[key];
           saveTaxonomy();
           renderLabels();
@@ -642,8 +642,8 @@ async function initFramesPage() {
 
     const btnResetRaw = document.getElementById("btnResetRawLabels");
     if (btnResetRaw) {
-      btnResetRaw.onclick = () => {
-        if (confirm("Đặt lại toàn bộ danh mục nhãn về mặc định?")) {
+      btnResetRaw.onclick = async () => {
+        if (await uiConfirm("Mọi nhãn đã thêm hoặc đổi tên sẽ mất.", { title: "Đặt lại danh mục nhãn về mặc định?", okText: "Đặt lại", danger: true })) {
           taxonomy = { ...DEFAULT_DRIVING_TAXONOMY };
           saveTaxonomy();
           rawTextarea.value = JSON.stringify(taxonomy, null, 2);
@@ -1100,7 +1100,7 @@ async function initFramesPage() {
   if (btnApproveAll) {
     btnApproveAll.onclick = async () => {
       if (actionsDropdownMenu) actionsDropdownMenu.style.display = "none";
-      if (!confirm("Bạn có chắc chắn muốn đánh dấu DUYỆT TẤT CẢ các frame trong dự án này?")) return;
+      if (!(await uiConfirm("Mọi frame trong dự án sẽ được đánh dấu đã duyệt.", { title: "Duyệt tất cả frame?", okText: "Duyệt tất cả" }))) return;
       frames.forEach(item => {
         item.status = "approved";
         item.annotating = item.total;
