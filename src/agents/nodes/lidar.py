@@ -38,10 +38,23 @@ def check_lidar(
                 )
             )
             result["term"] = 1.0
+        elif n_points == 0 and cfg.zero_points_issue:
+            # Box nhỏ không có điểm LiDAR nào: nhãn gốc kiểu nuScenes chỉ gán vật có điểm đo, nên gần như chắc chắn
+            # người phải xoá (đo 10/2026, detector fine-tune toàn mạng: 96% box 0 điểm không khớp nhãn gốc)
+            result["issues"].append(
+                QAIssue(
+                    code="NO_LIDAR_SUPPORT",
+                    group="lidar",
+                    message=f"Không có điểm LiDAR nào trong box (cao {box_h:.0f}px)",
+                )
+            )
+            result["term"] = cfg.no_points_term
         else:
-            # Box nhỏ ở xa: LiDAR không phủ tới nên không kết luận được, chỉ cộng chút rủi ro
-            result["term"] = 0.2
+            # Box nhỏ ở xa có 1-2 điểm: LiDAR phủ thưa nên không kết luận được, chỉ cộng rủi ro
+            result["term"] = cfg.no_points_term if n_points == 0 else cfg.few_points_term
         return result
+    if n_points < cfg.sparse_points:  # đủ ngưỡng nhưng còn thưa: cộng ít rủi ro (check kích thước bên dưới có thể nâng lên)
+        result["term"] = cfg.sparse_term
 
     # Độ sâu của object: lấy điểm ở vùng giữa box (bớt nền lọt vào) rồi lấy phân vị thấp,
     # vì điểm trên bề mặt object luôn gần hơn nền phía sau
@@ -70,7 +83,7 @@ def check_lidar(
                 message=f"Cao ước lượng {est_h:.1f} m ở độ sâu {obj_depth:.1f} m, lớp {label} hợp lý {lo}–{hi} m",
             )
         )
-        result["term"] = 0.6
+        result["term"] = max(result["term"], 0.6)
     return result
 
 

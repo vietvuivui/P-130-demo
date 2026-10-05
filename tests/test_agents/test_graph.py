@@ -16,7 +16,8 @@ def test_qa_agent_end_to_end(config):
     def sweep(ts, extra=()):
         return {"timestamp": ts, "detections": [Detection(bbox=[502, 400, 702, 500], label="car", score=0.9), *extra]}
 
-    missed = Detection(bbox=[200, 420, 300, 480], label="car", score=0.7)
+    # Box sweep người đã xác nhận (score 1.0): từ 04/10/2026 chỉ box loại này tạo đề xuất RECOVERED_BY_TRACK
+    missed = Detection(bbox=[200, 420, 300, 480], label="car", score=1.0)
     sweeps = {-2: sweep(800), -1: sweep(900, [missed]), 1: sweep(1050, [missed]), 2: sweep(1150)}
 
     out = qa_agent.invoke(

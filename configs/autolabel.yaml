@@ -28,6 +28,23 @@ detection:
     min_score: 0.05
     match_iou: 0.4
     camera_only_scale: 0.5
+    # Box trùng cả hai nguồn: toạ độ = box_blend * box detector + (1 - box_blend) * box 3D chiếu (0 = box 3D, 1 = box
+    # detector). Box 3D chiếu là hộp bao 8 đỉnh, rộng 1.31 lần box detector. Test CAM_FRONT 957 keyframe, 0 / 0.5 / 1:
+    # mAP50 0.677 / 0.687 / 0.663, F1 @IoU 0.75 0.367 / 0.394 / 0.278. eval/results/lidar2d.md.
+    box_blend: 0.5
+    # Box chỉ camera thấy mà trong box có <= no_lidar_max_points điểm LiDAR dùng hệ số này thay cho camera_only_scale.
+    # 04/10/2026, detector fine-tune toàn mạng: 95% box loại này không khớp nhãn gốc, nên hạ mạnh hơn (x0.3 thay vì
+    # x0.5); chọn trên dev. Test 6 camera (5742 ảnh): precision 0.628 -> 0.672, recall 0.818 -> 0.812, box phải sửa
+    # 17348 -> 15184; so với chỉ detector ảnh: mAP50 0.560 -> 0.672, phải sửa 23432 -> 15184. eval/results/lidar2d.md.
+    # null = hạ như box chỉ camera khác
+    no_lidar_scale: 0.3
+    no_lidar_max_points: 0
+    # Box chỉ camera thấy mà điểm gốc của detector ảnh >= ngưỡng này thì vẫn giữ dù điểm đã hạ < min_score; điểm đã hạ
+    # giữ nguyên nên box vào nhóm rủi ro cao. Lý do: xe detector thấy rõ (0.91) nhưng không có điểm LiDAR bị hạ còn 0.27
+    # và biến mất ở một keyframe rồi hiện lại ở keyframe sau (scene-0097_034: 6 box, sau khi sửa 10 box). Nhãn gốc
+    # nuScenes không gán vật không có điểm LiDAR nên tính theo nhãn gốc thì precision giảm (CAM_FRONT test 957 keyframe:
+    # P 0.707 -> 0.673, R 0.800 -> 0.813, thêm 564 box). null = tắt. eval/results/lidar2d.md.
+    keep_det_score: 0.8
     # Hai box 3D của xe 4 bánh trở lên chồng nhau trên mặt đường >= 15% (so với box nhỏ hơn) là một xe: giữ box điểm cao
     # hơn, lớp của box bị bỏ thành lớp phụ. Sửa lỗi một xe tải dài có hai nhãn (scene-0035_023). null = tắt
     dedup_bev_overlap: 0.15
@@ -139,7 +156,13 @@ gt_category_map:
 
 qa:
   confidence:
-    low_threshold: 0.35
+    # Detector fine-tune toàn mạng: box score < 0.6 sai 85% (held-out 795 keyframe), 0.9+ chỉ sai 2%
+    low_threshold: 0.6
+    # Box chỉ camera thấy trong dự án có LiDAR: score đã bị hạ x0.5 / x0.3 khi gộp box 3D. true = xét LOW_CONFIDENCE và
+    # tính risk theo điểm gốc của detector, gắn cờ CAMERA_ONLY (không bao giờ vào nhóm duyệt theo lô). Trước 05/10 dùng
+    # score đã hạ: mọi box chỉ camera thấy đều LOW_CONFIDENCE, xe detector thấy rõ (0.9) cũng thành rủi ro cao. Mô phỏng
+    # trên dump CAM_FRONT test 957 keyframe: nhóm high 2274 -> 334 box, nhóm low (duyệt theo lô) không đổi (4166).
+    camera_only_uses_det_score: true
     # Cùng vị trí có lớp khác với score >= ratio * score lớp chính -> CLASS_CONFLICT
     class_conflict_ratio: 0.6
   lidar:
@@ -152,17 +175,27 @@ qa:
     max_depth_m: 45.0
     # Chiều cao ước lượng ngoài [lo * a, hi * b] của lớp -> SIZE_DEPTH_MISMATCH
     size_tolerance: [0.5, 1.5]
+    # Điểm rủi ro LiDAR theo số điểm trong box. Dò trên dev 04/10/2026 (detector fine-tune toàn mạng): box 0 điểm
+    # sai 93% (held-out 96%), 1-2 điểm 69%, 3-4 điểm 55%, từ 5 điểm ~20%. eval/results/qa_tuning.md
+    no_points_term: 1.0      # box nhỏ (< min_box_height_px) không có điểm nào
+    zero_points_issue: true  # ... và bị gắn cờ NO_LIDAR_SUPPORT (không vào nhóm duyệt theo lô)
+    few_points_term: 0.4     # box nhỏ có 1..min_points-1 điểm
+    sparse_points: 5         # min_points <= số điểm < sparse_points -> sparse_term
+    sparse_term: 0.2
   temporal:
     match_iou: 0.3
     # Box ở keyframe phải xuất hiện lại ở ít nhất bấy nhiêu sweep lân cận, nếu không -> FLICKER
     min_support: 2
-    # Track có ở sweep trước + sau với score >= ngưỡng này mới được đề xuất RECOVERED_BY_TRACK
-    recover_min_score: 0.35
+    # Track có ở sweep trước + sau với score >= ngưỡng này mới được đề xuất RECOVERED_BY_TRACK. 1.0 = chỉ box người đã
+    # xác nhận / vẽ ở sweep (score 1.0). Box sweep của riêng detector không tạo đề xuất nữa: với detector fine-tune
+    # toàn mạng, held-out 795 keyframe có 314 đề xuất loại này mà chỉ 7 trùng vật bị sót (trước 04/10 là 0.35)
+    recover_min_score: 1.0
     # Detector thấy vật ở keyframe nhưng score dưới min_score (0.10–0.30) -> box bị bỏ. Nếu sweep trước VÀ sau đều có box
     # cùng lớp trùng vị trí (score >= ngưỡng này, kể cả box sweep dưới min_score) thì giữ lại box của detector, gắn
     # RECOVERED_BY_TRACK (nét đứt, phải xác nhận; không bao giờ vào nhóm duyệt theo lô). Ví dụ: xe đạp 0.34 ở frame
     # trước, 0.20 ở frame này, sweep 0.26 / 0.23. Box nội suy từ sweep cũng lấy box detector khi có (sát vật hơn). null = tắt
-    recover_weak_min_score: 0.2
+    # Tắt từ 04/10 (trước là 0.2): với detector fine-tune toàn mạng, held-out có 313 đề xuất loại này, 31 trùng vật sót
+    recover_weak_min_score: null
     # Optical flow (OpenCV DIS, ~0.06 s/cặp ảnh trên CPU) dời box của sweep về thời điểm keyframe trước khi so khớp:
     # box sweep khớp keyframe đúng hơn hẳn (IoU TB ở t±2: 0.58 -> 0.83), cờ FLICKER đúng hơn nhưng bắt ít lỗi hơn:
     # held-out 20 scene (795 keyframe) lỗi lọt qua duyệt theo lô 1632 -> 2082. Không khuyên bật.
@@ -184,17 +217,21 @@ qa:
     border_margin_px: 4
   risk:
     # risk = w1 (1 - score) + w2 lidar + w3 temporal + w4 geometric
+    # Dò lại trên dev 04/10/2026 cho detector fine-tune toàn mạng (trước: 0.35 / 0.30 / 0.20 / 0.15). Risk cũ xếp lỗi
+    # không hơn gì score detector (AUC held-out 0.841 cả hai); risk mới 0.916. Điểm temporal không giúp xếp hạng nên
+    # trọng số 0, cờ FLICKER vẫn giữ box ngoài nhóm low. eval/results/qa_tuning.md
     weights:
-      detection: 0.35
-      lidar: 0.30
-      temporal: 0.20
+      detection: 0.60
+      lidar: 0.25
+      temporal: 0.0
       geometric: 0.15
     class_conflict_penalty: 0.30
     # Object có bất kỳ issue nào không được rơi vào nhóm low (không bị duyệt theo lô)
-    issue_floor: 0.30
+    issue_floor: 0.17
+    # Ngưỡng chọn trên dev: nhóm low sai <= 5% (held-out 9%), nhóm high sai >= 95% (held-out 96%). Trước: 0.30 / 0.60
     levels:
-      medium: 0.30
-      high: 0.60
+      medium: 0.17
+      high: 0.40
 
 # QC nhãn cuối: QA Agent chỉ chấm box detector lúc pipeline chạy; phần này kiểm lại nhãn SAU khi người sửa
 # (khi approve frame và trước khi xuất), kiểm file nhãn từ ngoài (Quick Check), và audit ngẫu nhiên phần duyệt theo lô.

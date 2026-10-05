@@ -68,7 +68,8 @@ liệu: `full_heldout20.json`, `full_dev.json`. Cột "linear probe" lấy từ 
 
 - Vật sót giảm hơn một nửa (2243 → 994), nhưng box sai tăng 37% vì mô hình ra nhiều box hơn mà precision không đổi.
 - **QA bắt lỗi kém hơn với detector mới:** tỉ lệ box sai được gắn cờ giảm từ 44% xuống 25%, nên box sai lọt vào nhóm
-  duyệt theo lô tăng từ 1979 lên 3621. Ngưỡng risk của QA được chọn với detector cũ và cần dò lại.
+  duyệt theo lô tăng từ 1979 lên 3621. Ngưỡng risk của QA được chọn với detector cũ; đã dò lại
+  cùng ngày (lọt 3621 → 280), xem `eval/results/qa_tuning.md`.
 
 **Lan truyền nhãn** (154 lần, 1060 object), held-out, fine-tune toàn mạng; trong ngoặc là linear probe:
 

@@ -37,7 +37,7 @@ from src.services import history, jobs, qc, review
 from src.services import video as video_service
 from src.services.detectors import DetectorEnsemble
 from src.services.exporter import EXPORT_FILES, NothingToExportError, NotReadyError, export_dataset
-from src.services.pipeline import image_path
+from src.services.pipeline import image_path, resolve_image
 from src.services.sequence import (
     PropagationError,
     SequenceSource,
@@ -54,6 +54,7 @@ log = logging.getLogger(__name__)
 ISSUE_HELP = {
     "LOW_CONFIDENCE": "Model không chắc chắn về box này",
     "CLASS_CONFLICT": "Cùng vị trí, model phân vân giữa nhiều lớp",
+    "CAMERA_ONLY": "Chỉ camera thấy, mô hình LiDAR không có box ở đây: vật ngoài tầm LiDAR / bị che, hoặc detector nhầm",
     "NO_LIDAR_SUPPORT": "Box đủ lớn nhưng gần như không có điểm LiDAR: có thể là phản chiếu, poster, bóng",
     "SIZE_DEPTH_MISMATCH": "Chiều cao suy từ độ sâu LiDAR không hợp với lớp: sai lớp hoặc box sai kích thước",
     "FLICKER": "Box không xuất hiện lại ở các sweep lân cận: dễ là FP ngẫu nhiên",
@@ -777,9 +778,11 @@ def _engines(config: AutoLabelConfig) -> list[dict]:
 
     p = config.propagation
     problems = dam4sam.check_install(p.dam4sam_model)
+    slow = p.flow in ("dam4sam", "flow+dam4sam")  # Cài đặt chọn DAM4SAM: chậm, giao diện cho chạy nền
     return [
-        {"id": "default", "label": "Nhanh", "available": True, "reason": None,
-         "detail": f"Theo ⚙ Cài đặt: flow {p.flow} + ghép {p.association}. Chạy CPU, khoảng 1 giây."},
+        {"id": "default", "label": "Theo Cài đặt", "available": True, "reason": None, "slow": slow,
+         "detail": f"Theo ⚙ Cài đặt: flow {p.flow} + ghép {p.association}. "
+                   + ("Cần GPU, chạy nền vài phút." if slow else "Chạy CPU, khoảng 1 giây.")},
         {"id": "dam4sam", "label": "Chính xác", "available": not problems, "reason": "; ".join(problems) or None,
          "detail": "DAM4SAM (SAM 2.1) phân đoạn từng vật + BoT-SORT. Cần GPU, chậm hơn 3–12 lần, chạy nền. Trên 20 scene "
                    "held-out: nhãn đúng +7%, mất dấu −25%, HOTA 0.573 so với 0.563 của luồng Nhanh; box sai +13%."},
@@ -903,13 +906,49 @@ def get_video_playback(
     store: WorkspaceStore = Depends(get_store),
     dataroot: Path = Depends(get_dataroot),
     config: AutoLabelConfig = Depends(get_config),
+    source: SequenceSource = Depends(get_sequence_source),
 ):
     """Mọi ảnh của video theo thời gian (keyframe + sweep) kèm box, để UI phát liên tục không phải mở từng frame."""
-    items = video_service.playback(store, video_id)
+    items = video_service.playback(store, video_id, _video_timeline(store, source, video_id))
     if items is None:
         raise _error(404, "VIDEO_NOT_FOUND", f"Không có video {video_id}")
     _warm_anonymized(store, items, dataroot, config)
     return {"video_id": video_id, "items": items}
+
+
+def _video_timeline(store: WorkspaceStore, source: SequenceSource, video_id: str) -> list | None:
+    """Mọi ảnh của camera trong video / scene (để phát cả ảnh nằm ngoài cửa sổ sweep). None nếu không đọc được
+    (scene nuScenes mà máy không có bảng nuScenes): khi đó chỉ phát keyframe + sweep như trước."""
+    camera = next((f.camera for f in store.list_frames() if f.scene == video_id), None)
+    if camera is None:
+        return None
+    try:
+        return source.timeline(video_id, camera)
+    except Exception:  # noqa: BLE001 - thiếu dữ liệu gốc không được làm hỏng việc phát
+        return None
+
+
+@router.get("/videos/{video_id}/image")
+def get_video_image(
+    video_id: str,
+    sd: str = Query(..., min_length=1, max_length=64),
+    store: WorkspaceStore = Depends(get_store),
+    dataroot: Path = Depends(get_dataroot),
+    config: AutoLabelConfig = Depends(get_config),
+    source: SequenceSource = Depends(get_sequence_source),
+):
+    """Ảnh của video theo sd_token: dùng cho ảnh nằm ngoài cửa sổ sweep của mọi keyframe (playback trả "sd")."""
+    timeline = _video_timeline(store, source, video_id) or []
+    entry = next((im for im in timeline if im.sd_token == sd), None)
+    if entry is None or not entry.path:
+        raise _error(404, "IMAGE_NOT_FOUND", f"Video {video_id} không có ảnh {sd}")
+    path = resolve_image(dataroot, store.root, entry.path)
+    if not path.exists():
+        raise _error(404, "IMAGE_NOT_FOUND", "Không tìm thấy file ảnh trong dataroot")
+    from src.services.privacy import anonymized_path
+
+    path = anonymized_path(store.root, path, config.privacy)
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
 
 
 _WARMING: set[str] = set()

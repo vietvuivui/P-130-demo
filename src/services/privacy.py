@@ -21,6 +21,7 @@ from pathlib import Path
 import numpy as np
 
 from src.models.qa_config import PrivacyCfg
+from src.services.fsutil import replace_file
 
 log = logging.getLogger(__name__)
 _LOCK = threading.Lock()
@@ -153,7 +154,7 @@ def anonymized_path(cache_root: Path, src: Path, cfg: PrivacyCfg, detector=None)
             return src
         tmp = dst.with_suffix(".tmp")
         tmp.write_bytes(buf.tobytes())
-        tmp.replace(dst)
+        replace_file(tmp, dst)
         return dst
     except Exception as e:  # không để việc làm mờ làm hỏng việc xem ảnh
         _warn_once("anon-error", f"Làm mờ ảnh lỗi, gửi ảnh gốc: {e}")

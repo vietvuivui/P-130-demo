@@ -1026,7 +1026,7 @@ async function approveFrame() {
     const cur = S.frame;
     if (S.viewMode === 'video') {
       // Video: lan truyền sang các frame sau rồi mở frame kế tiếp (nơi vừa nhận nhãn lan truyền)
-      if (S.autoProp && engineInfo().id !== 'default') {
+      if (S.autoProp && (await slowProp())) {
         // Luồng chậm (DAM4SAM) chạy nền: không chờ và không tự mở frame kế (frame người đã mở sẽ không nhận nhãn lan
         // truyền); xong thì tải lại timeline
         propagate(cur.frame_id).then(() => refreshVideo());
@@ -1102,9 +1102,16 @@ async function loadEngines() {
     sel.title = engineInfo().detail || '';
   }
   updateTopModelSwitch(validSaved);
+  loadMainModels();
   resumePropJob();
 }
-const engineInfo = () => (S.engines || []).find((e) => e.id === ($('prop-engine')?.value || storageGet('propEngine', 'default'))) || { id: 'default' };
+// Luồng lan truyền chỉ còn chọn ở tab Cài đặt (Dự đoán chuyển động + Ghép với detection): mọi lần bấm dùng cấu hình đó
+const engineInfo = () => (S.engines || []).find((e) => e.id === 'default') || { id: 'default' };
+// Cài đặt đang chọn DAM4SAM (chậm, cần GPU)? Hỏi lại máy chủ mỗi lần vì Cài đặt có thể vừa đổi
+async function slowProp() {
+  try { S.engines = await api('/propagation/engines'); } catch { /* giữ danh sách cũ */ }
+  return !!engineInfo().slow;
+}
 
 function showPropJob(job) {
   const el = $('prop-job');
@@ -1137,14 +1144,14 @@ async function resumePropJob() { // mở lại trang khi việc nền còn chạ
 
 async function propagate(frameId) {
   try {
-    const engine = engineInfo().id;
+    const engine = 'default';
     let r;
-    if (engine === 'default') {
+    if (!(await slowProp())) {
       r = await api(`/frames/${encodeURIComponent(frameId)}/propagate`, { method: 'POST', body: {} });
     } else {
       const job = await api(`/frames/${encodeURIComponent(frameId)}/propagate-async`, { method: 'POST', body: { engine } });
       if (job.state === 'running' && job.message && !job.message.includes(frameId)) toast('Đang có một lần lan truyền khác chạy nền, đợi nó xong');
-      else toast(`Luồng ${engineInfo().label}: chạy nền, vài phút. Bạn vẫn duyệt tiếp được.`);
+      else toast('Lan truyền bằng DAM4SAM: chạy nền, vài phút. Bạn vẫn duyệt tiếp được.');
       r = await waitPropJob();
       if (!r) return null;
     }
@@ -1564,7 +1571,7 @@ async function setMode(mode) {
   stopPlay({ reopen: false });
   S.viewMode = mode;
   storageSet('viewMode', mode);
-  document.querySelectorAll('.mode').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
+  markTabs();
   // Chỉ hiển thị player-controls trên topbar khi ở chế độ video
   const playerControls = document.getElementById('topbar-player-controls') || document.querySelector('.player-controls');
   if (playerControls) {
@@ -1720,7 +1727,7 @@ function stepVideo(delta) {
 }
 
 // ---------- phát video ----------
-// Phát mọi ảnh đã cắt (keyframe 2 fps + sweep t-2 … t+2 ở 10 fps) theo đúng thời gian thực, box lấy sẵn từ
+// Phát mọi ảnh của video (keyframe 2 fps, sweep t-2 … t+2 và ảnh nằm giữa hai cửa sổ sweep) theo đúng thời gian thực, box lấy sẵn từ
 // GET /videos/{id}/playback trong một lần gọi. Lúc phát chỉ vẽ lại khung ảnh (không mở frame, không vẽ lại panel);
 // ảnh phía trước được tải trước, ảnh chưa kịp tải thì đồng hồ đứng chờ. Dừng ở đâu thì mở keyframe gần đó để duyệt.
 const PLAY_AHEAD = 15; // số ảnh tải trước
@@ -1752,7 +1759,10 @@ function playImage(pb, j) {
   if (!im) {
     im = new Image();
     im.decoding = 'async';
-    im.src = `${API}/frames/${encodeURIComponent(it.frame_id)}/image${it.offset ? `?offset=${it.offset}` : ''}`;
+    // Ảnh nằm ngoài cửa sổ sweep của mọi keyframe (có "sd") lấy theo sd_token của video
+    im.src = it.sd
+      ? `${API}/videos/${encodeURIComponent(pb.videoId)}/image?sd=${encodeURIComponent(it.sd)}`
+      : `${API}/frames/${encodeURIComponent(it.frame_id)}/image${it.offset ? `?offset=${it.offset}` : ''}`;
     im.decode?.().catch(() => {});
     pb.imgs.set(j, im);
   }
@@ -1814,7 +1824,7 @@ async function togglePlay() {
   if (S.playback) { stopPlay(); return; }
   const v = S.video;
   if (!v || (v.frames || []).length < 2) return;
-  const pb = { items: [], i: 0, imgs: new Map(), raf: 0, clock: 0, last: null, drawn: false, frameId: null };
+  const pb = { items: [], i: 0, imgs: new Map(), raf: 0, clock: 0, last: null, drawn: false, frameId: null, videoId: v.video_id };
   S.playback = pb;
   setPlayButtons(true, '…');
   try {
@@ -1854,7 +1864,12 @@ async function uploadVideo(file) {
   }
 }
 
-document.querySelectorAll('.mode').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+// Bấm Ảnh / Video / 3D từ bất kỳ tab nào (Log, Cài đặt…) đều về màn hình duyệt của chế độ đó
+document.querySelectorAll('.mode').forEach((b) => b.addEventListener('click', () => {
+  const onReview = document.querySelector('.tab.active')?.dataset.tab === 'review';
+  if (!onReview) switchTab('review');
+  if (!onReview || S.viewMode !== b.dataset.mode) setMode(b.dataset.mode);
+}));
 $('video-list').addEventListener('click', (e) => {
   const li = e.target.closest('[data-video]');
   if (!li) return;
@@ -2270,8 +2285,16 @@ function fmtTime(s) {
 }
 setInterval(() => { $('timer').textContent = fmtTime(elapsed()); }, 500);
 
+// Thanh tab duy nhất: Ảnh / Video / 3D sáng khi đang ở màn hình duyệt của chế độ đó; Log / QC / Metrics / Cài đặt sáng
+// khi đang ở tab đó. Lúc nào cũng chỉ một nút sáng.
+function markTabs() {
+  const tab = document.querySelector('.tab.active')?.dataset.tab || 'review';
+  document.querySelectorAll('.mode').forEach((b) => b.classList.toggle('active', tab === 'review' && b.dataset.mode === S.viewMode));
+}
+
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
+  markTabs();
   ['review', 'log', 'qc', 'metrics', 'settings'].forEach((t) => $('tab-' + t).classList.toggle('hidden', t !== tab || (t === 'review' && S.viewMode === '3d')));
   $('tab-review3d').classList.toggle('hidden', !(tab === 'review' && S.viewMode === '3d'));
   window.dispatchEvent(new CustomEvent('autolabel:tab', { detail: tab }));
@@ -2287,13 +2310,88 @@ document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () 
 
 // ---------- ⚙ Cài đặt ----------
 
+// Chọn mô hình ngay trên màn hình duyệt: hai ô chọn này ghi thẳng vào Cài đặt của dự án (một nguồn duy nhất), nên
+// tab Cài đặt và màn hình duyệt luôn khớp nhau.
+const PROP_PRESETS = [
+  { flow: 'always', association: 'byte', label: 'Optical flow + ByteTrack' },
+  { flow: 'always', association: 'botsort', label: 'Optical flow + BoT-SORT' },
+  { flow: 'flow+dam4sam', association: 'byte', label: 'Optical flow + DAM4SAM', gpu: true },
+  { flow: 'dam4sam', association: 'botsort', label: 'DAM4SAM + BoT-SORT', gpu: true },
+  { flow: 'dam4sam', association: 'byte', label: 'DAM4SAM + ByteTrack', gpu: true },
+  { flow: 'off', association: 'single', label: 'Vận tốc không đổi + IoU' },
+];
+function renderMainModels(fields) {
+  const get = (path) => fields.find((f) => f.path === path);
+  const det = get('detection.yoloe.weights');
+  const m2 = $('model2d');
+  if (m2 && det) {
+    m2.innerHTML = Object.entries(det.choices).map(([k, lab]) => `<option value="${esc(k)}">${esc(lab)}</option>`).join('');
+    m2.value = det.value;
+    m2.dataset.value = det.value;
+  }
+  const pp = $('prop-preset');
+  const flow = get('propagation.flow');
+  const assoc = get('propagation.association');
+  if (pp && flow && assoc) {
+    const samOk = (S.engines || []).find((e) => e.id === 'dam4sam')?.available !== false;
+    const cur = `${flow.value}|${assoc.value}`;
+    const opts = PROP_PRESETS.map((p) => ({ ...p, id: `${p.flow}|${p.association}` }));
+    if (!opts.some((p) => p.id === cur)) opts.push({ id: cur, label: `${flow.choices[flow.value] || flow.value} + ${assoc.choices[assoc.value] || assoc.value}` });
+    pp.innerHTML = opts.map((p) => `<option value="${esc(p.id)}" ${p.gpu && !samOk ? 'disabled' : ''}>${esc(p.label)}${p.gpu ? (samOk ? ' · GPU' : ' · chưa cài') : ''}</option>`).join('');
+    pp.value = cur;
+    pp.dataset.value = cur;
+  }
+}
+async function loadMainModels() {
+  try { renderMainModels((await api('/settings')).fields); } catch { /* chưa có dự án: để trống */ }
+}
+async function waitRelabel() {
+  for (;;) {
+    const job = await api('/relabel');
+    if (job.state !== 'running') return job;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+}
+$('model2d')?.addEventListener('change', async (e) => {
+  const sel = e.target;
+  const name = sel.options[sel.selectedIndex].textContent;
+  sel.disabled = true;
+  try {
+    const r = await api('/settings', { method: 'PUT', body: { values: { 'detection.yoloe.weights': sel.value } } });
+    renderMainModels(r.fields);
+    toast(`Mô hình ${name}: đang áp dụng lại cho các frame chưa ai mở…`);
+    await api('/relabel', { method: 'POST', body: {} });
+    const job = await waitRelabel();
+    if (job.state === 'error') throw new Error(job.message);
+    toast(`Mô hình ${name}: đã áp dụng lại ${job.result?.relabeled ?? 0} frame`);
+    await refreshLists();
+    if (S.frame) openFrame(S.frame.frame_id, { preview: true }).catch(() => {});
+  } catch (err) {
+    sel.value = sel.dataset.value || sel.value;
+    toast(err.message, true);
+    loadMainModels();
+  } finally { sel.disabled = false; }
+});
+$('prop-preset')?.addEventListener('change', async (e) => {
+  const sel = e.target;
+  const [flow, association] = sel.value.split('|');
+  try {
+    const r = await api('/settings', { method: 'PUT', body: { values: { 'propagation.flow': flow, 'propagation.association': association } } });
+    renderMainModels(r.fields);
+    toast(`Lan truyền: ${sel.options[sel.selectedIndex].textContent.replace(/ · .*/, '')}`);
+  } catch (err) {
+    sel.value = sel.dataset.value || sel.value;
+    toast(err.message, true);
+  }
+});
+
 const JOB_POLL = {};
 async function loadSettings() {
   const r = await api('/settings');
   S.settings = r.fields;
   S.gtFrames = r.gt_frames;
   $('settings-scope').textContent = PROJECT ? `Dự án: ${$('project-name').textContent || PROJECT}` : 'Workspace mặc định';
-  $('settings-form').innerHTML = r.fields.map(settingRow).join('');
+  $('settings-form').innerHTML = settingsRows(r.fields);
   $('settings-save').disabled = true;
   $('eval-run').disabled = !r.gt_frames;
   $('eval-run').title = r.gt_frames ? `${r.gt_frames} frame có GT` : 'Cần dữ liệu có nhãn gốc (nuScenes có sample_annotation)';
@@ -2325,6 +2423,9 @@ function settingRow(f, i, all) {
     <div>${control}</div>
   </div>`;
 }
+// Mô hình phát hiện 2D chọn ngay trên thanh công cụ của màn hình Ảnh / Video (ô "Mô hình"), không lặp lại ở tab Cài đặt
+const MAIN_SCREEN_SETTINGS = new Set(['detection.yoloe.weights']);
+const settingsRows = (fields) => fields.filter((f) => !MAIN_SCREEN_SETTINGS.has(f.path)).map(settingRow).join('');
 function settingValues() {
   const out = {};
   document.querySelectorAll('#settings-form [data-path]').forEach((el) => {
@@ -2339,8 +2440,9 @@ $('settings-save').addEventListener('click', async () => {
   try {
     const r = await api('/settings', { method: 'PUT', body: { values: settingValues() } });
     S.settings = r.fields;
-    $('settings-form').innerHTML = r.fields.map(settingRow).join('');
+    $('settings-form').innerHTML = settingsRows(r.fields);
     $('settings-save').disabled = true;
+    renderMainModels(r.fields);
     const needs = r.fields.some((f) => f.applies === 'relabel' && f.changed);
     toast(needs ? 'Đã lưu. Bấm "Áp dụng lại" để frame chưa mở dùng cài đặt mới.' : 'Đã lưu.');
   } catch (err) { toast(err.message, true); }
@@ -2349,8 +2451,9 @@ $('settings-reset').addEventListener('click', async () => {
   try {
     const r = await api('/settings', { method: 'DELETE' });
     S.settings = r.fields;
-    $('settings-form').innerHTML = r.fields.map(settingRow).join('');
+    $('settings-form').innerHTML = settingsRows(r.fields);
     $('settings-save').disabled = true;
+    renderMainModels(r.fields);
     toast('Đã về cài đặt mặc định.');
   } catch (err) { toast(err.message, true); }
 });
@@ -2604,7 +2707,7 @@ $('reject-send').addEventListener('click', sendReject);
 $('reject-cancel').addEventListener('click', () => $('reject-box').classList.add('hidden'));
 $('reject-reason').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendReject(); });
 $('btn-propagate').addEventListener('click', propagateCurrent);
-$('prop-engine').addEventListener('change', (e) => {
+$('prop-engine')?.addEventListener('change', (e) => {
   storageSet('propEngine', e.target.value);
   e.target.title = engineInfo().detail || '';
   updateTopModelSwitch(e.target.value);

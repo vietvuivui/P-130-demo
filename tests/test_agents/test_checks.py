@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from src.agents.nodes.confidence import check_confidence
 from src.agents.nodes.issues import check_geometry
@@ -27,6 +28,19 @@ def codes(result):
 # ---- 3.1 confidence ----
 
 
+def test_camera_only_box_is_judged_by_detector_score(config):
+    """Box chỉ camera thấy (score đã hạ khi gộp box 3D): LOW_CONFIDENCE xét theo điểm gốc của detector, luôn có cờ
+    CAMERA_ONLY để không vào nhóm duyệt theo lô."""
+    sure = LabelObject(object_id="1", bbox=[0, 0, 10, 10], label="car", score=0.45, det_score=0.9)
+    r = check_confidence(sure, config)
+    assert codes(r) == ["CAMERA_ONLY"] and r["term"] == pytest.approx(0.1)
+    weak = LabelObject(object_id="2", bbox=[0, 0, 10, 10], label="car", score=0.31, det_score=0.52)
+    assert codes(check_confidence(weak, config)) == ["LOW_CONFIDENCE", "CAMERA_ONLY"]
+    config.qa.confidence.camera_only_uses_det_score = False
+    r = check_confidence(sure, config)
+    assert codes(r) == ["LOW_CONFIDENCE"] and r["term"] == pytest.approx(0.55)
+
+
 def test_low_confidence(config):
     r = check_confidence(obj("1", [0, 0, 10, 10], score=0.27), config)
     assert codes(r) == ["LOW_CONFIDENCE"]
@@ -53,10 +67,32 @@ def test_no_lidar_support_on_tall_box(config):
     assert r["term"] == 1.0
 
 
-def test_small_far_box_without_points_is_not_flagged(config):
+def test_small_far_box_without_points_is_flagged(config):
+    # Box nhỏ 0 điểm: gắn cờ và lấy no_points_term (04/10/2026: 96% box loại này không khớp nhãn gốc)
     r = check_lidar([100, 300, 120, 320], "car", np.zeros((0, 2)), np.zeros(0), FY, 900, config)
+    assert codes(r) == ["NO_LIDAR_SUPPORT"]
+    assert r["term"] == config.qa.lidar.no_points_term
+    # Tắt cờ bằng config (cách làm cũ): không issue, vẫn cộng rủi ro
+    cfg = config.model_copy(deep=True)
+    cfg.qa.lidar.zero_points_issue, cfg.qa.lidar.no_points_term = False, 0.2
+    r = check_lidar([100, 300, 120, 320], "car", np.zeros((0, 2)), np.zeros(0), FY, 900, cfg)
+    assert codes(r) == [] and r["term"] == 0.2
+
+
+def test_small_far_box_with_few_points_is_not_flagged(config):
+    box = [100, 300, 120, 320]
+    uv = np.array([[110.0, 310.0], [112.0, 312.0]])
+    r = check_lidar(box, "car", uv, np.full(2, 40.0), FY, 900, config)
     assert codes(r) == []
-    assert 0 < r["term"] < 1
+    assert r["term"] == config.qa.lidar.few_points_term
+
+
+def test_sparse_points_add_some_risk(config):
+    box = [500, 400, 700, 500]  # xe cao 100px ở 20 m: kích thước hợp lý, nhưng chỉ 4 điểm
+    uv = np.array([[590.0, 440.0], [600.0, 450.0], [610.0, 460.0], [605.0, 445.0]])
+    r = check_lidar(box, "car", uv, np.full(4, 20.0), FY, 900, config)
+    assert codes(r) == []
+    assert r["term"] == config.qa.lidar.sparse_term
 
 
 def test_plausible_car_height(config):
@@ -117,7 +153,11 @@ def test_recovered_by_track_interpolates(config):
         -1: sweep(900, ([800, 300, 900, 400], "car", 0.8)),
         1: sweep(1050, ([810, 300, 910, 400], "car", 0.7)),
     }
-    results, recovered = check_temporal([], sweeps, 1000, config)
+    # Mặc định (recover_min_score 1.0): box sweep của riêng detector không tạo đề xuất
+    assert check_temporal([], sweeps, 1000, config)[1] == []
+    cfg = config.model_copy(deep=True)
+    cfg.qa.temporal.recover_min_score = 0.35
+    results, recovered = check_temporal([], sweeps, 1000, cfg)
     assert len(recovered) == 1
     r = recovered[0]
     assert r.source == "track" and r.label == "car" and r.score == 0.7
@@ -195,6 +235,9 @@ def test_weak_keyframe_detection_confirmed_by_both_sides_is_recovered(config):
     sweeps = {-1: sweep(900), 1: sweep(1050)}
     sweeps[-1]["weak"] = [Detection(bbox=[2052, 413, 2100, 476], label="bicycle", score=0.26)]
     sweeps[1]["weak"] = [Detection(bbox=[2072, 422, 2128, 486], label="bicycle", score=0.23)]
+    assert check_temporal([], sweeps, 1000, config, weak)[1] == []  # mặc định tắt (recover_weak_min_score: null)
+    config = config.model_copy(deep=True)
+    config.qa.temporal.recover_weak_min_score = 0.2
     results, recovered = check_temporal([], sweeps, 1000, config, weak)
     assert len(recovered) == 1
     r = recovered[0]
@@ -218,6 +261,8 @@ def test_recovered_box_snaps_to_weak_keyframe_detection(config):
         1: sweep(1050, ([708.8, 451.9, 736.2, 474.4], "car", 0.62)),
     }
     weak = [Detection(bbox=[710, 447, 738, 471], label="car", score=0.29, det_score=0.58)]
+    config = config.model_copy(deep=True)
+    config.qa.temporal.recover_min_score, config.qa.temporal.recover_weak_min_score = 0.35, 0.2
     results, recovered = check_temporal([], sweeps, 1000, config, weak)
     assert len(recovered) == 1
     r = recovered[0]

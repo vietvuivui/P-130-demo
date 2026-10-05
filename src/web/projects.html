@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="ui-flow.css?v=3d27">
+  <link rel="stylesheet" href="ui-flow.css?v=3d36">
 </head>
 <body>
 
@@ -122,43 +122,26 @@
         </div>
 
         <div class="form-item">
-          <label class="form-label">Tệp dữ liệu (Kéo thả hoặc duyệt file)</label>
+          <label class="form-label">Tệp dữ liệu</label>
+          <ul id="pj-file-list" class="pj-file-list hidden" aria-label="File đã chọn"></ul>
           <div id="pj-drop" class="pj-drop-zone" tabindex="0">
             <input id="pj-files" type="file" multiple hidden
                    accept=".zip,.tar,.tgz,.gz,.mp4,.mov,.avi,.mkv,.webm,.jpg,.jpeg,.png,.bmp">
             <div class="drop-icon"><i class="ri-upload-cloud-line"></i></div>
-            <div class="drop-text">Kéo thả file vào đây hoặc <button type="button" id="pj-pick" class="link-btn">chọn file</button></div>
-            <div class="drop-hint" id="pj-picked">Chấp nhận video (.mp4, .mov), tệp nén (.zip), hoặc nhiều ảnh (.jpg, .png)</div>
-          </div>
-        </div>
-
-        <div class="form-row">
-          <div class="form-item form-col">
-            <label class="form-label" for="pj-kind">Loại dữ liệu</label>
-            <select id="pj-kind" class="form-control">
-              <option value="auto">Tự nhận dạng định dạng</option>
-              <option value="video">Video (2D)</option>
-              <option value="images">Ảnh rời (2D)</option>
-              <option value="nuscenes">nuScenes (2D + 3D LiDAR)</option>
-              <option value="kitti">KITTI (2D + 3D LiDAR)</option>
-              <option value="lidar_cam">LiDAR + camera (2D + 3D)</option>
-            </select>
-          </div>
-          <div class="form-item form-col">
-            <label class="form-label" for="pj-max">Giới hạn frame (tùy chọn)</label>
-            <input id="pj-max" type="number" min="1" class="form-control" placeholder="Tất cả">
+            <div class="drop-text" id="pj-drop-text">Kéo thả file vào đây hoặc <button type="button" id="pj-pick" class="link-btn">chọn file</button></div>
+            <div class="drop-hint" id="pj-picked">Chọn được nhiều file: video (.mp4, .mov), tệp nén (.zip), ảnh (.jpg, .png)</div>
           </div>
         </div>
 
         <div class="form-item options-box">
-          <label class="checkbox-option" title="Bỏ chọn: mỗi ảnh được gán nhãn riêng">
-            <input type="checkbox" id="pj-seq">
-            <span>Ảnh là các frame liên tiếp của video (~10 fps): AI gán nhãn 1/5 frame, phần còn lại lan truyền nhãn tự động</span>
-          </label>
-          <label class="checkbox-option">
-            <input type="checkbox" id="pj-tta">
-            <span>3D TTA chính xác hơn (lật trục tọa độ khi suy luận, chậm hơn ~4 lần)</span>
-          </label>
+          <div class="option-row">
+            <label class="checkbox-option"><input type="checkbox" id="pj-seq"><span>Ảnh là frame liên tiếp của video</span></label>
+            <span class="opt-tip" tabindex="0" data-tip="Chỉ dùng khi tải lên bộ ảnh cắt liên tục từ video (~10 fps). Cứ 5 ảnh AI gán nhãn 1 ảnh; nhãn đã duyệt được lan truyền sang các ảnh sau. Bỏ chọn: mỗi ảnh được gán nhãn riêng."><i class="ri-question-line"></i></span>
+          </div>
+          <div class="option-row">
+            <label class="checkbox-option"><input type="checkbox" id="pj-tta"><span>3D TTA</span></label>
+            <span class="opt-tip" tabindex="0" data-tip="Chỉ cho dữ liệu có LiDAR. Mỗi mô hình 3D chạy thêm 3 lần trên point cloud đã lật trục rồi gộp kết quả. Bước dự đoán 3D chậm hơn khoảng 4 lần."><i class="ri-question-line"></i></span>
+          </div>
         </div>
 
         <div class="pj-upload-progress hidden" id="pj-upload">
@@ -194,6 +177,7 @@
 
   <div id="toastContainer" class="toast-container"></div>
 
-  <script src="projects.js?v=3d27"></script>
+  <script src="dialog.js?v=3d36"></script>
+  <script src="projects.js?v=3d36"></script>
 </body>
 </html>

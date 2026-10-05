@@ -11,8 +11,10 @@
 |--------|------|--------|--------|------|
 | Kiên | Fine-tune toàn mạng YOLOE-26L trên nuImages (30 epoch, 1280 px, RTX 3090) thành detector 2D mặc định; ô "Mô hình phát hiện 2D" ở tab Cài đặt (Fine-tune full / Fine-tune mini / Original) | ✅ Done | Nhánh `kien`; test 957 keyframe mAP50 0.589 (gốc 0.312, linear probe 0.366) | — |
 | Kiên | Chấm lại lan truyền 2D + QA với detector mới (`evaltemporal`), cập nhật report, dọn tài liệu cũ, mở PR `kien` → `main` | ✅ Done | `eval/report/REPORT.md`, `eval/results/bang-so-sanh.md`, `eval/results/temporal/` | — |
+| Kiên | Dò lại QA Agent 2D cho detector mới (trọng số risk, ngưỡng, điểm LiDAR); bỏ điểm temporal và đề xuất RECOVERED_BY_TRACK từ detector | ✅ Done | `eval/results/qa_tuning.md`; box sai lọt duyệt theo lô 3621 → 280 trên held-out, 237 test pass | — |
+| Kiên | Đo gộp box 3D vào nhãn 2D trên cả 6 camera với detector mới; hạ điểm mạnh hơn cho box chỉ camera không có điểm LiDAR | ✅ Done | `eval/results/lidar2d.md`; test 6 camera mAP50 0.560 → 0.672, box phải sửa 23432 → 15184 | — |
 
-**Tổng kết ngày:** Detector 2D mặc định là bản fine-tune toàn mạng; report và bảng so sánh đã dùng số của bản này.
+**Tổng kết ngày:** Detector 2D mặc định là bản fine-tune toàn mạng; report và bảng so sánh đã dùng số của bản này. QA Agent 2D đã dò lại theo detector mới.
 
 ---
 

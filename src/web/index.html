@@ -9,8 +9,8 @@
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="ui-flow.css?v=3d27">
-  <link rel="stylesheet" href="styles.css?v=3d27">
+  <link rel="stylesheet" href="ui-flow.css?v=3d38">
+  <link rel="stylesheet" href="styles.css?v=3d38">
 </head>
 
 <body class="workspace-page">
@@ -67,19 +67,12 @@
       <button class="top-btn-icon" id="btn-fullscreen" title="Toàn màn hình" onclick="toggleFullscreen()"><i
           class="ri-fullscreen-line"></i></button>
 
-      <div class="model-switch" id="topbar-model-switch" role="radiogroup" aria-label="Mô hình nhận diện và lan truyền">
-        <button class="model-btn active" data-engine="default" type="button" title="Mô hình Nhanh: Optical flow + ByteTrack (chạy CPU, ~1s)">⚡ Nhanh</button>
-        <button class="model-btn" data-engine="dam4sam" type="button" title="Mô hình Chính xác: DAM4SAM (SAM 2.1) + BoT-SORT (chính xác cao, cần GPU)">🎯 Chính xác</button>
-      </div>
-
-      <div class="mode-switch" role="tablist" aria-label="Chế độ gán nhãn">
+      <!-- Một thanh tab duy nhất: bấm nút nào là sang màn hình của nút đó. Ảnh / Video / 3D là ba màn hình duyệt. -->
+      <nav class="tabs" role="tablist">
         <button class="mode active" data-mode="image" role="tab" title="Gán nhãn từng frame ảnh độc lập">🖼 Ảnh</button>
         <button class="mode" data-mode="video" role="tab" title="Gán nhãn cả video: timeline + lan truyền nhãn">🎞 Video</button>
         <button class="mode" data-mode="3d" role="tab" title="Duyệt box 3D trên point cloud LiDAR, có kiểm chứng bằng 6 camera">🧊 3D</button>
-      </div>
-
-      <nav class="tabs" role="tablist">
-        <button class="tab active" data-tab="review" role="tab">Review</button>
+        <button class="tab active hidden" data-tab="review" role="tab" aria-hidden="true" tabindex="-1">Review</button>
         <button class="tab" data-tab="log" role="tab">Log</button>
         <button class="tab" data-tab="qc" role="tab">QC</button>
         <button class="tab" data-tab="metrics" role="tab">Metrics</button>
@@ -189,6 +182,8 @@
             <button id="btn-zoom-reset" class="btn btn-ghost btn-sm zoom-level" aria-label="Vừa khung">100%</button>
             <button id="btn-zoom-in" class="btn btn-ghost btn-sm" aria-label="Phóng to">+</button>
           </span>
+          <label class="toggle model-pick" title="Mô hình phát hiện 2D. Đổi ở đây = đổi trong Cài đặt, và tự áp dụng lại cho các frame chưa ai mở">Mô hình
+            <select id="model2d" class="model-select"></select></label>
           <button id="btn-click" class="btn btn-ghost" title="Bấm vào vật để tự tách (SAM 2.1) thay vì kéo vẽ box (M)">✨ Chọn vật <kbd>M</kbd></button>
           <button id="btn-add" class="btn btn-ghost" title="Vẽ box mới (B)">＋ Box <kbd>B</kbd></button>
         </div>
@@ -221,7 +216,7 @@
             <button id="btn-play" class="btn btn-ghost btn-sm" title="Phát (Space)">▶ Phát</button>
             <button id="btn-next" class="btn btn-ghost btn-sm" title="Frame sau (N)">▶|</button>
             <label class="toggle"><input type="checkbox" id="auto-prop" checked> Lan truyền khi approve</label>
-            <select id="prop-engine" class="prop-engine" title="Luồng lan truyền cho lần bấm này"></select>
+            <select id="prop-preset" class="model-select" title="Cách lan truyền nhãn. Đổi ở đây = đổi trong Cài đặt (Dự đoán chuyển động + Ghép với detection)"></select>
             <button id="btn-propagate" class="btn btn-ghost btn-sm" disabled>↦ Lan truyền <kbd>T</kbd></button>
             <span id="prop-job" class="prop-job hidden" role="status"></span>
           </span>
@@ -611,7 +606,7 @@
             <button id="settings-save" class="btn btn-primary btn-sm" type="button" disabled>Lưu</button>
           </span>
         </div>
-        <p class="muted">Lưu riêng cho dự án này. Rê chuột vào <i class="ri-information-line"></i> để xem số liệu.</p>
+        <p class="muted">Lưu riêng cho dự án này. Rê chuột vào <i class="ri-information-line"></i> để xem giải thích.</p>
         <form id="settings-form" class="settings-form" autocomplete="off"></form>
       </section>
       <div class="two-col">
@@ -789,8 +784,9 @@
     }, 500);
   </script>
 
-  <script src="app.js?v=3d27"></script>
-  <script type="module" src="app3d.js?v=3d27"></script>
+  <script src="dialog.js?v=3d38"></script>
+  <script src="app.js?v=3d38"></script>
+  <script type="module" src="app3d.js?v=3d38"></script>
 
   <script>
     // ---------- Left Toolbar Interaction Controller ----------
@@ -1180,13 +1176,13 @@
             if (typeof toast === 'function') toast(o.locked ? `Đã khóa đối tượng #${oid}` : `Đã mở khóa đối tượng #${oid}`);
           } else if (actType === 'ASSIGN') {
             const curUser = (typeof reviewer === 'function') ? reviewer() : 'annotator';
-            const assigned = prompt(`Gán người phụ trách cho đối tượng #${oid}:`, o.assigned || curUser);
-            if (assigned !== null) {
+            window.uiPrompt('Tên người phụ trách (để trống = không ai)', o.assigned || curUser, { title: `Gán người phụ trách cho đối tượng #${oid}` }).then((assigned) => {
+              if (assigned === null) return;
               o.assigned = assigned.trim();
               btn.classList.toggle('active', !!o.assigned);
               btn.title = `Người phụ trách: ${o.assigned || 'Chưa gán'}`;
               if (typeof toast === 'function') toast(`Đã gán đối tượng #${oid} cho: ${o.assigned || 'Không ai'}`);
-            }
+            });
           } else if (actType === 'VISIBILITY') {
             o.hidden = !o.hidden;
             btn.classList.toggle('active', o.hidden);

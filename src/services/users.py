@@ -28,6 +28,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from src.services.fsutil import replace_file
+
 Role = Literal["owner", "reviewer", "annotator"]
 ROLES: tuple[str, ...] = ("owner", "reviewer", "annotator")
 SESSION_TTL_S = 30 * 24 * 3600
@@ -103,7 +105,7 @@ class UserStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(self._data, indent=1, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, self.path)
+        replace_file(tmp, self.path)
 
     # ---- người dùng
     def users(self) -> list[User]:
@@ -266,7 +268,7 @@ class Collab:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(d, indent=1, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, self.path)
+        replace_file(tmp, self.path)
 
     def assignments(self) -> dict[str, str]:
         with self._lock:

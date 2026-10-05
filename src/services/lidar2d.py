@@ -40,6 +40,44 @@ def ground_box(b: dict, ego_from_global: np.ndarray) -> dict:
     }
 
 
+# 6 mặt của box theo thứ tự đỉnh của nuscenes_data.box_corners (mỗi mặt là tứ giác đi vòng)
+_FACES = ((0, 1, 2, 3), (4, 5, 6, 7), (0, 3, 7, 4), (1, 2, 6, 5), (0, 1, 5, 4), (3, 2, 6, 7))
+
+
+def _visible_hull(cam: np.ndarray, intrinsic: np.ndarray, width: int, height: int, near: float = 0.1) -> np.ndarray | None:
+    """Phần nhìn thấy của box (8 đỉnh trong hệ camera) -> các điểm ảnh (N, 2) của đa giác đã cắt, None nếu không thấy.
+
+    Cắt từng mặt của box (Sutherland–Hodgman) theo mặt phẳng gần và 4 mặt bên của khối nhìn, rồi chiếu các đỉnh còn lại."""
+    k = np.asarray(intrinsic, float)
+    fx, fy, cx, cy = k[0, 0], k[1, 1], k[0, 2], k[1, 2]
+    planes = (  # (pháp tuyến, hằng số): điểm p nằm trong khi p . n >= c
+        (np.array([0.0, 0.0, 1.0]), near),
+        (np.array([fx, 0.0, cx]), 0.0),  # u >= 0
+        (np.array([-fx, 0.0, width - cx]), 0.0),  # u <= width
+        (np.array([0.0, fy, cy]), 0.0),  # v >= 0
+        (np.array([0.0, -fy, height - cy]), 0.0),  # v <= height
+    )
+    pts = []
+    for face in _FACES:
+        poly = [cam[i] for i in face]
+        for n, c in planes:
+            if not poly:
+                break
+            d = [float(p @ n) - c for p in poly]
+            nxt = []
+            for i, p in enumerate(poly):
+                q, dp, dq = poly[(i + 1) % len(poly)], d[i], d[(i + 1) % len(poly)]
+                if dp >= 0:
+                    nxt.append(p)
+                if (dp >= 0) != (dq >= 0):
+                    nxt.append(p + (q - p) * (dp / (dp - dq)))
+            poly = nxt
+        pts += poly
+    if not pts:
+        return None
+    return project_points(np.asarray(pts), k)
+
+
 def project_boxes(preds: Sequence[dict], cam_from_global: np.ndarray, intrinsic: np.ndarray, width: int, height: int,
                   min_score: float = 0.05, min_size_px: float = 2.0,
                   ego_from_global: np.ndarray | None = None, dedup_overlap: float | None = None) -> list[dict]:  # fmt: skip
@@ -57,6 +95,14 @@ def project_boxes(preds: Sequence[dict], cam_from_global: np.ndarray, intrinsic:
         if not front.any():
             continue
         uv = project_points(cam[front], intrinsic)
+        inside = (uv[:, 0] >= 0) & (uv[:, 0] <= width) & (uv[:, 1] >= 0) & (uv[:, 1] <= height)
+        if not (front.all() and inside.all()):
+            # Box thò ra ngoài ảnh hoặc cắt qua mặt phẳng camera (xe chạy song song sát bên): đỉnh ở sát camera chiếu ra
+            # rất xa, cắt hộp bao của 8 đỉnh theo khung ảnh sẽ ra box phủ kín chiều cao ảnh. Cắt box theo khối nhìn của
+            # camera trước, rồi mới lấy hộp bao của phần thấy được.
+            uv = _visible_hull(cam, intrinsic, width, height)
+            if uv is None:
+                continue
         bbox = clip_box([uv[:, 0].min(), uv[:, 1].min(), uv[:, 0].max(), uv[:, 1].max()], width, height)
         if bbox[2] - bbox[0] < min_size_px or bbox[3] - bbox[1] < min_size_px:
             continue
@@ -146,12 +192,21 @@ def merge_boxes(boxes3d: Sequence[dict], boxes2d: Sequence[dict], match_iou: flo
     return out
 
 
+def strong_camera_only(d, keep_det_score: float | None) -> bool:
+    """Box chỉ detector ảnh thấy (không có box 3D) mà điểm gốc của detector >= keep_det_score: giữ lại dù điểm đã hạ
+    (camera_only_scale / no_lidar_scale) rơi dưới ngưỡng giữ box. None = không giữ thêm."""
+    return keep_det_score is not None and d.box3d is None and (d.det_score or 0.0) >= keep_det_score
+
+
 def merge_detections(
     dets: list, boxes3d: Sequence[dict], match_iou: float = 0.4, camera_only_scale: float = 0.5,
     uv: np.ndarray | None = None, no_lidar_scale: float | None = None, no_lidar_max_points: int = 2,
-    camera_label_wins: bool = False,
+    camera_label_wins: bool = False, box_blend: float = 0.0,
 ) -> list:  # fmt: skip
     """Gộp Detection của detector 2D với box 3D đã chiếu. Box lấy từ 3D bỏ mask (mask của detector không còn khớp).
+
+    box_blend: box trùng cả hai nguồn lấy toạ độ box_blend * detector + (1 - box_blend) * box 3D chiếu (hộp bao 8 đỉnh,
+    rộng hơn vật). 0 = box 3D, 1 = box detector. Lớp / điểm / liên kết box3d không phụ thuộc tham số này.
 
     uv + no_lidar_scale: box chỉ camera thấy mà có <= no_lidar_max_points điểm LiDAR bên trong (vật ngoài tầm LiDAR /
     bị che) dùng hệ số no_lidar_scale thay cho camera_only_scale — LiDAR không có cơ hội thấy vật đó nên không nên phạt."""
@@ -180,6 +235,8 @@ def merge_detections(
                 label = d.label if camera_label_wins or d.score >= p["score"] else p["label"]
                 alts[p["label"] if label == d.label else d.label] = round(min(p["score"], d.score), 4)
             alts.pop(label, None)
-            out.append(Detection(bbox=p["bbox"], label=label, score=score, alternatives=alts,
+            w, u = box_blend, 1 - box_blend
+            bbox = [round(float(w * a + u * b), 1) for a, b in zip(d.bbox, p["bbox"], strict=True)]
+            out.append(Detection(bbox=bbox, label=label, score=score, alternatives=alts,
                                  models={**d.models, SOURCE: round(p["score"], 4)}, box3d=p.get("box3d")))  # fmt: skip
     return sorted(out, key=lambda d: -d.score)

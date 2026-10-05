@@ -35,10 +35,10 @@ Dữ liệu vào (video / bộ ảnh / nuScenes / KITTI)
 ① Detector 2D ── YOLOE-26-L fine-tune, 1280 px, giữ box score ≥ 0.30
    │                                   ┌─ ② Detector 3D (dự án có LiDAR): 4 mô hình LiDAR → gộp → tinh chỉnh theo track
    ▼                                   ▼
-③ Gộp 2D + 3D ── box 3D chiếu xuống ảnh; box chỉ camera thấy bị hạ điểm ×0.5
+③ Gộp 2D + 3D ── box 3D chiếu xuống ảnh; box chỉ camera thấy bị hạ điểm ×0.5 (×0.3 nếu không có điểm LiDAR)
    ▼
 ④ QA Agent ── confidence · LiDAR · temporal (so với sweep t−2…t+2) · hình học → rủi ro low / medium / high
-   │           + đề xuất RECOVERED_BY_TRACK (nét đứt) cho vật detector sót hoặc thấy mờ
+   │           + đề xuất RECOVERED_BY_TRACK (nét đứt) khi người đã xác nhận / vẽ vật ở sweep hai bên
    ▼
 ⑤ Người duyệt ── review by exception: xem box medium / high, duyệt theo lô box low, thêm box (vẽ hoặc bấm ✨ Chọn vật)
    ▼
@@ -111,6 +111,19 @@ trùng với box chiếu (IoU ≥ 0.4, cùng lớp) thì lấy box chiếu và s
 xác nhận, bị nhân score với 0.5, nên phần lớn rơi xuống dưới ngưỡng giữ. Lý do: LiDAR đo được khoảng cách thật nên ít
 "tưởng tượng" ra vật hơn camera. Trên tập test, số box người phải sửa (thừa + sót) giảm từ 6990 xuống 3748.
 
+Đo lại ngày 04/10 với detector fine-tune toàn mạng, trên **cả 6 camera** của tập test (5742 ảnh, 25991 vật). Từ ngày
+này box chỉ camera thấy mà không có điểm LiDAR nào trong box bị nhân 0.3 thay vì 0.5 (95% box loại này không khớp nhãn
+gốc):
+
+| Cấu hình | mAP50 | P | R | F1 | Box thừa | Vật sót | Phải sửa |
+|---|---|---|---|---|---|---|---|
+| Chỉ detector ảnh | 0.560 | 0.534 | 0.763 | 0.628 | 17262 | 6170 | 23432 |
+| Gộp box 3D, mọi box chỉ camera x0.5 (trước 04/10) | 0.671 | 0.628 | 0.818 | 0.710 | 12612 | 4736 | 17348 |
+| **Gộp box 3D, box 0 điểm LiDAR x0.3 (mặc định mới)** | **0.672** | **0.672** | 0.812 | **0.735** | 10287 | 4897 | **15184 (−35%)** |
+
+Gộp có lợi ở cả 6 camera (mAP50 +0.08 đến +0.14). Riêng CAM_FRONT: mAP50 0.589 → 0.700, phải sửa 7023 → 3504. Bảng từng
+camera: `eval/results/lidar2d.md`.
+
 **④ QA Agent — máy tự chấm box nào đáng ngờ.** Mỗi box đi qua bốn nhóm kiểm tra; mỗi kiểm tra không đạt sinh một mã
 lỗi kèm lời giải thích cho người duyệt:
 
@@ -121,8 +134,8 @@ lỗi kèm lời giải thích cho người duyệt:
 | Thời gian | Vật có xuất hiện lại ở các sweep ngay trước và sau không, hay chỉ loé lên một ảnh? | `FLICKER`, `RECOVERED_BY_TRACK` |
 | Hình học | Box có to bất thường, hay tỉ lệ rộng / cao lạ so với lớp không? | `BOX_TOO_LARGE`, `ASPECT_RATIO_ABNORMAL` |
 
-Bốn nhóm được cộng có trọng số thành một điểm rủi ro 0–1, chia ba mức: **low** (xanh, < 0.30), **medium** (vàng),
-**high** (đỏ, ≥ 0.60). Box có bất kỳ mã lỗi nào thì không bao giờ được xếp low. `RECOVERED_BY_TRACK` là trường hợp
+Bốn nhóm được cộng có trọng số thành một điểm rủi ro 0–1, chia ba mức: **low** (xanh, < 0.17), **medium** (vàng),
+**high** (đỏ, ≥ 0.40; ngưỡng dò lại ngày 04/10, xem mục 4). Box có bất kỳ mã lỗi nào thì không bao giờ được xếp low. `RECOVERED_BY_TRACK` là trường hợp
 ngược: detector bỏ sót (hoặc thấy quá mờ) ở keyframe nhưng các sweep hai bên đều thấy, nên máy đề xuất một box nét đứt
 để người xác nhận.
 
@@ -363,6 +376,22 @@ Với CenterPoint voxel:
 Cấu hình mặc định giữ recall cờ cao nhất, tức là ít lỗi lọt qua nhóm duyệt lô nhất. "Tính lại score" giảm số box phải
 xem tay từ 1707 xuống 648 nhưng làm sót thêm vật, nên chỉ để làm tuỳ chọn.
 
+**QA 2D với detector fine-tune toàn mạng, trước và sau khi dò lại** (04/10, test 20 scene, 795 keyframe, 9241 box):
+
+| Chỉ số | QA cũ | QA mới |
+|---|---|---|
+| Nhóm low (duyệt theo lô): số box | 7573 (82%) | 3138 (34%) |
+| Nhóm low: tỉ lệ sai | 47.8% | **8.9%** |
+| Box sai lọt qua duyệt theo lô | 3621 | **280** |
+| Box phải xem tay | 1668 | 6103 |
+| Recall cờ / precision cờ | 0.254 / 0.737 | **0.942** / 0.749 |
+| Nhóm high: số box / tỉ lệ sai | 13 / 92% | 2300 / 95% |
+| Đề xuất RECOVERED_BY_TRACK / trùng vật sót | 627 / 37 | 0 / 0 |
+
+Risk cũ xếp box sai không hơn gì score của detector (AUC 0.841 cả hai); risk mới đạt 0.916 nhờ dùng số điểm LiDAR
+trong box (box 0 điểm sai 96%) và ngưỡng khớp với score của detector mới. QA không làm đổi mAP / P / R / F1. Đổi lại
+người duyệt phải xem 66% số box, vì detector ra 52% box sai so với nhãn gốc. Chi tiết: `eval/results/qa_tuning.md`.
+
 ## 5. Lan truyền nhãn 2D: optical flow × ByteTrack × OC-SORT
 
 Bản đầy đủ hơn, gồm BoT-SORT, DAM4SAM, TrackEval (HOTA / IDF1) và vai trò từng thuật toán trong mỗi tổ hợp:
@@ -501,8 +530,10 @@ GPU cho phép chạy được những phần tăng accuracy: 4 mô hình LiDAR, 
 
 - **Bảng lan truyền 2D và QA Agent 2D** ở các mục trên vẫn là số đo với detection zero-shot / linear probe. Số với model
   fine-tune toàn mạng ở `eval/results/temporal/report.md`, mục 0b (chạy 04/10).
-- **QA Agent 2D cần dò lại ngưỡng risk** cho detector fine-tune toàn mạng: box sai lọt vào nhóm duyệt theo lô tăng từ
-  1632 lên 3621 trên 795 keyframe test.
+- **Gộp 2D + 3D** đã đo trên 6 camera với detector fine-tune toàn mạng; CAM_BACK_RIGHT yếu nhất sau khi gộp (F1 0.674),
+  chưa tìm nguyên nhân. QA Agent 2D và lan truyền 2D vẫn chỉ đo trên CAM_FRONT.
+- **QA Agent 2D** đã dò lại cho detector fine-tune toàn mạng (mục 4): box sai lọt duyệt theo lô 3621 → 280, nhưng người
+  phải xem 66% số box. Nhóm high (25% số box, 95% sai) chưa có thao tác xoá theo lô trên giao diện.
 - **Precision của detector 2D** vẫn quanh 0.48 ở ngưỡng 0.30; construction vehicle và trailer còn yếu (AP50 0.11 / 0.22).
 - **P/R/F1 của 3D** đo trên 20/24 scene test. Đây là phần có sẵn bảng nhãn đã lọc trên máy; mAP và NDS vẫn dùng đủ 24
   scene.

@@ -23,8 +23,9 @@
 `RECOVERED_BY_TRACK`, `BOX_TOO_LARGE`, `ASPECT_RATIO_ABNORMAL`; nhãn lan truyền thêm `PROP_LOW_CONF`,
 `PROP_COASTING`, `PROP_CLASS_DIFFERS`.
 
-**Risk:** `risk = w1(1 − score) + w2·lidar + w3·temporal + w4·geometric` → low < 0.30 ≤ medium < 0.60 ≤ high.
-Object có issue luôn ≥ 0.30 nên không bao giờ bị duyệt theo lô. Mọi ngưỡng và trọng số nằm trong
+**Risk:** `risk = w1(1 − score) + w2·lidar + w3·temporal + w4·geometric` → low < 0.17 ≤ medium < 0.40 ≤ high (dò lại 04/10/2026 cho
+detector fine-tune toàn mạng: nhóm low sai 9%, nhóm high sai 95% trên held-out, xem
+[eval/results/qa_tuning.md](eval/results/qa_tuning.md)). Object có issue luôn ≥ 0.17 nên không bao giờ bị duyệt theo lô. Mọi ngưỡng và trọng số nằm trong
 [configs/autolabel.yaml](configs/autolabel.yaml). Chi tiết: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Demo nhanh (không cần GPU, không cần nuScenes)
