@@ -1396,6 +1396,22 @@ a {
   cursor: pointer;
 }
 
+/* Tuỳ chọn ngắn + ô ? nhỏ: rê chuột / focus để xem giải thích */
+.option-row { display: flex; align-items: center; gap: 6px; }
+.opt-tip {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px;
+  border-radius: 50%; font-size: 13px; color: var(--text-muted); cursor: help; flex: none;
+}
+.opt-tip:hover, .opt-tip:focus { color: var(--primary); outline: none; }
+.opt-tip::after {
+  content: attr(data-tip); position: absolute; left: -8px; top: calc(100% + 6px); z-index: 60; width: max-content;
+  max-width: min(340px, 70vw); padding: 8px 10px; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(15, 23, 42, .12); font-size: 12px;
+  font-weight: 400; line-height: 1.45; white-space: normal; pointer-events: none; opacity: 0; transform: translateY(-2px);
+  transition: opacity .12s ease, transform .12s ease;
+}
+.opt-tip:hover::after, .opt-tip:focus::after { opacity: 1; transform: none; }
+
 /* Upload Progress */
 .pj-upload-progress {
   margin: 12px 0;

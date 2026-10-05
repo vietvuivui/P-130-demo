@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="ui-flow.css?v=3d32">
+  <link rel="stylesheet" href="ui-flow.css?v=3d33">
 </head>
 <body>
 
@@ -133,14 +133,14 @@
         </div>
 
         <div class="form-item options-box">
-          <label class="checkbox-option" title="Bỏ chọn: mỗi ảnh được gán nhãn riêng">
-            <input type="checkbox" id="pj-seq">
-            <span>Ảnh là các frame liên tiếp của video (~10 fps): AI gán nhãn 1/5 frame, phần còn lại lan truyền nhãn tự động</span>
-          </label>
-          <label class="checkbox-option">
-            <input type="checkbox" id="pj-tta">
-            <span>3D TTA chính xác hơn (lật trục tọa độ khi suy luận, chậm hơn ~4 lần)</span>
-          </label>
+          <div class="option-row">
+            <label class="checkbox-option"><input type="checkbox" id="pj-seq"><span>Ảnh là frame liên tiếp của video</span></label>
+            <span class="opt-tip" tabindex="0" data-tip="Chỉ dùng khi tải lên bộ ảnh cắt liên tục từ video (~10 fps). Cứ 5 ảnh AI gán nhãn 1 ảnh; nhãn đã duyệt được lan truyền sang các ảnh sau. Bỏ chọn: mỗi ảnh được gán nhãn riêng."><i class="ri-question-line"></i></span>
+          </div>
+          <div class="option-row">
+            <label class="checkbox-option"><input type="checkbox" id="pj-tta"><span>3D TTA</span></label>
+            <span class="opt-tip" tabindex="0" data-tip="Chỉ cho dữ liệu có LiDAR. Mỗi mô hình 3D chạy thêm 3 lần trên point cloud đã lật trục rồi gộp kết quả. Bước dự đoán 3D chậm hơn khoảng 4 lần."><i class="ri-question-line"></i></span>
+          </div>
         </div>
 
         <div class="pj-upload-progress hidden" id="pj-upload">
@@ -176,6 +176,6 @@
 
   <div id="toastContainer" class="toast-container"></div>
 
-  <script src="projects.js?v=3d32"></script>
+  <script src="projects.js?v=3d33"></script>
 </body>
 </html>
