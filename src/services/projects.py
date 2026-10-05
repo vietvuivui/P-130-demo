@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field
 
 from src.models.qa_config import AutoLabelConfig
 from src.services import ingest
+from src.services.fsutil import replace_file
 from src.services.store import WorkspaceStore
 
 log = logging.getLogger(__name__)
@@ -156,7 +157,7 @@ class ProjectManager:
             path = self._path(p.id)
             tmp = path.with_suffix(".tmp")
             tmp.write_text(p.model_dump_json(indent=1), encoding="utf-8")
-            os.replace(tmp, path)
+            replace_file(tmp, path)  # UI hỏi tiến độ có thể đang đọc project.json: thử lại thay vì làm hỏng cả bước
 
     def list(self) -> list[Project]:
         out = []
