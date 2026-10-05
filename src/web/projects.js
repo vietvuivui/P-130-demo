@@ -58,22 +58,64 @@ const fmtDate = (s) => (s ? new Date(s).toLocaleString('vi-VN', { dateStyle: 'sh
 
 // ---------- Chọn file tải lên ----------
 
-function setPicked(files) {
-  picked = Array.from(files);
+// File đã chọn: thêm dần được (chọn nhiều lần / kéo thả nhiều lần), hiện thành danh sách, bỏ từng file được.
+// Ảnh gộp thành một dự án; mỗi video / tệp nén là một dự án riêng (máy chủ chỉ nhận nhiều file khi tất cả là ảnh).
+const IMAGE_RE = /\.(jpe?g|png|bmp)$/i;
+const fileKey = (f) => `${f.name}|${f.size}`;
+const stem = (name) => name.replace(/\.(tar\.gz|[^.]+)$/i, '').slice(0, 60);
+
+function groupsOf(files) {
+  const images = files.filter((f) => IMAGE_RE.test(f.name));
+  const others = files.filter((f) => !IMAGE_RE.test(f.name));
+  return [...(images.length ? [{ images: true, files: images }] : []), ...others.map((f) => ({ images: false, files: [f] }))];
+}
+
+function renderPicked() {
+  const groups = groupsOf(picked);
   const total = picked.reduce((a, f) => a + f.size, 0);
-  const pickedEl = $('pj-picked');
-  if (pickedEl) {
-    pickedEl.textContent = picked.length
-      ? `${picked.length} file · ${fmtSize(total)}` + (picked.length <= 3 ? ` · ${picked.map((f) => f.name).join(', ')}` : '')
-      : 'Chấp nhận video (.mp4, .mov), tệp nén (.zip), hoặc nhiều ảnh (.jpg, .png)';
+  const list = $('pj-file-list');
+  if (list) {
+    list.classList.toggle('hidden', !picked.length);
+    list.innerHTML = groups.map((g, i) => {
+      const size = fmtSize(g.files.reduce((a, f) => a + f.size, 0));
+      const name = g.images ? `${g.files.length} ảnh` : g.files[0].name;
+      const icon = g.images ? 'ri-image-line' : /\.(mp4|mov|avi|mkv|webm)$/i.test(g.files[0].name) ? 'ri-film-line' : 'ri-file-zip-line';
+      return `<li class="pj-file"><i class="${icon}"></i><span class="pj-file-name" title="${esc(g.images ? g.files.slice(0, 20).map((f) => f.name).join(', ') : name)}">${esc(name)}</span>
+        <span class="pj-file-size">${size}</span>
+        <button type="button" class="pj-file-remove" data-group="${i}" title="Bỏ khỏi danh sách" aria-label="Bỏ ${esc(name)}"><i class="ri-close-line"></i></button></li>`;
+    }).join('') + (groups.length > 1 ? `<li class="pj-file-note">${groups.length} dự án sẽ được tạo: mỗi video / tệp nén một dự án${groups[0].images ? ', các ảnh chung một dự án' : ''}. Tổng ${fmtSize(total)}.</li>` : '');
   }
   const dropEl = $('pj-drop');
   if (dropEl) dropEl.classList.toggle('has-files', picked.length > 0);
+  const text = $('pj-drop-text');
+  if (text) text.firstChild.textContent = picked.length ? 'Thêm file: kéo thả vào đây hoặc ' : 'Kéo thả file vào đây hoặc ';
   const nameInput = $('pj-name');
-  if (picked.length && nameInput && !nameInput.value.trim()) {
-    nameInput.value = picked[0].name.replace(/\.[^.]+$/, '').slice(0, 60);
+  if (nameInput) {
+    nameInput.disabled = groups.length > 1;
+    nameInput.placeholder = groups.length > 1 ? 'Mỗi dự án lấy tên theo file' : 'vd: Dashcam Hà Nội tháng 9';
+    if (groups.length > 1) nameInput.value = '';
+    else if (picked.length && !nameInput.value.trim()) nameInput.value = stem(picked[0].name);
   }
 }
+
+function addPicked(files) {
+  const seen = new Set(picked.map(fileKey));
+  for (const f of Array.from(files)) if (!seen.has(fileKey(f))) { seen.add(fileKey(f)); picked.push(f); }
+  renderPicked();
+}
+
+function setPicked(files) {
+  picked = [];
+  addPicked(files);
+}
+
+$('pj-file-list')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.pj-file-remove');
+  if (!btn) return;
+  const gone = new Set(groupsOf(picked)[Number(btn.dataset.group)].files.map(fileKey));
+  picked = picked.filter((f) => !gone.has(fileKey(f)));
+  renderPicked();
+});
 
 const pickBtn = $('pj-pick');
 const filesInput = $('pj-files');
@@ -94,10 +136,10 @@ if (dropZone && filesInput) {
   ['dragleave', 'drop'].forEach((ev) => dropZone.addEventListener(ev, () => dropZone.classList.remove('dragover')));
   dropZone.addEventListener('drop', (e) => {
     e.preventDefault();
-    if (e.dataTransfer?.files?.length) setPicked(e.dataTransfer.files);
+    if (e.dataTransfer?.files?.length) addPicked(e.dataTransfer.files);
   });
 }
-if (filesInput) filesInput.addEventListener('change', (e) => setPicked(e.target.files));
+if (filesInput) filesInput.addEventListener('change', (e) => { addPicked(e.target.files); e.target.value = ''; });
 
 // ---------- Modal Tạo dự án ----------
 
@@ -141,47 +183,56 @@ if (form) {
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     if (!picked.length) { toast('Vui lòng chọn ít nhất một file dữ liệu', true); return; }
-    const fd = new FormData();
-    picked.forEach((f) => fd.append('files', f, f.name));
-    fd.append('name', $('pj-name')?.value.trim() || picked[0].name);
-    fd.append('kind', 'auto'); // định dạng luôn tự nhận dạng; không giới hạn số frame
-    fd.append('sequential', $('pj-seq')?.checked ? 'true' : 'false');
-    fd.append('tta', $('pj-tta')?.checked ? 'true' : 'false');
-
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', API);
+    const groups = groupsOf(picked);
+    const typedName = $('pj-name')?.value.trim();
     const uploadBox = $('pj-upload');
     const uploadBar = $('pj-upload-bar');
     const uploadText = $('pj-upload-text');
     const submitBtn = $('pj-submit');
-
     if (uploadBox) uploadBox.classList.remove('hidden');
     if (submitBtn) submitBtn.disabled = true;
 
-    xhr.upload.onprogress = (ev) => {
-      if (!ev.lengthComputable) return;
-      const pct = (100 * ev.loaded) / ev.total;
-      if (uploadBar) uploadBar.style.width = pct.toFixed(1) + '%';
-      if (uploadText) uploadText.textContent = pct < 100 ? `Đang tải lên ${fmtSize(ev.loaded)} / ${fmtSize(ev.total)}` : 'Đang lưu trên máy chủ…';
-    };
+    // Tải lần lượt từng dự án (XHR để có tiến độ); dự án lỗi thì giữ file đó lại trong danh sách để thử lại
+    const upload = (g, i) => new Promise((resolve) => {
+      const fd = new FormData();
+      g.files.forEach((f) => fd.append('files', f, f.name));
+      fd.append('name', (groups.length === 1 && typedName) || stem(g.files[0].name));
+      fd.append('kind', 'auto'); // định dạng luôn tự nhận dạng; không giới hạn số frame
+      fd.append('sequential', $('pj-seq')?.checked ? 'true' : 'false');
+      fd.append('tta', $('pj-tta')?.checked ? 'true' : 'false');
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', API);
+      const tag = groups.length > 1 ? `Dự án ${i + 1}/${groups.length}: ` : '';
+      xhr.upload.onprogress = (ev) => {
+        if (!ev.lengthComputable) return;
+        const pct = (100 * ev.loaded) / ev.total;
+        if (uploadBar) uploadBar.style.width = pct.toFixed(1) + '%';
+        if (uploadText) uploadText.textContent = tag + (pct < 100 ? `đang tải lên ${fmtSize(ev.loaded)} / ${fmtSize(ev.total)}` : 'đang lưu trên máy chủ…');
+      };
+      xhr.onloadend = () => {
+        let body = {};
+        try { body = JSON.parse(xhr.responseText); } catch { /* ignore non-json */ }
+        if (xhr.status === 200) resolve({ ok: true, name: body.name });
+        else resolve({ ok: false, error: body?.detail?.message || body?.detail || `HTTP ${xhr.status || 'mất kết nối'}` });
+      };
+      xhr.send(fd);
+    });
 
-    xhr.onloadend = () => {
+    (async () => {
+      const failed = [];
+      const done = [];
+      for (let i = 0; i < groups.length; i++) {
+        const r = await upload(groups[i], i);
+        if (r.ok) done.push(r.name);
+        else { failed.push(...groups[i].files); toast(`Không tạo được dự án từ ${groups[i].images ? 'các ảnh' : groups[i].files[0].name}: ${r.error}`, true); }
+      }
       if (submitBtn) submitBtn.disabled = false;
       if (uploadBox) uploadBox.classList.add('hidden');
       if (uploadBar) uploadBar.style.width = '0%';
-      let body = {};
-      try { body = JSON.parse(xhr.responseText); } catch { /* ignore non-json */ }
-      if (xhr.status !== 200) {
-        toast('Không tạo được dự án: ' + (body?.detail?.message || body?.detail || `HTTP ${xhr.status || 'mất kết nối'}`), true);
-        return;
-      }
-      toast(`Đã tạo dự án “${body.name}”, hệ thống đang tự động xử lý`);
-      form.reset();
-      setPicked([]);
-      closeCreateModal();
-      load();
-    };
-    xhr.send(fd);
+      if (done.length) toast(done.length === 1 ? `Đã tạo dự án “${done[0]}”, hệ thống đang tự động xử lý` : `Đã tạo ${done.length} dự án, hệ thống đang tự động xử lý`);
+      if (failed.length) { picked = failed; renderPicked(); } else { form.reset(); setPicked([]); closeCreateModal(); }
+      if (done.length) load();
+    })();
   });
 }
 

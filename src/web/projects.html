@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-  <link rel="stylesheet" href="ui-flow.css?v=3d33">
+  <link rel="stylesheet" href="ui-flow.css?v=3d34">
 </head>
 <body>
 
@@ -122,13 +122,14 @@
         </div>
 
         <div class="form-item">
-          <label class="form-label">Tệp dữ liệu (Kéo thả hoặc duyệt file)</label>
+          <label class="form-label">Tệp dữ liệu</label>
+          <ul id="pj-file-list" class="pj-file-list hidden" aria-label="File đã chọn"></ul>
           <div id="pj-drop" class="pj-drop-zone" tabindex="0">
             <input id="pj-files" type="file" multiple hidden
                    accept=".zip,.tar,.tgz,.gz,.mp4,.mov,.avi,.mkv,.webm,.jpg,.jpeg,.png,.bmp">
             <div class="drop-icon"><i class="ri-upload-cloud-line"></i></div>
-            <div class="drop-text">Kéo thả file vào đây hoặc <button type="button" id="pj-pick" class="link-btn">chọn file</button></div>
-            <div class="drop-hint" id="pj-picked">Chấp nhận video (.mp4, .mov), tệp nén (.zip), hoặc nhiều ảnh (.jpg, .png)</div>
+            <div class="drop-text" id="pj-drop-text">Kéo thả file vào đây hoặc <button type="button" id="pj-pick" class="link-btn">chọn file</button></div>
+            <div class="drop-hint" id="pj-picked">Chọn được nhiều file: video (.mp4, .mov), tệp nén (.zip), ảnh (.jpg, .png)</div>
           </div>
         </div>
 
@@ -176,6 +177,6 @@
 
   <div id="toastContainer" class="toast-container"></div>
 
-  <script src="projects.js?v=3d33"></script>
+  <script src="projects.js?v=3d34"></script>
 </body>
 </html>

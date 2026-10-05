@@ -1342,6 +1342,23 @@ a {
   background: #f0f7ff;
 }
 
+/* Đã có file: ô kéo thả thu gọn thành ô "thêm file" bên dưới danh sách */
+.pj-drop-zone.has-files { border-style: dashed; padding: 10px 12px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.pj-drop-zone.has-files .drop-icon { font-size: 18px; margin: 0; }
+.pj-drop-zone.has-files .drop-text { font-size: 13px; margin: 0; }
+.pj-drop-zone.has-files .drop-text .link-btn { font-size: 13px; }
+.pj-drop-zone.has-files .drop-hint { display: none; }
+.pj-file-list { list-style: none; margin: 0 0 8px; padding: 0; max-height: 168px; overflow-y: auto; border: 1px solid var(--border-light); border-radius: 6px; }
+.pj-file-list.hidden { display: none; }
+.pj-file { display: flex; align-items: center; gap: 8px; padding: 7px 10px; font-size: 13px; color: var(--text); border-bottom: 1px solid var(--border-light); }
+.pj-file:last-child { border-bottom: 0; }
+.pj-file > i { color: var(--primary); font-size: 16px; flex: none; }
+.pj-file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pj-file-size { color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; flex: none; }
+.pj-file-remove { border: 0; background: none; color: var(--text-muted); cursor: pointer; padding: 2px; border-radius: 4px; display: inline-flex; flex: none; }
+.pj-file-remove:hover { color: #cf1322; background: #fff1f0; }
+.pj-file-note { padding: 7px 10px; font-size: 12px; color: var(--text-secondary); background: #fafafa; }
+
 .drop-icon {
   font-size: 32px;
   color: var(--primary);
