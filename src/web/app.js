@@ -2391,7 +2391,7 @@ async function loadSettings() {
   S.settings = r.fields;
   S.gtFrames = r.gt_frames;
   $('settings-scope').textContent = PROJECT ? `Dự án: ${$('project-name').textContent || PROJECT}` : 'Workspace mặc định';
-  $('settings-form').innerHTML = r.fields.map(settingRow).join('');
+  $('settings-form').innerHTML = settingsRows(r.fields);
   $('settings-save').disabled = true;
   $('eval-run').disabled = !r.gt_frames;
   $('eval-run').title = r.gt_frames ? `${r.gt_frames} frame có GT` : 'Cần dữ liệu có nhãn gốc (nuScenes có sample_annotation)';
@@ -2423,6 +2423,9 @@ function settingRow(f, i, all) {
     <div>${control}</div>
   </div>`;
 }
+// Mô hình phát hiện 2D chọn ngay trên thanh công cụ của màn hình Ảnh / Video (ô "Mô hình"), không lặp lại ở tab Cài đặt
+const MAIN_SCREEN_SETTINGS = new Set(['detection.yoloe.weights']);
+const settingsRows = (fields) => fields.filter((f) => !MAIN_SCREEN_SETTINGS.has(f.path)).map(settingRow).join('');
 function settingValues() {
   const out = {};
   document.querySelectorAll('#settings-form [data-path]').forEach((el) => {
@@ -2437,7 +2440,7 @@ $('settings-save').addEventListener('click', async () => {
   try {
     const r = await api('/settings', { method: 'PUT', body: { values: settingValues() } });
     S.settings = r.fields;
-    $('settings-form').innerHTML = r.fields.map(settingRow).join('');
+    $('settings-form').innerHTML = settingsRows(r.fields);
     $('settings-save').disabled = true;
     renderMainModels(r.fields);
     const needs = r.fields.some((f) => f.applies === 'relabel' && f.changed);
@@ -2448,7 +2451,7 @@ $('settings-reset').addEventListener('click', async () => {
   try {
     const r = await api('/settings', { method: 'DELETE' });
     S.settings = r.fields;
-    $('settings-form').innerHTML = r.fields.map(settingRow).join('');
+    $('settings-form').innerHTML = settingsRows(r.fields);
     $('settings-save').disabled = true;
     renderMainModels(r.fields);
     toast('Đã về cài đặt mặc định.');
