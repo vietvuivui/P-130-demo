@@ -1354,6 +1354,10 @@ a {
 .pj-file:last-child { border-bottom: 0; }
 .pj-file > i { color: var(--primary); font-size: 16px; flex: none; }
 .pj-file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pj-file-proj { flex: 1 1 45%; min-width: 0; height: 28px; padding: 2px 8px; font: inherit; font-size: 13px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); }
+.pj-file-proj:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(22, 119, 255, .15); }
+.pj-file.multi .pj-file-name { flex: 1 1 35%; font-size: 12px; color: var(--text-muted); }
+.form-item.hidden { display: none; }
 .pj-file-size { color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; flex: none; }
 .pj-file-remove { border: 0; background: none; color: var(--text-muted); cursor: pointer; padding: 2px; border-radius: 4px; display: inline-flex; flex: none; }
 .pj-file-remove:hover { color: #cf1322; background: #fff1f0; }

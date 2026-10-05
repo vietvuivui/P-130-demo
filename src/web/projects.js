@@ -64,11 +64,17 @@ const IMAGE_RE = /\.(jpe?g|png|bmp)$/i;
 const fileKey = (f) => `${f.name}|${f.size}`;
 const stem = (name) => name.replace(/\.(tar\.gz|[^.]+)$/i, '').slice(0, 60);
 
+// Tên dự án người dùng gõ cho từng dòng khi tạo nhiều dự án một lúc (khoá = nhóm ảnh hoặc file)
+const projNames = new Map();
 function groupsOf(files) {
   const images = files.filter((f) => IMAGE_RE.test(f.name));
   const others = files.filter((f) => !IMAGE_RE.test(f.name));
-  return [...(images.length ? [{ images: true, files: images }] : []), ...others.map((f) => ({ images: false, files: [f] }))];
+  return [
+    ...(images.length ? [{ images: true, files: images, key: '__images__' }] : []),
+    ...others.map((f) => ({ images: false, files: [f], key: fileKey(f) })),
+  ];
 }
+const projName = (g) => (projNames.get(g.key) ?? stem(g.files[0].name)).trim() || stem(g.files[0].name);
 
 function renderPicked() {
   const groups = groupsOf(picked);
@@ -80,10 +86,14 @@ function renderPicked() {
       const size = fmtSize(g.files.reduce((a, f) => a + f.size, 0));
       const name = g.images ? `${g.files.length} ảnh` : g.files[0].name;
       const icon = g.images ? 'ri-image-line' : /\.(mp4|mov|avi|mkv|webm)$/i.test(g.files[0].name) ? 'ri-film-line' : 'ri-file-zip-line';
-      return `<li class="pj-file"><i class="${icon}"></i><span class="pj-file-name" title="${esc(g.images ? g.files.slice(0, 20).map((f) => f.name).join(', ') : name)}">${esc(name)}</span>
+      // Nhiều dự án: mỗi dòng có ô tên dự án sửa được, tên file hiện nhỏ bên cạnh
+      const nameBox = groups.length > 1
+        ? `<input class="pj-file-proj" type="text" maxlength="60" data-key="${esc(g.key)}" value="${esc(projNames.get(g.key) ?? stem(g.files[0].name))}" aria-label="Tên dự án cho ${esc(name)}" title="Tên dự án">`
+        : '';
+      return `<li class="pj-file${nameBox ? ' multi' : ''}"><i class="${icon}"></i>${nameBox}<span class="pj-file-name" title="${esc(g.images ? g.files.slice(0, 20).map((f) => f.name).join(', ') : name)}">${esc(name)}</span>
         <span class="pj-file-size">${size}</span>
         <button type="button" class="pj-file-remove" data-group="${i}" title="Bỏ khỏi danh sách" aria-label="Bỏ ${esc(name)}"><i class="ri-close-line"></i></button></li>`;
-    }).join('') + (groups.length > 1 ? `<li class="pj-file-note">${groups.length} dự án sẽ được tạo: mỗi video / tệp nén một dự án${groups[0].images ? ', các ảnh chung một dự án' : ''}. Tổng ${fmtSize(total)}.</li>` : '');
+    }).join('') + (groups.length > 1 ? `<li class="pj-file-note">${groups.length} dự án sẽ được tạo: mỗi video / tệp nén một dự án${groups[0].images ? ', các ảnh chung một dự án' : ''}. Sửa tên dự án ở ô đầu mỗi dòng. Tổng ${fmtSize(total)}.</li>` : '');
   }
   const dropEl = $('pj-drop');
   if (dropEl) dropEl.classList.toggle('has-files', picked.length > 0);
@@ -91,10 +101,9 @@ function renderPicked() {
   if (text) text.firstChild.textContent = picked.length ? 'Thêm file: kéo thả vào đây hoặc ' : 'Kéo thả file vào đây hoặc ';
   const nameInput = $('pj-name');
   if (nameInput) {
-    nameInput.disabled = groups.length > 1;
-    nameInput.placeholder = groups.length > 1 ? 'Mỗi dự án lấy tên theo file' : 'vd: Dashcam Hà Nội tháng 9';
-    if (groups.length > 1) nameInput.value = '';
-    else if (picked.length && !nameInput.value.trim()) nameInput.value = stem(picked[0].name);
+    // Một dự án: đặt tên ở ô "Tên dự án". Nhiều dự án: ô đó ẩn đi, tên từng dự án sửa ngay trong danh sách
+    nameInput.closest('.form-item')?.classList.toggle('hidden', groups.length > 1);
+    if (groups.length === 1 && !nameInput.value.trim()) nameInput.value = projNames.get(groups[0].key) || stem(picked[0].name);
   }
 }
 
@@ -109,6 +118,9 @@ function setPicked(files) {
   addPicked(files);
 }
 
+$('pj-file-list')?.addEventListener('input', (e) => {
+  if (e.target.classList.contains('pj-file-proj')) projNames.set(e.target.dataset.key, e.target.value);
+});
 $('pj-file-list')?.addEventListener('click', (e) => {
   const btn = e.target.closest('.pj-file-remove');
   if (!btn) return;
@@ -196,7 +208,7 @@ if (form) {
     const upload = (g, i) => new Promise((resolve) => {
       const fd = new FormData();
       g.files.forEach((f) => fd.append('files', f, f.name));
-      fd.append('name', (groups.length === 1 && typedName) || stem(g.files[0].name));
+      fd.append('name', (groups.length === 1 && typedName) || projName(g));
       fd.append('kind', 'auto'); // định dạng luôn tự nhận dạng; không giới hạn số frame
       fd.append('sequential', $('pj-seq')?.checked ? 'true' : 'false');
       fd.append('tta', $('pj-tta')?.checked ? 'true' : 'false');
@@ -230,7 +242,7 @@ if (form) {
       if (uploadBox) uploadBox.classList.add('hidden');
       if (uploadBar) uploadBar.style.width = '0%';
       if (done.length) toast(done.length === 1 ? `Đã tạo dự án “${done[0]}”, hệ thống đang tự động xử lý` : `Đã tạo ${done.length} dự án, hệ thống đang tự động xử lý`);
-      if (failed.length) { picked = failed; renderPicked(); } else { form.reset(); setPicked([]); closeCreateModal(); }
+      if (failed.length) { picked = failed; renderPicked(); } else { form.reset(); projNames.clear(); setPicked([]); closeCreateModal(); }
       if (done.length) load();
     })();
   });
