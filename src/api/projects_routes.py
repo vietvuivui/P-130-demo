@@ -5,6 +5,7 @@ Sau khi dự án xử lý xong, UI duyệt dùng chính API duyệt ở /p/{proj
 
 from __future__ import annotations
 
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -46,29 +47,70 @@ def list_projects(request: Request):
     return [p for p in projects if not p.members or any(m.get("user_id") == user.id for m in p.members)]
 
 
+_UPLOAD_ID = re.compile(r"^[0-9a-f]{32}$")
+
+
+def _upload_dir(upload_id: str) -> Path:
+    if not _UPLOAD_ID.match(upload_id):
+        raise HTTPException(422, {"code": "BAD_UPLOAD_ID", "message": "upload_id không hợp lệ"})
+    return Path(tempfile.gettempdir()) / "autolabel-uploads" / upload_id
+
+
+@projects_router.put("/uploads/{upload_id}")
+async def upload_chunk(upload_id: str, request: Request, name: str = Query(...), offset: int = Query(0, ge=0)):
+    """Một phần của file lớn, gửi lần lượt theo offset rồi tạo dự án bằng upload_id.
+
+    Proxy phía trước có thể chặn request lớn (Cloudflare bản free: 100 MB), nên UI chia file lớn thành nhiều phần.
+    Đọc hết phần trước khi ghi: client ngắt giữa chừng thì không ghi gì, gửi lại đúng offset là được.
+    """
+    fname = Path(name).name
+    if fname in ("", ".", ".."):
+        raise HTTPException(422, {"code": "BAD_NAME", "message": "Tên file không hợp lệ"})
+    dest = _upload_dir(upload_id) / fname
+    size = dest.stat().st_size if dest.exists() else 0
+    if offset != size:
+        raise HTTPException(409, {"code": "BAD_OFFSET", "message": f"Máy chủ đang có {size} byte", "size": size})
+    body = await request.body()
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with open(dest, "ab") as out:
+        out.write(body)
+    return {"size": size + len(body)}
+
+
 @projects_router.post("", response_model=Project)
 def create_project(
     request: Request,
-    files: list[UploadFile] = File(...),
+    files: list[UploadFile] | None = File(None),
+    upload_id: str = Form(""),
     name: str = Form(""),
     kind: str = Form("auto"),
     tta: bool = Form(False),
     sequential: bool = Form(False),
     max_frames: int | None = Form(None),
 ):
-    """Tải lên: một video, nhiều ảnh, hoặc một file nén (.zip/.tar) chứa nuScenes / KITTI / LiDAR + camera / ảnh."""
-    if len(files) > 1 and not all(Path(f.filename or "").suffix.lower() in ingest.IMAGE_EXT for f in files):
-        raise HTTPException(
-            422, {"code": "MULTI_FILES", "message": "Nhiều file chỉ nhận ảnh; dữ liệu khác hãy nén thành một file .zip"}
-        )
-    tmp_dir = Path(tempfile.mkdtemp(prefix="upload-"))
-    saved = []
+    """Tải lên: một video, nhiều ảnh, hoặc một file nén (.zip/.tar) chứa nuScenes / KITTI / LiDAR + camera / ảnh.
+
+    File lớn: gửi từng phần qua PUT /projects/uploads/{upload_id} rồi gọi API này với upload_id thay cho files.
+    """
+    files = files or []
+    tmp_dir = _upload_dir(upload_id) if upload_id else Path(tempfile.mkdtemp(prefix="upload-"))
     try:
-        for f in files:
-            dest = tmp_dir / Path(f.filename or "upload.bin").name
-            with open(dest, "wb") as out:
-                shutil.copyfileobj(f.file, out, 1 << 20)
-            saved.append(dest)
+        if upload_id:
+            saved = sorted(p for p in tmp_dir.iterdir() if p.is_file()) if tmp_dir.is_dir() else []
+        else:
+            saved = []
+            for f in files:
+                dest = tmp_dir / Path(f.filename or "upload.bin").name
+                with open(dest, "wb") as out:
+                    shutil.copyfileobj(f.file, out, 1 << 20)
+                saved.append(dest)
+        if not saved:
+            raise HTTPException(422, {"code": "NO_FILES", "message": "Chưa chọn file nào"})
+        if len(saved) > 1 and not all(p.suffix.lower() in ingest.IMAGE_EXT for p in saved):
+            raise HTTPException(
+                422,
+                {"code": "MULTI_FILES", "message": "Nhiều file chỉ nhận ảnh; dữ liệu khác hãy nén thành một file .zip"},
+            )
         ok_ext = ingest.VIDEO_EXT | ingest.IMAGE_EXT
         for p in saved:
             if not (ingest.is_archive(p.name) or p.suffix.lower() in ok_ext):

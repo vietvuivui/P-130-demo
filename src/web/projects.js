@@ -2,6 +2,7 @@
 'use strict';
 
 const API = '/api/v1/projects';
+const UPLOAD_CHUNK = 50 * 1024 * 1024; // file lớn hơn thì gửi từng phần (proxy thường chặn request > 100 MB)
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const KIND = { video: 'Video', images: 'Ảnh', nuscenes: 'nuScenes', kitti: 'KITTI', lidar_cam: 'LiDAR + camera' };
@@ -205,30 +206,59 @@ if (form) {
     if (submitBtn) submitBtn.disabled = true;
 
     // Tải lần lượt từng dự án (XHR để có tiến độ); dự án lỗi thì giữ file đó lại trong danh sách để thử lại
-    const upload = (g, i) => new Promise((resolve) => {
+    const send = (method, url, body, onProgress) => new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open(method, url);
+      xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) onProgress(ev.loaded); };
+      xhr.onloadend = () => {
+        let data = {};
+        try { data = JSON.parse(xhr.responseText); } catch { /* ignore non-json */ }
+        resolve({ status: xhr.status, data, error: data?.detail?.message || data?.detail || `HTTP ${xhr.status || 'mất kết nối'}` });
+      };
+      xhr.send(body);
+    });
+    const upload = async (g, i) => {
+      const tag = groups.length > 1 ? `Dự án ${i + 1}/${groups.length}: ` : '';
+      const total = g.files.reduce((a, f) => a + f.size, 0);
+      const show = (loaded) => {
+        const pct = total ? (100 * loaded) / total : 100;
+        if (uploadBar) uploadBar.style.width = pct.toFixed(1) + '%';
+        if (uploadText) uploadText.textContent = tag + (pct < 100 ? `đang tải lên ${fmtSize(loaded)} / ${fmtSize(total)}` : 'đang lưu trên máy chủ…');
+      };
       const fd = new FormData();
-      g.files.forEach((f) => fd.append('files', f, f.name));
       fd.append('name', (groups.length === 1 && typedName) || projName(g));
       fd.append('kind', 'auto'); // định dạng luôn tự nhận dạng; không giới hạn số frame
       fd.append('sequential', $('pj-seq')?.checked ? 'true' : 'false');
       fd.append('tta', $('pj-tta')?.checked ? 'true' : 'false');
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', API);
-      const tag = groups.length > 1 ? `Dự án ${i + 1}/${groups.length}: ` : '';
-      xhr.upload.onprogress = (ev) => {
-        if (!ev.lengthComputable) return;
-        const pct = (100 * ev.loaded) / ev.total;
-        if (uploadBar) uploadBar.style.width = pct.toFixed(1) + '%';
-        if (uploadText) uploadText.textContent = tag + (pct < 100 ? `đang tải lên ${fmtSize(ev.loaded)} / ${fmtSize(ev.total)}` : 'đang lưu trên máy chủ…');
-      };
-      xhr.onloadend = () => {
-        let body = {};
-        try { body = JSON.parse(xhr.responseText); } catch { /* ignore non-json */ }
-        if (xhr.status === 200) resolve({ ok: true, name: body.name });
-        else resolve({ ok: false, error: body?.detail?.message || body?.detail || `HTTP ${xhr.status || 'mất kết nối'}` });
-      };
-      xhr.send(fd);
-    });
+      if (total > UPLOAD_CHUNK) {
+        // Proxy (vd Cloudflare bản free) chặn request > 100 MB: gửi từng phần, lỗi mạng thì gửi lại phần đó
+        const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+        let sent = 0;
+        for (const f of g.files) {
+          for (let off = 0; off < f.size;) {
+            const part = f.slice(off, off + UPLOAD_CHUNK);
+            const url = `${API}/uploads/${id}?name=${encodeURIComponent(f.name)}&offset=${off}`;
+            let r;
+            for (let attempt = 0; attempt < 3; attempt++) {
+              r = await send('PUT', url, part, (n) => show(sent + n));
+              if (r.status !== 0) break;
+            }
+            if (r.status === 409 && Number.isInteger(r.data?.detail?.size)) { // máy chủ đã có phần này: tiếp từ chỗ máy chủ có
+              sent += r.data.detail.size - off; off = r.data.detail.size; continue;
+            }
+            if (r.status !== 200) return { ok: false, error: r.error };
+            sent += part.size; off += part.size;
+          }
+        }
+        fd.append('upload_id', id);
+        show(total);
+        const r = await send('POST', API, fd, () => {});
+        return r.status === 200 ? { ok: true, name: r.data.name } : { ok: false, error: r.error };
+      }
+      g.files.forEach((f) => fd.append('files', f, f.name));
+      const r = await send('POST', API, fd, (n) => show(Math.min(n, total)));
+      return r.status === 200 ? { ok: true, name: r.data.name } : { ok: false, error: r.error };
+    };
 
     (async () => {
       const failed = [];
