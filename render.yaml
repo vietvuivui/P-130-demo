@@ -1,0 +1,24 @@
+# Render Blueprint: bản web chạy CPU (giao diện, API, QA Agent, review, xuất dataset).
+# Auto-label cần GPU nên bước đó báo "thiếu thư viện" cho tới khi nối GPU worker.
+services:
+  - type: web
+    name: autolabel3d
+    runtime: docker
+    plan: starter            # disk bền vững chỉ có từ gói Starter trở lên
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: APP_ENV
+        value: production
+      - key: AUTH_REQUIRED
+        value: "1"           # bắt đăng nhập; người đăng ký đầu tiên là admin
+      - key: AUTH_OPEN_SIGNUP
+        value: "0"
+      - key: PUBLIC_URL
+        sync: false          # điền https://<tên-dịch-vụ>.onrender.com sau khi có URL
+    disk:
+      name: autolabel-data
+      mountPath: /app/data   # dự án, tài khoản (users.json), nhãn
+      sizeGB: 5

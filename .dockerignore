@@ -20,3 +20,12 @@ v1.0-mini*
 *.pt
 data/
 .venv/
+
+samples/
+demo/
+weights/
+webm/
+*.zip
+tools2d/
+tools3d/
+tests/
